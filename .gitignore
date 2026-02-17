@@ -1,0 +1,20 @@
+# dependencies
+**/node_modules/
+
+# env
+**/.env
+
+# logs
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# local data (optional)
+backend/db.local.json
+backend/cache.json
+
+backend/test-ledger/
+**/test-ledger/
+

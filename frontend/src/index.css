@@ -1,0 +1,22 @@
+:root{
+  --bg:#0b0b0f;
+  --card:#14141b;
+  --border:#242432;
+  --text:#ffffff;
+  --muted:#a8a8b3;
+  --primary:#6cf2a6;
+}
+
+html[data-theme="ocean"]{ --primary:#4aa3ff; }
+html[data-theme="neon"]{ --primary:#6cf2a6; }
+html[data-theme="rose"]{ --primary:#ff5aa5; }
+html[data-theme="royal"]{ --primary:#a26bff; }
+html[data-theme="sunset"]{ --primary:#ff8a3d; }
+
+body{
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+button{ cursor:pointer; }
