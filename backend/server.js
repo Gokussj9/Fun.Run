@@ -1,35 +1,36 @@
+// ===========================
+// backend/server.js (FULL FILE) — FIXED + STRONG
+// (No frontend/UI changes)
+// ===========================
+
 import "dotenv/config";
+
 import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import crypto from "crypto"; // ✅ FIX: crypto import (randomUUID)
+import crypto from "crypto";
+
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import compression from "compression";
+import morgan from "morgan";
 
 import { createClient } from "@supabase/supabase-js";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
 
 // -------------------- CONFIG --------------------
 const PORT = Number(process.env.PORT || 5000);
 
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5173")
+// ✅ CORS allowlist from env (add both local + vercel here)
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ||
+  "http://localhost:5173,http://127.0.0.1:5173,https://fun-run-lovat.vercel.app")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (CORS_ORIGINS.includes(origin)) return cb(null, true);
-      return cb(new Error("CORS blocked: " + origin));
-    },
-    credentials: true,
-  })
-);
 
 // ✅ accept local/file/supabase cleanly
 const DB_MODE_RAW = String(process.env.DB_MODE || "file").toLowerCase();
@@ -54,6 +55,41 @@ const BOOST_DURATION_MINUTES = Number(process.env.BOOST_DURATION_MINUTES || 60);
 // Owner cap
 const OWNER_MAX_PERCENT = Number(process.env.OWNER_MAX_PERCENT || 20); // 20%
 
+// -------------------- MIDDLEWARES (STRONG) --------------------
+app.set("trust proxy", 1);
+
+app.use(morgan("tiny"));
+app.use(helmet());
+app.use(compression());
+
+// ✅ IMPORTANT: payload limit (fix 413 for base64 logo)
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+
+// ✅ Rate limit basic protection
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// ✅ CORS (preflight included)
+const corsMiddleware = cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // curl/postman
+    if (CORS_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked: " + origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+});
+app.use(corsMiddleware);
+app.options("*", corsMiddleware);
+
 // -------------------- FILE DB FALLBACK --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,7 +109,6 @@ function nowMs() {
 }
 
 function uid() {
-  // ✅ FIX: always works now
   return crypto.randomUUID();
 }
 
@@ -155,7 +190,6 @@ async function readDB() {
     if (!supabase)
       throw new Error("Supabase not configured (missing URL or SERVICE ROLE key)");
 
-    // ✅ FIX: if row doesn't exist, create it
     const { data, error } = await supabase
       .from(SUPABASE_TABLE)
       .select("data")
@@ -176,8 +210,12 @@ async function readDB() {
 
     const store = data?.data || defaultStore();
     store.coins = Array.isArray(store.coins) ? store.coins.map(ensureCoin) : [];
-    store.profiles = store.profiles && typeof store.profiles === "object" ? store.profiles : {};
-    store.referrals = store.referrals && typeof store.referrals === "object" ? store.referrals : {};
+    store.profiles =
+      store.profiles && typeof store.profiles === "object" ? store.profiles : {};
+    store.referrals =
+      store.referrals && typeof store.referrals === "object"
+        ? store.referrals
+        : {};
     store.logs = Array.isArray(store.logs) ? store.logs : [];
     return store;
   }
@@ -190,8 +228,12 @@ async function readDB() {
   const store = JSON.parse(raw || "{}");
   const merged = { ...defaultStore(), ...store };
   merged.coins = Array.isArray(merged.coins) ? merged.coins.map(ensureCoin) : [];
-  merged.profiles = merged.profiles && typeof merged.profiles === "object" ? merged.profiles : {};
-  merged.referrals = merged.referrals && typeof merged.referrals === "object" ? merged.referrals : {};
+  merged.profiles =
+    merged.profiles && typeof merged.profiles === "object" ? merged.profiles : {};
+  merged.referrals =
+    merged.referrals && typeof merged.referrals === "object"
+      ? merged.referrals
+      : {};
   merged.logs = Array.isArray(merged.logs) ? merged.logs : [];
   return merged;
 }
@@ -201,7 +243,6 @@ async function writeDB(store) {
     if (!supabase)
       throw new Error("Supabase not configured (missing URL or SERVICE ROLE key)");
 
-    // ✅ FIX: upsert main row always
     const { error } = await supabase
       .from(SUPABASE_TABLE)
       .upsert({ id: "main", data: store }, { onConflict: "id" });
@@ -219,20 +260,17 @@ function findCoin(store, coinId) {
 }
 
 // -------------------- SOLANA HELPERS --------------------
-
 async function getSolBalance(wallet) {
   try {
     if (!wallet) return 0;
-
     const pub = new PublicKey(wallet);
     const lamports = await connection.getBalance(pub);
     return lamports / 1_000_000_000;
   } catch (err) {
     console.log("Balance fetch failed, returning 0:", err.message);
-    return 0; // Never crash backend
+    return 0;
   }
 }
-
 
 // -------------------- ROUTES --------------------
 app.get("/", (req, res) =>
@@ -302,11 +340,17 @@ app.post("/api/referral/set", async (req, res) => {
   try {
     const wallet = String(req.body?.wallet || "").trim();
     const referrer = String(req.body?.referrer || "").trim();
-    if (!wallet || !referrer) return res.json({ ok: false, error: "wallet/referrer required" });
-    if (wallet === referrer) return res.json({ ok: false, error: "self referral not allowed" });
+    if (!wallet || !referrer)
+      return res.json({ ok: false, error: "wallet/referrer required" });
+    if (wallet === referrer)
+      return res.json({ ok: false, error: "self referral not allowed" });
 
     const store = await readDB();
-    if (store.referrals?.[wallet]) return res.json({ ok: false, error: "immutable: referral already set" });
+    if (store.referrals?.[wallet])
+      return res.json({
+        ok: false,
+        error: "immutable: referral already set",
+      });
 
     store.referrals[wallet] = referrer;
     const p = ensureProfile(store.profiles?.[wallet], wallet);
@@ -338,14 +382,18 @@ app.get("/api/balance/:wallet", async (req, res) => {
 app.post("/api/coin/create", async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
-    const symbol = String(req.body?.symbol || "").trim().toUpperCase();
+    const symbol = String(req.body?.symbol || "")
+      .trim()
+      .toUpperCase();
     const story = String(req.body?.story || "").trim();
     const logo = req.body?.logo || "";
     const initialSol = safeNum(req.body?.initialSol, 0);
     const creatorWallet = String(req.body?.creatorWallet || "").trim();
 
-    if (!name || !symbol || !creatorWallet) return res.json({ ok: false, error: "name/symbol/creatorWallet required" });
-    if (symbol.length < 2 || symbol.length > 10) return res.json({ ok: false, error: "bad symbol" });
+    if (!name || !symbol || !creatorWallet)
+      return res.json({ ok: false, error: "name/symbol/creatorWallet required" });
+    if (symbol.length < 2 || symbol.length > 10)
+      return res.json({ ok: false, error: "bad symbol" });
 
     const store = await readDB();
 
@@ -399,7 +447,8 @@ app.post("/api/trade", async (req, res) => {
     const side = String(req.body?.side || "BUY").toUpperCase();
     const sol = safeNum(req.body?.sol, 0);
 
-    if (!wallet || !coinId) return res.json({ ok: false, error: "wallet/coinId required" });
+    if (!wallet || !coinId)
+      return res.json({ ok: false, error: "wallet/coinId required" });
     if (!(sol > 0)) return res.json({ ok: false, error: "sol must be > 0" });
 
     const store = await readDB();
