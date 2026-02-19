@@ -1,101 +1,132 @@
+// backend/server.js  (FULL FILE)
+
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import compression from "compression";
-import morgan from "morgan";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import compression from "compression";
+import morgan from "morgan";
 
 import { createClient } from "@supabase/supabase-js";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
 
-// ------------ TRUST PROXY (Render/Reverse Proxy) ------------
-app.set("trust proxy", 1);
+// -------------------- TRUST PROXY (Railway/Render) --------------------
+if (String(process.env.TRUST_PROXY || "") === "1") {
+  app.set("trust proxy", 1);
+}
 
-// ------------ MIDDLEWARE ------------
+// -------------------- MIDDLEWARE (basic hardening) --------------------
 app.use(morgan("tiny"));
 app.use(helmet());
 app.use(compression());
 
-// ✅ 413 fix: allow bigger JSON (logo base64)
-app.use(express.json({ limit: "15mb" }));
+// IMPORTANT: 413 fix (increase body limit)
+const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_LIMIT }));
 
-// ✅ Basic rate limit
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
-    max: 120,
+    max: 240,
     standardHeaders: true,
     legacyHeaders: false,
   })
 );
 
-// ------------ CONFIG ------------
-const PORT = Number(process.env.PORT || 5000);
+// -------------------- CORS (FIX) --------------------
+function parseOrigins(val) {
+  return String(val || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
-// ✅ Put comma-separated allowed origins here
-// Example:
-// CORS_ORIGINS=https://fun-run-lovat.vercel.app,http://localhost:5173,http://127.0.0.1:5173
-const CORS_ORIGINS = String(process.env.CORS_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const CORS_ORIGINS = parseOrigins(
+  process.env.CORS_ORIGINS ||
+    [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      // your Vercel production domain (update if changes)
+      "https://fun-run-lovat.vercel.app",
+    ].join(",")
+);
 
-// ✅ CORS: allow your Vercel domain + local
+// Optional: allow any *.vercel.app previews if you want
+const ALLOW_VERCEL_PREVIEWS = String(process.env.ALLOW_VERCEL_PREVIEWS || "1") === "1";
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // server-to-server / curl
+  if (CORS_ORIGINS.includes("*")) return true;
+  if (CORS_ORIGINS.includes(origin)) return true;
+
+  // allow vercel preview domains safely (optional)
+  if (ALLOW_VERCEL_PREVIEWS) {
+    try {
+      const u = new URL(origin);
+      if (u.hostname.endsWith(".vercel.app")) return true;
+    } catch {}
+  }
+
+  return false;
+}
+
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow server-to-server / curl / no-origin requests
-      if (!origin) return cb(null, true);
-
-      // if list is empty, allow all (not recommended in prod)
-      if (CORS_ORIGINS.length === 0) return cb(null, true);
-
-      if (CORS_ORIGINS.includes(origin)) return cb(null, true);
-      return cb(null, false); // block silently for browser
+      if (isAllowedOrigin(origin)) return cb(null, true);
+      return cb(null, false); // block silently (safer than throwing)
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    maxAge: 86400,
   })
 );
 
-// ✅ Must respond to preflight OPTIONS
+// make sure preflight works
 app.options("*", cors());
 
-// DB mode
+// -------------------- CONFIG --------------------
+const PORT = Number(process.env.PORT || 5000);
+
+// ✅ accept local/file/supabase cleanly
 const DB_MODE_RAW = String(process.env.DB_MODE || "file").toLowerCase();
 const DB_MODE = DB_MODE_RAW === "local" ? "file" : DB_MODE_RAW;
 
-// Supabase (recommended for real persistence)
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "pumpmini_store";
 
-// Solana
+// ✅ accept SOLANA_RPC or SOLANA_RPC_URL
 const SOLANA_RPC =
   process.env.SOLANA_RPC ||
   process.env.SOLANA_RPC_URL ||
-  "https://api.devnet.solana.com";
+  "http://127.0.0.1:8899";
+
 const connection = new Connection(SOLANA_RPC, "confirmed");
 
 // Boost config
 const BOOST_COST_SOL = Number(process.env.BOOST_COST_SOL || 0.05);
 const BOOST_DURATION_MINUTES = Number(process.env.BOOST_DURATION_MINUTES || 60);
+
+// Owner cap
 const OWNER_MAX_PERCENT = Number(process.env.OWNER_MAX_PERCENT || 20);
 
-// ------------ FILE DB ------------
+// -------------------- FILE DB --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FILE_DB_PATH = path.join(__dirname, "db.json");
 
-// ------------ SUPABASE ------------
+// -------------------- SUPABASE --------------------
 const supabase =
   DB_MODE === "supabase" && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -103,23 +134,19 @@ const supabase =
       })
     : null;
 
-// ------------ UTIL ------------
-const nowMs = () => Date.now();
-const uid = () => crypto.randomUUID();
-
+// -------------------- UTIL --------------------
+function nowMs() {
+  return Date.now();
+}
+function uid() {
+  return crypto.randomUUID();
+}
 function safeNum(n, d = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : d;
 }
-
 function defaultStore() {
   return { coins: [], profiles: {}, referrals: {}, logs: [] };
-}
-
-function logPush(store, item) {
-  store.logs = Array.isArray(store.logs) ? store.logs : [];
-  store.logs.unshift({ t: nowMs(), ...item });
-  store.logs = store.logs.slice(0, 300);
 }
 
 function ensureCoin(c) {
@@ -145,10 +172,8 @@ function ensureCoin(c) {
     chart,
     volumeSol: safeNum(c?.volumeSol, 0),
     creatorRewardsSol: safeNum(c?.creatorRewardsSol, 0),
-
     totalSupply: safeNum(c?.totalSupply, 1_000_000_000),
     holders: c?.holders && typeof c.holders === "object" ? c.holders : {},
-
     boostedUntil: safeNum(c?.boostedUntil, 0),
     boostCount: safeNum(c?.boostCount, 0),
     lastBoostAt: safeNum(c?.lastBoostAt, 0),
@@ -175,10 +200,15 @@ function ensureProfile(p, wallet) {
   };
 }
 
+function logPush(store, item) {
+  store.logs = Array.isArray(store.logs) ? store.logs : [];
+  store.logs.unshift({ t: nowMs(), ...item });
+  store.logs = store.logs.slice(0, 300);
+}
+
 async function readDB() {
   if (DB_MODE === "supabase") {
-    if (!supabase)
-      throw new Error("Supabase not configured (missing URL/SERVICE ROLE key)");
+    if (!supabase) throw new Error("Supabase not configured");
 
     const { data, error } = await supabase
       .from(SUPABASE_TABLE)
@@ -205,7 +235,7 @@ async function readDB() {
     return store;
   }
 
-  // file
+  // file mode
   if (!fs.existsSync(FILE_DB_PATH)) {
     fs.writeFileSync(FILE_DB_PATH, JSON.stringify(defaultStore(), null, 2));
   }
@@ -221,8 +251,7 @@ async function readDB() {
 
 async function writeDB(store) {
   if (DB_MODE === "supabase") {
-    if (!supabase)
-      throw new Error("Supabase not configured (missing URL/SERVICE ROLE key)");
+    if (!supabase) throw new Error("Supabase not configured");
 
     const { error } = await supabase
       .from(SUPABASE_TABLE)
@@ -239,7 +268,7 @@ function findCoin(store, coinId) {
   return store.coins.find((x) => x.id === id) || null;
 }
 
-// ------------ SOLANA HELPERS ------------
+// -------------------- SOLANA HELPERS --------------------
 async function getSolBalance(wallet) {
   try {
     if (!wallet) return 0;
@@ -247,24 +276,15 @@ async function getSolBalance(wallet) {
     const lamports = await connection.getBalance(pub);
     return lamports / 1_000_000_000;
   } catch (err) {
-    console.log("Balance fetch failed:", err.message);
+    console.log("Balance fetch failed, returning 0:", err.message);
     return 0;
   }
 }
 
-// ------------ ROUTES ------------
+// -------------------- ROUTES --------------------
 app.get("/", (req, res) =>
   res.json({ ok: true, name: "funrun-backend", ts: nowMs(), dbMode: DB_MODE })
 );
-
-app.get("/api/logs", async (req, res) => {
-  try {
-    const store = await readDB();
-    res.json({ ok: true, logs: store.logs || [] });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
 
 app.get("/api/coin/list", async (req, res) => {
   try {
@@ -305,45 +325,6 @@ app.get("/api/profile/:wallet", async (req, res) => {
   }
 });
 
-app.get("/api/referral/:wallet", async (req, res) => {
-  try {
-    const wallet = String(req.params.wallet || "").trim();
-    const store = await readDB();
-    const ref = store.referrals?.[wallet] || "";
-    res.json({ ok: true, wallet, referrer: ref });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
-
-app.post("/api/referral/set", async (req, res) => {
-  try {
-    const wallet = String(req.body?.wallet || "").trim();
-    const referrer = String(req.body?.referrer || "").trim();
-    if (!wallet || !referrer)
-      return res.json({ ok: false, error: "wallet/referrer required" });
-    if (wallet === referrer)
-      return res.json({ ok: false, error: "self referral not allowed" });
-
-    const store = await readDB();
-    if (store.referrals?.[wallet])
-      return res.json({ ok: false, error: "immutable: referral already set" });
-
-    store.referrals[wallet] = referrer;
-    const p = ensureProfile(store.profiles?.[wallet], wallet);
-    p.referrer = referrer;
-    store.profiles[wallet] = p;
-
-    logPush(store, { type: "ref_set", wallet, referrer });
-    await writeDB(store);
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("ref/set error:", e);
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
-
 app.get("/api/balance/:wallet", async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();
@@ -355,7 +336,6 @@ app.get("/api/balance/:wallet", async (req, res) => {
   }
 });
 
-// ✅ CREATE COIN (with logo size guard)
 app.post("/api/coin/create", async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
@@ -365,21 +345,13 @@ app.post("/api/coin/create", async (req, res) => {
     const initialSol = safeNum(req.body?.initialSol, 0);
     const creatorWallet = String(req.body?.creatorWallet || "").trim();
 
-    if (!name || !symbol || !creatorWallet)
+    if (!name || !symbol || !creatorWallet) {
       return res.json({ ok: false, error: "name/symbol/creatorWallet required" });
-    if (symbol.length < 2 || symbol.length > 10)
-      return res.json({ ok: false, error: "bad symbol" });
-
-    // logo base64 hard guard (approx)
-    if (typeof logo === "string" && logo.length > 7_000_000) {
-      return res
-        .status(413)
-        .json({ ok: false, error: "Logo too large. Please upload smaller image." });
     }
 
     const store = await readDB();
-
     const status = initialSol >= 0.01 ? "LIVE" : "DRAFT";
+
     const coin = ensureCoin({
       id: uid(),
       name,
@@ -421,10 +393,11 @@ app.post("/api/coin/create", async (req, res) => {
   }
 });
 
-// ------------ START ------------
-app.listen(PORT, () => {
+// -------------------- START --------------------
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Backend running on port: ${PORT}`);
   console.log(`✅ Solana RPC: ${SOLANA_RPC}`);
   console.log(`✅ DB MODE: ${DB_MODE}`);
   console.log(`✅ CORS_ORIGINS: ${CORS_ORIGINS.join(", ")}`);
+  console.log(`✅ JSON_LIMIT: ${JSON_LIMIT}`);
 });
