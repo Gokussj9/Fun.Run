@@ -1,4 +1,4 @@
-// backend/server.js  (FULL FILE)
+// backend/server.js (FULL FILE)
 
 import "dotenv/config";
 import express from "express";
@@ -28,7 +28,7 @@ app.use(morgan("tiny"));
 app.use(helmet());
 app.use(compression());
 
-// IMPORTANT: 413 fix (increase body limit)
+// IMPORTANT: increase body limit (logo base64, etc)
 const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
 app.use(express.json({ limit: JSON_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: JSON_LIMIT }));
@@ -42,7 +42,7 @@ app.use(
   })
 );
 
-// -------------------- CORS (FIX) --------------------
+// -------------------- CORS --------------------
 function parseOrigins(val) {
   return String(val || "")
     .split(",")
@@ -55,27 +55,23 @@ const CORS_ORIGINS = parseOrigins(
     [
       "http://localhost:5173",
       "http://127.0.0.1:5173",
-      // your Vercel production domain (update if changes)
       "https://fun-run-lovat.vercel.app",
     ].join(",")
 );
 
-// Optional: allow any *.vercel.app previews if you want
 const ALLOW_VERCEL_PREVIEWS = String(process.env.ALLOW_VERCEL_PREVIEWS || "1") === "1";
 
 function isAllowedOrigin(origin) {
-  if (!origin) return true; // server-to-server / curl
+  if (!origin) return true; // curl/server-to-server
   if (CORS_ORIGINS.includes("*")) return true;
   if (CORS_ORIGINS.includes(origin)) return true;
 
-  // allow vercel preview domains safely (optional)
   if (ALLOW_VERCEL_PREVIEWS) {
     try {
       const u = new URL(origin);
       if (u.hostname.endsWith(".vercel.app")) return true;
     } catch {}
   }
-
   return false;
 }
 
@@ -83,7 +79,7 @@ app.use(
   cors({
     origin: (origin, cb) => {
       if (isAllowedOrigin(origin)) return cb(null, true);
-      return cb(null, false); // block silently (safer than throwing)
+      return cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -92,13 +88,11 @@ app.use(
   })
 );
 
-// make sure preflight works
 app.options("*", cors());
 
 // -------------------- CONFIG --------------------
 const PORT = Number(process.env.PORT || 5000);
 
-// ✅ accept local/file/supabase cleanly
 const DB_MODE_RAW = String(process.env.DB_MODE || "file").toLowerCase();
 const DB_MODE = DB_MODE_RAW === "local" ? "file" : DB_MODE_RAW;
 
@@ -106,20 +100,15 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "pumpmini_store";
 
-// ✅ accept SOLANA_RPC or SOLANA_RPC_URL
 const SOLANA_RPC =
-  process.env.SOLANA_RPC ||
-  process.env.SOLANA_RPC_URL ||
-  "http://127.0.0.1:8899";
+  process.env.SOLANA_RPC || process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
 
 const connection = new Connection(SOLANA_RPC, "confirmed");
 
-// Boost config
-const BOOST_COST_SOL = Number(process.env.BOOST_COST_SOL || 0.05);
-const BOOST_DURATION_MINUTES = Number(process.env.BOOST_DURATION_MINUTES || 60);
-
-// Owner cap
-const OWNER_MAX_PERCENT = Number(process.env.OWNER_MAX_PERCENT || 20);
+// Basic economics (demo)
+const STARTING_MC_USD = Number(process.env.STARTING_MC_USD || 6500);
+const TOTAL_SUPPLY_DEFAULT = Number(process.env.TOTAL_SUPPLY_DEFAULT || 1_000_000_000);
+const CREATOR_PERCENT = Number(process.env.CREATOR_PERCENT || 2); // 2%
 
 // -------------------- FILE DB --------------------
 const __filename = fileURLToPath(import.meta.url);
@@ -145,22 +134,23 @@ function safeNum(n, d = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : d;
 }
+
 function defaultStore() {
   return { coins: [], profiles: {}, referrals: {}, logs: [] };
 }
 
 function ensureCoin(c) {
-  const createdAt = c?.createdAt || nowMs();
+  const createdAt = safeNum(c?.createdAt, nowMs());
   const status = c?.status || "DRAFT";
-  const mc = safeNum(c?.mc, status === "LIVE" ? 6500 : 0);
-  const ath = safeNum(c?.ath, mc || 6500);
+  const mc = safeNum(c?.mc, status === "LIVE" ? STARTING_MC_USD : 0);
+  const ath = safeNum(c?.ath, mc || STARTING_MC_USD);
   const chart =
     Array.isArray(c?.chart) && c.chart.length ? c.chart : [mc, mc, mc, mc, mc];
 
   return {
     id: c?.id || uid(),
     name: String(c?.name || "").trim(),
-    symbol: String(c?.symbol || "").trim(),
+    symbol: String(c?.symbol || "").trim().toUpperCase(),
     story: String(c?.story || "").trim(),
     logo: c?.logo || "",
     creatorWallet: c?.creatorWallet || c?.owner || "",
@@ -172,11 +162,10 @@ function ensureCoin(c) {
     chart,
     volumeSol: safeNum(c?.volumeSol, 0),
     creatorRewardsSol: safeNum(c?.creatorRewardsSol, 0),
-    totalSupply: safeNum(c?.totalSupply, 1_000_000_000),
+    totalSupply: safeNum(c?.totalSupply, TOTAL_SUPPLY_DEFAULT),
     holders: c?.holders && typeof c.holders === "object" ? c.holders : {},
-    boostedUntil: safeNum(c?.boostedUntil, 0),
-    boostCount: safeNum(c?.boostCount, 0),
-    lastBoostAt: safeNum(c?.lastBoostAt, 0),
+    // trade helpers
+    lastTradeAt: safeNum(c?.lastTradeAt, 0),
   };
 }
 
@@ -265,7 +254,7 @@ async function writeDB(store) {
 
 function findCoin(store, coinId) {
   const id = String(coinId || "").trim();
-  return store.coins.find((x) => x.id === id) || null;
+  return (store.coins || []).find((x) => x.id === id) || null;
 }
 
 // -------------------- SOLANA HELPERS --------------------
@@ -289,21 +278,8 @@ app.get("/", (req, res) =>
 app.get("/api/coin/list", async (req, res) => {
   try {
     const store = await readDB();
-    const now = nowMs();
-
     const coins = (store.coins || []).map(ensureCoin);
-    coins.sort((a, b) => {
-      const aBoost = a.boostedUntil > now ? 1 : 0;
-      const bBoost = b.boostedUntil > now ? 1 : 0;
-      if (aBoost !== bBoost) return bBoost - aBoost;
-
-      const al = a.status === "LIVE" ? 1 : 0;
-      const bl = b.status === "LIVE" ? 1 : 0;
-      if (al !== bl) return bl - al;
-
-      return safeNum(b.createdAt) - safeNum(a.createdAt);
-    });
-
+    coins.sort((a, b) => safeNum(b.createdAt) - safeNum(a.createdAt));
     res.json({ ok: true, coins });
   } catch (e) {
     console.error("coin/list error:", e);
@@ -336,6 +312,7 @@ app.get("/api/balance/:wallet", async (req, res) => {
   }
 });
 
+// CREATE COIN
 app.post("/api/coin/create", async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
@@ -362,15 +339,19 @@ app.post("/api/coin/create", async (req, res) => {
       owner: creatorWallet,
       status,
       createdAt: nowMs(),
-      mc: status === "LIVE" ? 6500 : 0,
-      ath: status === "LIVE" ? 6500 : 0,
-      chart: status === "LIVE" ? [6500, 6500, 6500, 6500, 6500] : [0, 0, 0, 0, 0],
+      mc: status === "LIVE" ? STARTING_MC_USD : 0,
+      ath: status === "LIVE" ? STARTING_MC_USD : 0,
+      chart:
+        status === "LIVE"
+          ? [STARTING_MC_USD, STARTING_MC_USD, STARTING_MC_USD, STARTING_MC_USD, STARTING_MC_USD]
+          : [0, 0, 0, 0, 0],
       volumeSol: status === "LIVE" ? initialSol : 0,
-      totalSupply: 1_000_000_000,
+      totalSupply: TOTAL_SUPPLY_DEFAULT,
       holders: {},
     });
 
-    const creatorTokens = Math.floor(coin.totalSupply * 0.02);
+    // creator gets 2%
+    const creatorTokens = Math.floor((coin.totalSupply * CREATOR_PERCENT) / 100);
     coin.holders[creatorWallet] = (coin.holders[creatorWallet] || 0) + creatorTokens;
 
     store.coins.unshift(coin);
@@ -389,6 +370,89 @@ app.post("/api/coin/create", async (req, res) => {
     res.json({ ok: true, coin });
   } catch (e) {
     console.error("coin/create error:", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// TRADE (BUY/SELL)  ✅ this fixes /api/trade 404
+app.post("/api/trade", async (req, res) => {
+  try {
+    const wallet = String(req.body?.wallet || "").trim();
+    const coinId = String(req.body?.coinId || "").trim();
+    const side = String(req.body?.side || "").trim().toLowerCase(); // "buy" | "sell"
+    const sol = safeNum(req.body?.sol, 0);
+
+    if (!wallet || !coinId || !side || sol <= 0) {
+      return res.json({ ok: false, error: "wallet/coinId/side/sol required" });
+    }
+    if (side !== "buy" && side !== "sell") {
+      return res.json({ ok: false, error: "side must be buy or sell" });
+    }
+
+    const store = await readDB();
+    const coin = findCoin(store, coinId);
+    if (!coin) return res.json({ ok: false, error: "Coin not found" });
+
+    const p = ensureProfile(store.profiles?.[wallet], wallet);
+
+    // simple token pricing: tokens per SOL depends on current MC
+    const mc = Math.max(coin.mc || STARTING_MC_USD, 1000);
+    const tokensPerSol = Math.max(1, Math.floor(coin.totalSupply / mc)); // demo
+    const tokens = Math.max(1, Math.floor(sol * tokensPerSol));
+
+    if (side === "buy") {
+      coin.holders[wallet] = (coin.holders[wallet] || 0) + tokens;
+
+      const h = p.holdings.find((x) => x.coinId === coinId);
+      if (h) {
+        h.amount = safeNum(h.amount, 0) + tokens;
+        h.lastAt = nowMs();
+      } else {
+        p.holdings.unshift({ coinId, symbol: coin.symbol, amount: tokens, lastAt: nowMs() });
+      }
+
+      coin.volumeSol = safeNum(coin.volumeSol, 0) + sol;
+
+      // bump MC a bit (demo)
+      coin.mc = Math.round(Math.max(1000, coin.mc + sol * 120));
+      coin.ath = Math.max(coin.ath || coin.mc, coin.mc);
+      coin.chart = Array.isArray(coin.chart) ? coin.chart : [];
+      coin.chart.push(coin.mc);
+      coin.chart = coin.chart.slice(-60);
+
+      p.txs.unshift({ id: uid(), t: nowMs(), coinId, side: "BUY", sol, tokens });
+      logPush(store, { type: "trade", side: "BUY", wallet, coinId, sol, tokens });
+    } else {
+      const h = p.holdings.find((x) => x.coinId === coinId);
+      const have = safeNum(h?.amount, 0);
+      if (!h || have <= 0) return res.json({ ok: false, error: "No tokens to sell" });
+
+      // sell up to what they have
+      const sellTokens = Math.min(have, tokens);
+      h.amount = have - sellTokens;
+      h.lastAt = nowMs();
+
+      coin.holders[wallet] = Math.max(0, safeNum(coin.holders[wallet], 0) - sellTokens);
+
+      coin.volumeSol = safeNum(coin.volumeSol, 0) + sol;
+
+      // drop MC a bit (demo)
+      coin.mc = Math.round(Math.max(1000, coin.mc - sol * 110));
+      coin.chart = Array.isArray(coin.chart) ? coin.chart : [];
+      coin.chart.push(coin.mc);
+      coin.chart = coin.chart.slice(-60);
+
+      p.txs.unshift({ id: uid(), t: nowMs(), coinId, side: "SELL", sol, tokens: sellTokens });
+      logPush(store, { type: "trade", side: "SELL", wallet, coinId, sol, tokens: sellTokens });
+    }
+
+    p.updatedAt = nowMs();
+    store.profiles[wallet] = p;
+
+    await writeDB(store);
+    res.json({ ok: true, coin, profile: p });
+  } catch (e) {
+    console.error("trade error:", e);
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
