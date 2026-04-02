@@ -1893,7 +1893,7 @@ async function handleTrade() {
 
     const path = tradeMode === "BUY" ? "/api/coin/buy" : "/api/coin/sell";
 
-   const payload = {
+  const payload = {
   wallet: solAddr,
   coinId: current.id,
   ...(tradeMode === "BUY" ? { sol: amount } : { tokens: amount }),

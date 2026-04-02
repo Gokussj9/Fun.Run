@@ -1104,29 +1104,33 @@ app.post("/api/referral/set", async (req, res) => {
 async function doTrade(req, res, side) {
   const wallet = String(req.body?.wallet || "").trim();
   const coinId = String(req.body?.coinId || "").trim();
-  const tokens = Math.max(0, safeNum(req.body?.tokens, 0));
   const sol = Math.max(0, safeNum(req.body?.sol, 0));
+  const tokens = Math.max(0, safeNum(req.body?.tokens, 0));
   const sideLower = String(side).toLowerCase();
 
   if (!wallet || !coinId) {
     return res.json({ ok: false, error: "wallet/coinId required" });
   }
 
-  if (sol <= 0) {
+  if (sideLower === "buy" && sol <= 0) {
     return res.json({ ok: false, error: "sol required" });
+  }
+
+  if (sideLower === "sell" && tokens <= 0) {
+    return res.json({ ok: false, error: "tokens required" });
   }
 
   try {
     const result = await runCoinLocked(coinId, async () => {
-      await requireSupabase();
-      await getProfile(wallet, true);
+      const store = await loadStoreOnce();
+      ensureProfile(store, wallet);
 
-      const row = await getCoinRowById(coinId);
-      if (!row) {
+      const idx = findCoinIndex(store, coinId);
+      if (idx < 0) {
         return { ok: false, error: "token not found" };
       }
 
-      let coin = mapDbCoinToApi(row);
+      let coin = ensureCoin(store.coins[idx]);
       let tradeResult = null;
 
       if (sideLower === "buy") {
@@ -1141,11 +1145,16 @@ async function doTrade(req, res, side) {
         return { ok: false, error: tradeResult?.error || "Trade failed" };
       }
 
-      await distributeFeeDirect(coin, wallet, tradeResult.feeSol);
+      distributeFee(store, coin, wallet, tradeResult.feeSol);
       coin = recalcCoin(coin);
-      coin = await saveCoin(coin);
 
-      await insertTransaction({
+      store.coins[idx] = coin;
+      syncCreatorRewardsFromCoins(
+        store,
+        String(coin.creatorWallet || coin.owner || "").trim()
+      );
+
+      pushLastTx(store, {
         id: uid(),
         type: String(side).toUpperCase(),
         side: String(side).toUpperCase(),
@@ -1160,7 +1169,11 @@ async function doTrade(req, res, side) {
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
             : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
+        ts: nowMS(),
       });
+
+      STORE_CACHE = sanitizeStore(store);
+      scheduleStoreWrite();
 
       return {
         ok: true,
