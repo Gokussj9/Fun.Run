@@ -324,6 +324,11 @@ async function uploadMetadataToIPFS(metadata) {
 }
 
 async function requireSupabase() {
+  if (!supabase) {
+    console.log("⚠️ Supabase not configured, skipping...");
+    return;
+  }
+} {
   if (!supabase) throw new Error("supabase not configured");
 }
 
@@ -1540,7 +1545,11 @@ app.get("/api/profile/:wallet", async (req, res) => {
 });
 
 // -------------------- START --------------------
-async function start() {
+try {
+  await requireSupabase();
+} catch (e) {
+  console.log("⚠️ Supabase not ready, but server starting...");
+} {
   try {
     await requireSupabase();
 
