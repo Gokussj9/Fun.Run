@@ -524,51 +524,7 @@ function applyFee(solAmount) {
 // ================= TRUE BONDING CURVE VERSION =================
 // sirf core changes kiye gaye hain (UI untouched, APIs same)
 
-function ammBuy(coin, wallet, solInGross) {
-  const { fee, net } = applyFee(solInGross);
-  if (net <= 0) return { ok: false, error: "Invalid amount" };
 
-  const totalSupply = Math.max(1, safeNum(coin.totalSupply, TOTAL_SUPPLY));
-  const curveSupply = Math.max(1, safeNum(coin.curveSupply, saleSupplyFromTotal(totalSupply)));
-
-  coin.holders = asObj(coin.holders, {});
-  coin.solReserve = Math.max(0, safeNum(coin.solReserve, 0));
-  coin.tokenReserve = Math.max(1, safeNum(coin.tokenReserve, curveSupply));
-
-  const vSol = Math.max(1e-9, safeNum(coin.vSol, VIRTUAL_SOL));
-  const vTokens = calcVirtualTokens(totalSupply, curveSupply, coin.vTokens);
-
-  const x = coin.solReserve + vSol;
-  const y = coin.tokenReserve + vTokens;
-  const k = x * y;
-
-  const newX = x + net;
-  const newY = k / newX;
-
-  const tokensOut = Math.max(0, y - newY);
-
-  if (tokensOut <= 0.0000001) {
-    return { ok: false, error: "Buy too small" };
-  }
-
-  coin.solReserve += net;
-  coin.tokenReserve -= tokensOut;
-
-  coin.holders[wallet] = Math.max(
-    0,
-    safeNum(coin.holders[wallet], 0) + tokensOut
-  );
-
-  coin.volumeSol += solInGross;
-  coin.lastTradeAt = nowMS();
-
-  return {
-    ok: true,
-    tokensOut,
-    feeSol: fee,
-    netSol: net,
-  };
-}
 
 // ================= SELL (TRUE CURVE) =================
 
