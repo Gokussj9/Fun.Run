@@ -1,3 +1,4 @@
+```javascript
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -324,11 +325,6 @@ async function uploadMetadataToIPFS(metadata) {
 }
 
 async function requireSupabase() {
-  if (!supabase) {
-    console.log("⚠️ Supabase not configured, skipping...");
-    return;
-  }
-} {
   if (!supabase) throw new Error("supabase not configured");
 }
 
@@ -521,17 +517,6 @@ function applyFee(solAmount) {
   return { fee, net };
 }
 
-// ================= TRUE BONDING CURVE VERSION =================
-// sirf core changes kiye gaye hain (UI untouched, APIs same)
-
-
-
-// ================= SELL (TRUE CURVE) =================
-
-
-
-
-
 function distributeFee(store, coin, traderWallet, feeSol) {
   if (feeSol <= 0) return;
 
@@ -564,7 +549,6 @@ function distributeFee(store, coin, traderWallet, feeSol) {
       safeNum(coin.creatorRewardsSol, 0) + creatorPart
     );
 
-    // ✅ referral creator ke upline ko
     const creatorUpline = String(creatorProfile?.referrer || "").trim();
     if (creatorUpline && creatorUpline !== creatorWallet && referralPart > 0) {
       const upProfile = ensureProfile(store, creatorUpline);
@@ -619,12 +603,6 @@ async function distributeFeeDirect(coin, traderWallet, feeSol) {
   }
 }
 
-
-
-
-// ================= TRUE BONDING CURVE VERSION =================
-// sirf core changes kiye gaye hain (UI untouched, APIs same)
-
 function ammBuy(coin, wallet, solInGross) {
   const { fee, net } = applyFee(solInGross);
   if (net <= 0) return { ok: false, error: "Invalid amount" };
@@ -670,8 +648,6 @@ function ammBuy(coin, wallet, solInGross) {
     netSol: net,
   };
 }
-
-// ================= SELL (TRUE CURVE) =================
 
 function ammSellByTokensIn(coin, wallet, tokensInRequested) {
   const tokensInRequestedNum = Math.max(0, safeNum(tokensInRequested, 0));
@@ -731,8 +707,6 @@ function ammSellByTokensIn(coin, wallet, tokensInRequested) {
   };
 }
 
-
-// -------------------- TRADE LOCK --------------------
 const COIN_TRADE_LOCKS = new Map();
 
 async function runCoinLocked(coinId, fn) {
@@ -757,7 +731,6 @@ async function runCoinLocked(coinId, fn) {
   }
 }
 
-// -------------------- ROUTES --------------------
 app.get("/", async (req, res) => {
   return res.json({
     ok: true,
@@ -1348,12 +1321,7 @@ app.get("/api/profile/:wallet", async (req, res) => {
   }
 });
 
-// -------------------- START --------------------
-try {
-  await requireSupabase();
-} catch (e) {
-  console.log("⚠️ Supabase not ready, but server starting...");
-} {
+async function start() {
   try {
     await requireSupabase();
 
@@ -1388,3 +1356,4 @@ process.on("SIGTERM", async () => {
 });
 
 start();
+```
