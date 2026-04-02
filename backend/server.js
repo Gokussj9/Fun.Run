@@ -528,63 +528,7 @@ function applyFee(solAmount) {
 
 // ================= SELL (TRUE CURVE) =================
 
-function ammSellByTokensIn(coin, wallet, tokensInRequested) {
-  const tokensInRequestedNum = Math.max(0, safeNum(tokensInRequested, 0));
-  if (tokensInRequestedNum <= 0) return { ok: false, error: "Invalid token amount" };
 
-  const totalSupply = Math.max(1, safeNum(coin.totalSupply, TOTAL_SUPPLY));
-  const curveSupply = Math.max(1, safeNum(coin.curveSupply, saleSupplyFromTotal(totalSupply)));
-
-  coin.holders = asObj(coin.holders, {});
-  coin.solReserve = Math.max(0, safeNum(coin.solReserve, 0));
-  coin.tokenReserve = Math.max(1, safeNum(coin.tokenReserve, curveSupply));
-
-  const holderBal = Math.max(0, safeNum(coin.holders[wallet], 0));
-  if (holderBal <= 0) return { ok: false, error: "Not enough tokens" };
-
-  const tokensIn = Math.min(tokensInRequestedNum, holderBal);
-
-  const vSol = Math.max(1e-9, safeNum(coin.vSol, VIRTUAL_SOL));
-  const vTokens = calcVirtualTokens(totalSupply, curveSupply, coin.vTokens);
-
-  const x = coin.solReserve + vSol;
-  const y = coin.tokenReserve + vTokens;
-  const k = x * y;
-
-  const newY = y + tokensIn;
-  const newX = k / newY;
-
-  const grossSolOut = Math.max(0, x - newX);
-
-  if (grossSolOut <= 0.0000001) {
-    return { ok: false, error: "Sell too small" };
-  }
-
-  if (grossSolOut > coin.solReserve) {
-    return { ok: false, error: "Pool empty" };
-  }
-
-  const fee = grossSolOut * (FEE_PCT / 100);
-  const netSol = Math.max(0, grossSolOut - fee);
-
-  coin.solReserve -= grossSolOut;
-  coin.tokenReserve += tokensIn;
-
-  coin.holders[wallet] = Math.max(0, holderBal - tokensIn);
-  if (coin.holders[wallet] <= 0.0000001) delete coin.holders[wallet];
-
-  coin.volumeSol += grossSolOut;
-  coin.lastTradeAt = nowMS();
-
-  return {
-    ok: true,
-    tokensIn,
-    solOut: grossSolOut,
-    solOutGross: grossSolOut,
-    solOutNet: netSol,
-    feeSol: fee,
-  };
-}
 
 
 
