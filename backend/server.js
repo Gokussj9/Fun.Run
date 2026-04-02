@@ -1,4 +1,3 @@
-```javascript
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -328,6 +327,29 @@ async function requireSupabase() {
   if (!supabase) throw new Error("supabase not configured");
 }
 
+function ensureProfile(store, wallet) {
+  const profiles = asObj(store?.profiles, {});
+  const w = String(wallet || "").trim();
+  if (!w) return null;
+
+  const current = asObj(profiles[w], {});
+  const next = {
+    wallet: w,
+    referrer: String(current.referrer || "").trim(),
+    referralRewardsSol: Math.max(0, safeNum(current.referralRewardsSol, 0)),
+    creatorRewardsSol: Math.max(0, safeNum(current.creatorRewardsSol, 0)),
+    ownerRewardsSol: Math.max(0, safeNum(current.ownerRewardsSol, 0)),
+    referralCode: String(current.referralCode || w.slice(0, 6)),
+    referralCount: Math.max(0, safeNum(current.referralCount, 0)),
+    createdAt: safeNum(current.createdAt, nowMS()),
+    updatedAt: nowMS(),
+  };
+
+  profiles[w] = next;
+  store.profiles = profiles;
+  return next;
+}
+
 async function getProfile(wallet, createIfMissing = true) {
   const w = String(wallet || "").trim();
   if (!w) return null;
@@ -368,9 +390,7 @@ async function patchProfile(wallet, patch = {}) {
       updated_at: new Date().toISOString(),
     },
     w
-  );
-
-  const { data, error } = await supabase
+  );  const { data, error } = await supabase
     .from("profiles")
     .upsert(next, { onConflict: "wallet" })
     .select("*")
@@ -707,6 +727,7 @@ function ammSellByTokensIn(coin, wallet, tokensInRequested) {
   };
 }
 
+// -------------------- TRADE LOCK --------------------
 const COIN_TRADE_LOCKS = new Map();
 
 async function runCoinLocked(coinId, fn) {
@@ -731,6 +752,7 @@ async function runCoinLocked(coinId, fn) {
   }
 }
 
+// -------------------- ROUTES --------------------
 app.get("/", async (req, res) => {
   return res.json({
     ok: true,
@@ -1106,6 +1128,7 @@ app.post("/api/claim", async (req, res) => {
   }
 });
 
+
 async function handleWithdraw(req, res, forcedKind = "") {
   try {
     await requireSupabase();
@@ -1321,6 +1344,7 @@ app.get("/api/profile/:wallet", async (req, res) => {
   }
 });
 
+// -------------------- START --------------------
 async function start() {
   try {
     await requireSupabase();
@@ -1356,4 +1380,3 @@ process.on("SIGTERM", async () => {
 });
 
 start();
-```
