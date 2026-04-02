@@ -1102,36 +1102,35 @@ app.post("/api/referral/set", async (req, res) => {
 });
 
 async function doTrade(req, res, side) {
-  const wallet = String(req.body?.wallet || "").trim();
-  const coinId = String(req.body?.coinId || "").trim();
-  const sol = Math.max(0, safeNum(req.body?.sol, 0));
-  const tokens = Math.max(0, safeNum(req.body?.tokens, 0));
-  const sideLower = String(side).toLowerCase();
-
-  if (!wallet || !coinId) {
-    return res.json({ ok: false, error: "wallet/coinId required" });
-  }
-
-  if (sideLower === "buy" && sol <= 0) {
-    return res.json({ ok: false, error: "sol required" });
-  }
-
-  if (sideLower === "sell" && tokens <= 0) {
-    return res.json({ ok: false, error: "tokens required" });
-  }
-
   try {
+    await requireSupabase();
+
+    const wallet = String(req.body?.wallet || "").trim();
+    const coinId = String(req.body?.coinId || "").trim();
+    const sol = Math.max(0, safeNum(req.body?.sol, 0));
+    const tokens = Math.max(0, safeNum(req.body?.tokens, 0));
+    const sideLower = String(side || "").trim().toLowerCase();
+
+    if (!wallet || !coinId) {
+      return res.json({ ok: false, error: "wallet/coinId required" });
+    }
+
+    if (sideLower === "buy" && sol <= 0) {
+      return res.json({ ok: false, error: "sol required" });
+    }
+
+    if (sideLower === "sell" && tokens <= 0) {
+      return res.json({ ok: false, error: "tokens required" });
+    }
+
     const result = await runCoinLocked(coinId, async () => {
-      const store = await loadStoreOnce();
-      ensureProfile(store, wallet);
+      const row = await getCoinRowById(coinId);
+      if (!row) return { ok: false, error: "token not found" };
 
-      const idx = findCoinIndex(store, coinId);
-      if (idx < 0) {
-        return { ok: false, error: "token not found" };
-      }
-
-      let coin = ensureCoin(store.coins[idx]);
+      let coin = mapDbCoinToApi(row);
       let tradeResult = null;
+
+      await getProfile(wallet, true);
 
       if (sideLower === "buy") {
         tradeResult = ammBuy(coin, wallet, sol);
@@ -1145,35 +1144,27 @@ async function doTrade(req, res, side) {
         return { ok: false, error: tradeResult?.error || "Trade failed" };
       }
 
-      distributeFee(store, coin, wallet, tradeResult.feeSol);
+      await distributeFeeDirect(coin, wallet, Math.max(0, safeNum(tradeResult.feeSol, 0)));
+
       coin = recalcCoin(coin);
+      coin = await saveCoin(coin);
 
-      store.coins[idx] = coin;
-      syncCreatorRewardsFromCoins(
-        store,
-        String(coin.creatorWallet || coin.owner || "").trim()
-      );
-
-      pushLastTx(store, {
+      await insertTransaction({
         id: uid(),
-        type: String(side).toUpperCase(),
-        side: String(side).toUpperCase(),
-        coinId,
+        type: sideLower.toUpperCase(),
+        side: sideLower.toUpperCase(),
+        coinId: coin.id,
         wallet,
         sol:
           sideLower === "buy"
-            ? sol
+            ? Math.max(0, sol)
             : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
         tokens:
           sideLower === "buy"
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
             : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
-        ts: nowMS(),
       });
-
-      STORE_CACHE = sanitizeStore(store);
-      scheduleStoreWrite();
 
       return {
         ok: true,
@@ -1188,15 +1179,11 @@ async function doTrade(req, res, side) {
             ? Math.max(0, safeNum(tradeResult.netSol, 0))
             : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
         grossSol:
-          sideLower === "sell"
-            ? Math.max(0, safeNum(tradeResult.solOutGross, 0))
-            : Math.max(0, safeNum(sol, 0)),
+          sideLower === "buy"
+            ? Math.max(0, sol)
+            : Math.max(0, safeNum(tradeResult.solOutGross, 0)),
       };
     });
-
-    if (!result?.ok) {
-      return res.json(result || { ok: false, error: "Trade failed" });
-    }
 
     return res.json(result);
   } catch (e) {
