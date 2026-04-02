@@ -647,6 +647,48 @@ function distributeFee(store, coin, traderWallet, feeSol) {
   }
 }
 
+async function distributeFeeDirect(coin, traderWallet, feeSol) {
+  const fee = Math.max(0, safeNum(feeSol, 0));
+  if (fee <= 0) return;
+
+  const creatorWallet = String(coin?.creatorWallet || coin?.owner || "").trim();
+
+  const ownerPart = fee * (OWNER_PCT_OF_FEE / 100);
+  const creatorPart = fee * (CREATOR_PCT_OF_FEE / 100);
+  const referralPart = fee * (REFERRAL_PCT_OF_FEE / 100);
+
+  if (APP_OWNER_WALLET && ownerPart > 0) {
+    const ownerProfile = await getProfile(APP_OWNER_WALLET, true);
+    await patchProfile(APP_OWNER_WALLET, {
+      owner_rewards: Math.max(0, safeNum(ownerProfile?.owner_rewards, 0) + ownerPart),
+    });
+  }
+
+  if (creatorWallet && creatorPart > 0) {
+    const creatorProfile = await getProfile(creatorWallet, true);
+
+    await patchProfile(creatorWallet, {
+      creator_rewards: Math.max(0, safeNum(creatorProfile?.creator_rewards, 0) + creatorPart),
+    });
+
+    coin.creatorRewardsSol = Math.max(
+      0,
+      safeNum(coin.creatorRewardsSol, 0) + creatorPart
+    );
+
+    const creatorUpline = String(creatorProfile?.referrer || "").trim();
+    if (creatorUpline && creatorUpline !== creatorWallet && referralPart > 0) {
+      const upProfile = await getProfile(creatorUpline, true);
+      await patchProfile(creatorUpline, {
+        referral_rewards: Math.max(
+          0,
+          safeNum(upProfile?.referral_rewards, 0) + referralPart
+        ),
+      });
+    }
+  }
+}
+
 function ammSellBySolOut(coin, wallet, solOutGrossRequested) {
   const requested = Math.max(0, safeNum(solOutGrossRequested, 0));
   if (requested <= 0) return { ok: false, error: "Invalid amount" };
