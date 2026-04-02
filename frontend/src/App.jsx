@@ -1444,13 +1444,26 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const coinsLoadMoreRef = useRef(null);
   const didBootRef = useRef(false);
 
-  const solAddr = useMemo(() => {
-    const linked =
-      user?.linkedAccounts?.find((a) => a?.type === "wallet" && a?.chainType === "solana") ||
-      user?.linkedAccounts?.find((a) => a?.type === "wallet");
+ const solAddr = useMemo(() => {
+  const primary =
+    String(user?.wallet?.address || "").trim();
 
-    return linked?.address || user?.wallet?.address || user?.address || "";
-  }, [user]);
+  if (primary) return primary;
+
+  const solLinked =
+    user?.linkedAccounts?.find(
+      (a) => a?.type === "wallet" && a?.chainType === "solana" && a?.address
+    )?.address || "";
+
+  if (solLinked) return String(solLinked).trim();
+
+  const anyLinked =
+    user?.linkedAccounts?.find(
+      (a) => a?.type === "wallet" && a?.address
+    )?.address || "";
+
+  return String(anyLinked).trim();
+}, [user]);
 
   const selectedCoin = useMemo(() => {
     return (coins || []).find((c) => String(c.id) === String(selectedCoinId)) || null;
