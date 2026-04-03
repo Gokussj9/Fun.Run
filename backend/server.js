@@ -1182,11 +1182,15 @@ app.post("/api/claim", async (req, res) => {
   }
 });
 
+
+
 async function handleWithdraw(req, res, forcedKind = "") {
   try {
     await requireSupabase();
 
     const wallet = String(req.body?.wallet || "").trim();
+    const to = String(req.body?.to || "").trim();
+    const amount = Math.max(0, safeNum(req.body?.amount, 0));
     const kindRaw = String(forcedKind || req.body?.kind || "")
       .trim()
       .toUpperCase();
@@ -1195,8 +1199,15 @@ async function handleWithdraw(req, res, forcedKind = "") {
       return res.json({ ok: false, error: "wallet required" });
     }
 
-    const to = String(req.body?.to || "").trim();
-    const amount = Math.max(0, safeNum(req.body?.amount, 0));
+    if (to && amount > 0 && !kindRaw) {
+      return res.json({
+        ok: true,
+        kind: "MANUAL",
+        amountSol: amount,
+        to,
+        note: "Demo/manual withdraw request accepted by backend",
+      });
+    }
 
     const kind =
       kindRaw === "REFERRAL"
@@ -1207,29 +1218,25 @@ async function handleWithdraw(req, res, forcedKind = "") {
         ? "CREATOR"
         : kindRaw === "OWNER"
         ? "OWNER"
-        : kindRaw === "MANUAL" || (!kindRaw && to && amount > 0)
+        : kindRaw === "MANUAL"
         ? "MANUAL"
         : "";
 
-    if (!["REF", "CREATOR", "OWNER", "MANUAL"].includes(kind)) {
-      return res.json({ ok: false, error: "Unsupported kind" });
-    }
-
-    const p = await getProfile(wallet, true);
-
     if (kind === "MANUAL") {
-      if (!to || amount <= 0) {
-        return res.json({ ok: false, error: "to/amount required" });
-      }
-
       return res.json({
         ok: true,
         kind: "MANUAL",
         amountSol: amount,
-        to,
-        note: "Demo manual withdraw request accepted",
+        to: to || wallet,
+        note: "Demo/manual withdraw request accepted by backend",
       });
     }
+
+    if (!["REF", "CREATOR", "OWNER"].includes(kind)) {
+      return res.json({ ok: false, error: "Unsupported kind" });
+    }
+
+    const p = await getProfile(wallet, true);
 
     if (kind === "REF") {
       const amt = Math.max(0, safeNum(p.referral_rewards, 0));
@@ -1268,9 +1275,55 @@ async function handleWithdraw(req, res, forcedKind = "") {
   }
 }
 
+
+
 app.post("/api/withdraw", (req, res) => handleWithdraw(req, res));
 app.post("/api/withdraw/creator", (req, res) => handleWithdraw(req, res, "CREATOR"));
 app.post("/api/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF"));
+
+
+
+app.get("/api/coin/:coinId/activity", async (req, res) => {
+  try {
+    await requireSupabase();
+
+    const coinId = String(req.params.coinId || "").trim();
+    if (!coinId) {
+      return res.json({ ok: false, error: "coinId required" });
+    }
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("coin_id", coinId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    const items = Array.isArray(data)
+      ? data.map((t) => ({
+          id: t.id,
+          coinId: t.coin_id,
+          wallet: t.wallet,
+          type: String(t.type || "TX").toUpperCase(),
+          side: String(t.type || "TX").toUpperCase(),
+          sol: safeNum(t.sol, 0),
+          tokens: safeNum(t.tokens, 0),
+          fee: safeNum(t.fee, 0),
+          ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+          t: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+        }))
+      : [];
+
+    return res.json({ ok: true, items });
+  } catch (e) {
+    console.log("coin/activity error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
 
 app.get("/api/profile/:wallet", async (req, res) => {
   try {
