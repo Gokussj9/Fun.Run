@@ -324,11 +324,6 @@ async function uploadMetadataToIPFS(metadata) {
 }
 
 async function requireSupabase() {
-  if (!supabase) {
-    console.log("⚠️ Supabase not configured, skipping...");
-    return;
-  }
-} {
   if (!supabase) throw new Error("supabase not configured");
 }
 
@@ -480,6 +475,38 @@ async function saveCoin(coin) {
   return mapDbCoinToApi(data);
 }
 
+function buildChartTrail(prevChart, nextPoint, sideHint = "") {
+  const history = Array.isArray(prevChart)
+    ? prevChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => Number.isFinite(x) && x >= 0)
+    : [];
+
+  const point = Math.max(0, safeNum(nextPoint, 0));
+  if (!history.length) return [point, point, point, point, point];
+
+  const last = Math.max(0, safeNum(history[history.length - 1], point));
+  if (last <= 0 || point <= 0) {
+    return history.slice(-(MAX_CHART_POINTS - 1)).concat([point]);
+  }
+
+  const direction = String(sideHint || "").toLowerCase() === "sell" ? -1 : point < last ? -1 : 1;
+  const rawDeltaPct = Math.abs(((point - last) / Math.max(last, 1e-9)) * 100);
+  const visibleDeltaPct = Math.max(direction > 0 ? 0.95 : 0.8, Math.min(9, rawDeltaPct * 1.9));
+
+  const visualTarget = direction > 0
+    ? last * (1 + visibleDeltaPct / 100)
+    : Math.max(1e-9, last * (1 - visibleDeltaPct / 100));
+
+  const settle = direction > 0
+    ? Math.max(point, last + (visualTarget - last) * 0.76)
+    : Math.min(point, last - (last - visualTarget) * 0.76);
+
+  const overshoot = direction > 0
+    ? Math.max(settle, last + (visualTarget - last) * 1.03)
+    : Math.min(settle, last - (last - visualTarget) * 1.03);
+
+  return history.slice(-(MAX_CHART_POINTS - 4)).concat([last, settle, overshoot, point]);
+}
+
 function recalcCoin(coin, opts = {}) {
   const fixed = {
     ...coin,
@@ -531,9 +558,7 @@ function recalcCoin(coin, opts = {}) {
   const shouldAppend = opts.appendChart !== false;
 
   fixed.chart = shouldAppend
-    ? prev.length
-      ? prev.slice(-(MAX_CHART_POINTS - 1)).concat([point])
-      : [point, point, point, point, point]
+    ? buildChartTrail(prev, point, opts.sideHint)
     : prev.length
     ? prev.slice(-MAX_CHART_POINTS)
     : [point, point, point, point, point];
@@ -981,7 +1006,7 @@ app.post("/api/coin/create", async (req, res) => {
         }
 
         await distributeFeeDirect(latestCoin, creatorWallet, buyRes.feeSol);
-        latestCoin = recalcCoin(latestCoin);
+        latestCoin = recalcCoin(latestCoin, { appendChart: true, sideHint: "buy" });
         latestCoin = await saveCoin(latestCoin);
 
         await insertTransaction({
@@ -1091,7 +1116,7 @@ async function doTrade(req, res, side) {
 
       await distributeFeeDirect(coin, wallet, Math.max(0, safeNum(tradeResult.feeSol, 0)));
 
-      coin = recalcCoin(coin, { appendChart: true });
+      coin = recalcCoin(coin, { appendChart: true, sideHint: sideLower });
       coin = await saveCoin(coin);
 
       await insertTransaction({

@@ -911,7 +911,7 @@ function Input({
           color: "var(--text)",
           borderRadius: 12,
           padding: "7px 10px",
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: 1000,
           cursor: "pointer",
         }}
@@ -1094,7 +1094,8 @@ function getCoinPriceUsd(c) {
 function coinSubtitle(c) {
   const pct = pctChangeFromChart(c?.chart || []);
   const sign = pct > 0 ? "+" : "";
-  return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}%`;
+  const age = timeAgo(c?.createdAt || c?.created_at || 0);
+  return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}% • ${age}`;
 }
 
 async function copyText(text) {
@@ -1118,30 +1119,49 @@ async function fileToDataUrl(file) {
 function timeAgo(ts) {
   const n = Number(ts || 0);
   if (!Number.isFinite(n) || n <= 0) return "just now";
+
   const diff = Math.max(0, Date.now() - n);
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+  const year = 365 * day;
+
+  if (diff < minute) return "just now";
+
+  const formatUnit = (count, label) =>
+    `${count} ${label}${count === 1 ? "" : "s"} ago`;
+
+  if (diff < hour) return formatUnit(Math.floor(diff / minute), "min");
+  if (diff < day) return formatUnit(Math.floor(diff / hour), "hour");
+  if (diff < week) return formatUnit(Math.floor(diff / day), "day");
+  if (diff < month) return formatUnit(Math.floor(diff / week), "week");
+  if (diff < year) return formatUnit(Math.floor(diff / month), "month");
+  return formatUnit(Math.floor(diff / year), "year");
 }
 
 function rangePointsFor(chartRange) {
   switch (String(chartRange || "1D").toUpperCase()) {
-    case "5M": return 20;
-    case "15M": return 32;
-    case "1H": return 48;
-    case "4H": return 72;
-    case "1D": return 96;
+    case "5M": return 18;
+    case "15M": return 26;
+    case "1H": return 38;
+    case "4H": return 56;
+    case "1D": return 84;
     case "1W": return 132;
-    case "1M": return 180;
-    default: return 96;
+    default: return 84;
+  }
+}
+
+function rangeWindowRatio(chartRange) {
+  switch (String(chartRange || "1D").toUpperCase()) {
+    case "5M": return 0.12;
+    case "15M": return 0.2;
+    case "1H": return 0.34;
+    case "4H": return 0.52;
+    case "1D": return 0.74;
+    case "1W": return 1;
+    default: return 0.74;
   }
 }
 
@@ -1314,6 +1334,36 @@ function ThemeOption({ theme, current, setTheme, label }) {
       </div>
     </button>
   );
+}
+
+function buildTradePulse(oldChart, oldValue, newValue, side, amount) {
+  const history = Array.isArray(oldChart)
+    ? oldChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => x > 0)
+    : [];
+
+  const base = Math.max(1, safeNum(oldValue, 1));
+  const next = Math.max(1, safeNum(newValue, base));
+  const solAmount = Math.max(0, safeNum(amount, 0));
+  const direction = String(side || "BUY").toUpperCase() === "SELL" ? -1 : 1;
+  const naturalDeltaPct = Math.abs(((next - base) / Math.max(base, 1e-9)) * 100);
+  const boostPct = Math.max(
+    direction > 0 ? 1.25 : 1.05,
+    Math.min(14, naturalDeltaPct * 1.8 + Math.sqrt(Math.max(solAmount, 0)) * 7)
+  );
+
+  const visibleTarget = direction > 0
+    ? base * (1 + boostPct / 100)
+    : Math.max(1, base * (1 - boostPct / 100));
+
+  const settle = direction > 0
+    ? Math.max(next, base + (visibleTarget - base) * 0.78)
+    : Math.min(next, Math.max(1, base - (base - visibleTarget) * 0.78));
+
+  const overshoot = direction > 0
+    ? Math.max(settle, base + (visibleTarget - base) * 1.04)
+    : Math.min(settle, Math.max(1, base - (base - visibleTarget) * 1.04));
+
+  return [...history.slice(-24), base, settle, overshoot, next];
 }
 
 function CoinMiniCard({ c, subtitle, onOpen }) {
@@ -1493,6 +1543,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [creating, setCreating] = useState(false);
 
   const [tradeMode, setTradeMode] = useState("BUY");
+  const [chartRange, setChartRange] = useState("1D");
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
 
@@ -1937,19 +1988,15 @@ async function handleTrade() {
     // sell = chart down
     const movePct =
       tradeMode === "BUY"
-        ? Math.max(0.55, Math.min(12, amount * 1.65))
-        : Math.max(0.45, Math.min(10, amount * 1.35));
+        ? Math.max(1.35, Math.min(16, Math.sqrt(amount) * 7 + amount * 1.8))
+        : Math.max(1.1, Math.min(14, Math.sqrt(amount) * 6 + amount * 1.4));
 
     const newMc =
       tradeMode === "BUY"
         ? oldMc * (1 + movePct / 100)
         : Math.max(1, oldMc * (1 - movePct / 100));
 
-    const midMc =
-      tradeMode === "BUY"
-        ? oldMc * (1 + movePct / 170)
-        : Math.max(1, oldMc * (1 - movePct / 185));
-    const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
+    const nextChart = buildTradePulse(oldChart, oldMc, newMc, tradeMode, amount);
 
     const optimisticCoin = {
       ...current,
@@ -2183,7 +2230,7 @@ const tradePreview = useMemo(() => {
 
 
 
- function PriceChart({ coin, height = 280 }) {
+ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const visible = useMemo(() => {
     const raw = Array.isArray(coin?.chart) ? coin.chart : [];
     const prepared = raw
@@ -2195,7 +2242,13 @@ const tradePreview = useMemo(() => {
       return [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
     }
 
-    return prepared.slice(-rangePointsFor(chartRange));
+    const ratio = rangeWindowRatio(chartRange);
+    const maxPoints = rangePointsFor(chartRange);
+    const dynamicWindow = Math.max(8, Math.round(prepared.length * ratio));
+    const take = Math.max(8, Math.min(prepared.length, maxPoints, dynamicWindow));
+    const sliced = prepared.slice(-take);
+
+    return sliced.length >= 2 ? sliced : [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
   }, [coin?.chart, chartRange]);
 
   const points = useMemo(() => {
@@ -2229,8 +2282,14 @@ const tradePreview = useMemo(() => {
   const max = Math.max(...points, 1e-9);
   const min = Math.min(...points, max);
   const spread = Math.max(max - min, 1e-9);
-  const visualPadTop = Math.max(spread * 1.8, max * 0.12, 1e-9);
-  const visualPadBottom = Math.max(spread * 0.08, max * 0.008, 1e-9);
+  const zoomBoost =
+    chartRange === "5M" ? 0.16 :
+    chartRange === "15M" ? 0.13 :
+    chartRange === "1H" ? 0.1 :
+    chartRange === "4H" ? 0.08 :
+    chartRange === "1D" ? 0.05 : 0.025;
+  const visualPadTop = Math.max(spread * (0.3 - zoomBoost), max * (0.03 - zoomBoost * 0.05), 1e-9);
+  const visualPadBottom = Math.max(spread * (0.1 - zoomBoost * 0.35), max * (0.01 - zoomBoost * 0.02), 1e-9);
   const top = max + visualPadTop;
   const bottom = Math.max(0, min - visualPadBottom);
   const range = Math.max(top - bottom, 1e-9);
@@ -2286,27 +2345,31 @@ const tradePreview = useMemo(() => {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, color: "var(--muted2)" }}>Live Price</div>
           <div style={{ fontSize: 18, fontWeight: 1000 }}>{fmtUsd(last)}</div>
+          <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>
+           Created {timeAgo(coin?.createdAt || coin?.created_at)}
+          </div>
         </div>
 
         <div
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: isMobile ? "flex-start" : "flex-end",
             gap: 6,
-            flexWrap: "nowrap",
+            flexWrap: "wrap",
             marginLeft: "auto",
-            overflowX: "auto",
+            overflowX: "visible",
             scrollbarWidth: "none",
             maxWidth: isMobile ? "100%" : "calc(100% - 160px)",
           }}
         >
-          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"], ["1M", "More"]].map(([value, label]) => (
+          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
             <button
               key={value}
               onClick={() => setChartRange(value)}
               style={{
                 height: 28,
-                minWidth: value === "1M" ? 54 : 42,
+                minWidth: value === "1W" ? 52 : 40,
                 padding: "0 10px",
                 borderRadius: 10,
                 border:
@@ -2344,7 +2407,7 @@ const tradePreview = useMemo(() => {
               background: "rgba(255,255,255,.03)",
               whiteSpace: "nowrap",
               flex: "0 0 auto",
-              marginLeft: 4,
+              marginLeft: isMobile ? 0 : 4,
             }}
           >
             {up ? "+" : ""}
@@ -2632,7 +2695,7 @@ const tradePreview = useMemo(() => {
                       <CoinLogo c={c} size={42} radius={14} />
                       <div className="space">
                         <div style={{ fontWeight: 1000, fontSize: 13 }}>{c.name}</div>
-                        <div className="miniMuted">{c.symbol}</div>
+                        <div className="miniMuted">{c.symbol} • {timeAgo(c.createdAt || c.created_at)}</div>
                       </div>
                     </div>
 
@@ -2808,6 +2871,7 @@ const tradePreview = useMemo(() => {
               <div className="pillRow" style={{ marginTop: 12 }}>
                 <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
                 <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
+                <Pill>Created {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
               </div>
             </div>
 
@@ -2833,7 +2897,12 @@ const tradePreview = useMemo(() => {
           ) : null}
 
           <div className="hr" />
-          <PriceChart coin={selectedCoin} height={isMobile ? 240 : 320} />
+          <PriceChart
+  coin={selectedCoin}
+  height={isMobile ? 240 : 320}
+  chartRange={chartRange}
+  setChartRange={setChartRange}
+/>
         </Card>
 
         <Card>
