@@ -10,6 +10,16 @@ const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
 const LS_THEME = "theme";
+const LS_PROFILE_AVATAR = "profile_avatar_v1";
+
+const PROFILE_PRESET_LOGOS = [
+  "/logo.png",
+  "https://api.dicebear.com/7.x/shapes/svg?seed=funrun",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=solana",
+  "https://api.dicebear.com/7.x/icons/svg?seed=meme",
+  "https://api.dicebear.com/7.x/thumbs/svg?seed=creator",
+  "https://api.dicebear.com/7.x/glass/svg?seed=run",
+];
 
 function ThemeStyles() {
   return (
@@ -737,7 +747,14 @@ function MiniBtn({ children, onClick, disabled, tone = "default", style }) {
           border: "1px solid rgba(25,230,162,.30)",
           color: "var(--text)",
           boxShadow: "0 8px 20px rgba(25,230,162,.12)",
-        }
+
+
+
+
+
+
+
+                  }
       : tone === "danger"
       ? {
           background: "rgba(255,107,107,.12)",
@@ -1098,6 +1115,36 @@ async function fileToDataUrl(file) {
   });
 }
 
+function timeAgo(ts) {
+  const n = Number(ts || 0);
+  if (!Number.isFinite(n) || n <= 0) return "just now";
+  const diff = Math.max(0, Date.now() - n);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+function rangePointsFor(chartRange) {
+  switch (String(chartRange || "1D").toUpperCase()) {
+    case "5M": return 20;
+    case "15M": return 32;
+    case "1H": return 48;
+    case "4H": return 72;
+    case "1D": return 96;
+    case "1W": return 132;
+    case "1M": return 180;
+    default: return 96;
+  }
+}
+
 function getReferralLink(addr) {
   if (!addr) return "";
   const base = "https://fun-run-seven.vercel.app"; // 🔥 apna real domain yahan likhna
@@ -1408,6 +1455,14 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     }
   });
 
+  const [profileAvatar, setProfileAvatar] = useState(() => {
+    try {
+      return localStorage.getItem(LS_PROFILE_AVATAR) || PROFILE_PRESET_LOGOS[0];
+    } catch {
+      return PROFILE_PRESET_LOGOS[0];
+    }
+  });
+
   const [screen, setScreen] = useState("HOME");
   const [screenHistory, setScreenHistory] = useState(["HOME"]);
   const [selectedCoinId, setSelectedCoinId] = useState(null);
@@ -1448,7 +1503,14 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const primary =
     String(user?.wallet?.address || "").trim();
 
-  if (primary) return primary;
+
+
+
+
+
+
+
+      if (primary) return primary;
 
   const solLinked =
     user?.linkedAccounts?.find(
@@ -2032,6 +2094,14 @@ async function handleTrade() {
   const profileHoldings = Array.isArray(profile?.holdings) ? profile.holdings : [];
   const profileTxs = Array.isArray(profile?.txs) ? profile.txs : [];
 
+  const recentCoinActivity = useMemo(() => {
+    if (!selectedCoin?.id) return [];
+    return (profileTxs || [])
+      .filter((tx) => String(tx.coinId || "") === String(selectedCoin.id))
+      .sort((a, b) => safeNum(b.ts || b.t, 0) - safeNum(a.ts || a.t, 0))
+      .slice(0, 20);
+  }, [profileTxs, selectedCoin]);
+
   const currentCoinPriceUsd = getCoinPriceUsd(selectedCoin || {});
   const currentCoinPriceSol = Math.max(0, safeNum(selectedCoin?.priceSol, 0));
 
@@ -2121,17 +2191,22 @@ const tradePreview = useMemo(() => {
       .filter((n) => Number.isFinite(n) && n >= 0);
 
     if (!prepared.length) return [0, 0, 0, 0, 0];
-    if (prepared.length === 1) return [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
-    return prepared.slice(-60);
-  }, [coin?.chart]);
+    if (prepared.length === 1) {
+      return [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
+    }
+
+    return prepared.slice(-rangePointsFor(chartRange));
+  }, [coin?.chart, chartRange]);
 
   const points = useMemo(() => {
     if (visible.length < 2) return visible;
     return visible.map((value, i, arr) => {
-      const prev = arr[i - 1] ?? value;
-      const next = arr[i + 1] ?? value;
-      const avg = (prev + value + next) / 3;
-      return i === 0 || i === arr.length - 1 ? value : avg;
+      const p2 = arr[i - 2] ?? value;
+      const p1 = arr[i - 1] ?? value;
+      const n1 = arr[i + 1] ?? value;
+      const n2 = arr[i + 2] ?? value;
+      const smooth = (p2 * 1 + p1 * 2 + value * 4 + n1 * 2 + n2 * 1) / 10;
+      return i < 2 || i > arr.length - 3 ? value : smooth;
     });
   }, [visible]);
 
@@ -2154,9 +2229,10 @@ const tradePreview = useMemo(() => {
   const max = Math.max(...points, 1e-9);
   const min = Math.min(...points, max);
   const spread = Math.max(max - min, 1e-9);
-  const visualPad = Math.max(spread * 0.65, max * 0.025, 1e-9);
-  const top = max + visualPad;
-  const bottom = Math.max(0, min - visualPad);
+  const visualPadTop = Math.max(spread * 1.8, max * 0.12, 1e-9);
+  const visualPadBottom = Math.max(spread * 0.08, max * 0.008, 1e-9);
+  const top = max + visualPadTop;
+  const bottom = Math.max(0, min - visualPadBottom);
   const range = Math.max(top - bottom, 1e-9);
 
   const coords = points.map((value, i) => {
@@ -2173,7 +2249,6 @@ const tradePreview = useMemo(() => {
   }, "");
 
   const areaPath = `${linePath} L ${coords[coords.length - 1][0]} ${h - padY} L ${coords[0][0]} ${h - padY} Z`;
-
   const txMarkers = coords.filter((_, i) => i > points.length - 6);
   const dotX = coords[coords.length - 1]?.[0] || padX;
   const dotY = coords[coords.length - 1]?.[1] || h / 2;
@@ -2184,7 +2259,15 @@ const tradePreview = useMemo(() => {
         width: "100%",
         borderRadius: 24,
         overflow: "hidden",
-        background:
+
+
+
+
+
+
+
+
+                background:
           "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
         border: "1px solid rgba(255,255,255,.06)",
         padding: 10,
@@ -2193,30 +2276,80 @@ const tradePreview = useMemo(() => {
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: isMobile ? "flex-start" : "center",
           justifyContent: "space-between",
-          gap: 10,
-          marginBottom: 10,
+          gap: 12,
+          marginBottom: 12,
+          flexWrap: isMobile ? "wrap" : "nowrap",
         }}
       >
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, color: "var(--muted2)" }}>Live Price</div>
           <div style={{ fontSize: 18, fontWeight: 1000 }}>{fmtUsd(last)}</div>
         </div>
 
         <div
           style={{
-            fontSize: 12,
-            fontWeight: 900,
-            color: up ? "var(--good)" : "var(--danger)",
-            padding: "8px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,.07)",
-            background: "rgba(255,255,255,.03)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "nowrap",
+            marginLeft: "auto",
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            maxWidth: isMobile ? "100%" : "calc(100% - 160px)",
           }}
         >
-          {up ? "+" : ""}
-          {pct.toFixed(2)}%
+          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"], ["1M", "More"]].map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setChartRange(value)}
+              style={{
+                height: 28,
+                minWidth: value === "1M" ? 54 : 42,
+                padding: "0 10px",
+                borderRadius: 10,
+                border:
+                  chartRange === value
+                    ? "1px solid rgba(50,230,255,.42)"
+                    : "1px solid rgba(255,255,255,.10)",
+                background:
+                  chartRange === value
+                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
+                    : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+                color: chartRange === value ? "#03131A" : "rgba(255,255,255,.92)",
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: ".2px",
+                cursor: "pointer",
+                boxShadow:
+                  chartRange === value
+                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
+                    : "inset 0 1px 0 rgba(255,255,255,.04)",
+                flex: "0 0 auto",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: up ? "var(--good)" : "var(--danger)",
+              padding: "7px 10px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.07)",
+              background: "rgba(255,255,255,.03)",
+              whiteSpace: "nowrap",
+              flex: "0 0 auto",
+              marginLeft: 4,
+            }}
+          >
+            {up ? "+" : ""}
+            {pct.toFixed(2)}%
+          </div>
         </div>
       </div>
 
@@ -2290,6 +2423,7 @@ const tradePreview = useMemo(() => {
     </div>
   );
 }
+
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
@@ -2674,21 +2808,20 @@ const tradePreview = useMemo(() => {
               <div className="pillRow" style={{ marginTop: 12 }}>
                 <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
                 <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
-                <Pill>Volume {fmtSol(selectedCoin.volumeSol || 0)} SOL</Pill>
               </div>
             </div>
 
-            <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 180 }}>
+            <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
               <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
                 Creator Profile
               </MiniBtn>
               <MiniBtn
                 onClick={async () => {
-                  const ok = await copyText(selectedCoin?.creatorWallet || "");
-                  setToast(ok ? "Creator wallet copied" : "Copy failed");
+                  const ok = await copyText(selectedCoin?.id || "");
+                  setToast(ok ? "Coin address copied" : "Copy failed");
                 }}
               >
-                Copy Creator
+                Copy Coin Address
               </MiniBtn>
             </div>
           </div>
@@ -2701,24 +2834,6 @@ const tradePreview = useMemo(() => {
 
           <div className="hr" />
           <PriceChart coin={selectedCoin} height={isMobile ? 240 : 320} />
-
-          <div className="hr" />
-
-          <div className="statsGrid">
-            <div className="stat">
-              <div className="statLabel">Coin Reward</div>
-              <div className="statValue">
-                {fmtSol(selectedCoin?.creatorRewardsSol || 0)} SOL
-              </div>
-            </div>
-
-            <div className="stat">
-              <div className="statLabel">Your Tokens</div>
-              <div className="statValue">
-                {fmtNum(selectedCoin?.holders?.[solAddr] || 0, 0)}
-              </div>
-            </div>
-          </div>
         </Card>
 
         <Card>
@@ -2738,23 +2853,32 @@ const tradePreview = useMemo(() => {
             </button>
           </div>
 
+          <div className="statsGrid" style={{ marginTop: 0, marginBottom: 12 }}>
+            <div className="stat">
+              <div className="statLabel">Coin Reward</div>
+              <div className="statValue">{fmtSol(selectedCoin?.creatorRewardsSol || 0)} SOL</div>
+            </div>
+
+            <div className="stat">
+              <div className="statLabel">Your Tokens</div>
+              <div className="statValue">{fmtNum(selectedCoin?.holders?.[solAddr] || 0, 0)}</div>
+            </div>
+          </div>
+
           <div style={{ display: "grid", gap: 12 }}>
-
-
-           <Input
-  value={tradeAmount}
-  onChange={(e) => setTradeAmount(e.target.value)}
-  placeholder={tradeMode === "BUY" ? "SOL to spend" : "Sell token amount"}
-  type="number"
-  rightLabel={tradeMode === "SELL" ? "ALL" : undefined}
-  onRightLabelClick={() => {
-    if (tradeMode === "SELL" && selectedCoin && solAddr) {
-      const allTokens = Math.max(0, safeNum(selectedCoin?.holders?.[solAddr], 0));
-      setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
-    }
-  }}
-/>
-     
+            <Input
+              value={tradeAmount}
+              onChange={(e) => setTradeAmount(e.target.value)}
+              placeholder={tradeMode === "BUY" ? "SOL to spend" : "Sell token amount"}
+              type="number"
+              rightLabel={tradeMode === "SELL" ? "ALL" : undefined}
+              onRightLabelClick={() => {
+                if (tradeMode === "SELL" && selectedCoin && solAddr) {
+                  const allTokens = Math.max(0, safeNum(selectedCoin?.holders?.[solAddr], 0));
+                  setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
+                }
+              }}
+            />
 
             {tradePreview.ok ? (
               <div
@@ -2771,14 +2895,12 @@ const tradePreview = useMemo(() => {
                 <div style={{ fontSize: 18, fontWeight: 1000 }}>
                   {fmtNum(tradePreview.estTokens, 0)} tokens
                 </div>
-
-                
               </div>
             ) : (
               <div className="miniMuted">
                 {tradeMode === "BUY"
                   ? "Enter SOL to see estimated tokens."
-                  : "Enter SOL to see how many tokens will be sold."}
+                  : "Enter token amount to see estimated SOL out."}
               </div>
             )}
 
@@ -2797,12 +2919,38 @@ const tradePreview = useMemo(() => {
         <Card>
           <SectionHeader
             title="Holders / Activity"
-            right={<Pill>{Object.keys(selectedCoin.holders || {}).length}</Pill>}
+            right={<Pill>{recentCoinActivity.length || Object.keys(selectedCoin.holders || {}).length}</Pill>}
           />
 
           <div className="scrollY">
-            {(Object.entries(selectedCoin.holders || {}) || []).length === 0 ? (
-              <div className="miniMuted">No holders yet.</div>
+            {recentCoinActivity.length > 0 ? (
+              recentCoinActivity.map((tx, idx) => (
+                <div
+                  key={tx.id || idx}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "11px 0",
+                    borderBottom: "1px solid rgba(255,255,255,.06)",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 13 }}>
+                      {shortWallet(tx.wallet || solAddr)} • {String(tx.type || tx.side || "TX").toUpperCase()}
+                    </div>
+                    <div className="miniMuted">{timeAgo(tx.ts || tx.t)}</div>
+                  </div>
+
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 900, fontSize: 13 }}>
+                      {fmtNum(tx.tokens || 0, 0)} tokens
+                    </div>
+                    <div className="miniMuted">{fmtSol(tx.sol || 0)} SOL</div>
+                  </div>
+                </div>
+              ))
             ) : (
               Object.entries(selectedCoin.holders || {})
                 .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
@@ -2848,33 +2996,41 @@ const tradePreview = useMemo(() => {
     )}
   </ScreenShell>
 )}
-
-
-
-
-
-
-
 {screen === "CREATOR" && (
   <ScreenShell>
     {renderBackButton()}
-
-    <InlineAffiliateBar
-      wallet={solAddr}
-      onCopy={async () => {
-        if (!solAddr) {
-          setToast("No wallet connected");
-          return;
-        }
-        const ok = await copyText(getReferralLink(solAddr));
-        setToast(ok ? "Affiliate link copied" : "Copy failed");
-      }}
-    />
 
     <Card>
       <Title sub="Creator profile, rewards and holdings">
         Creator Profile
       </Title>
+
+      <div className="statsGrid" style={{ marginTop: 0 }}>
+        <div className="stat">
+          <div className="statLabel">This Coin Reward</div>
+          <div className="statValue">
+            {fmtSol(
+              creatorCoin && String(creatorCoin?.creatorWallet || "") === String(creatorProfileId || creatorCoin?.creatorWallet || "")
+                ? creatorCoin?.creatorRewardsSol || 0
+                : 0
+            )} SOL
+          </div>
+        </div>
+
+
+
+
+
+
+
+
+
+
+        <div className="stat">
+          <div className="statLabel">Lifetime All Coins Reward</div>
+          <div className="statValue">{fmtSol(creatorRewards || 0)} SOL</div>
+        </div>
+      </div>
     </Card>
 
     <Card>
@@ -2974,7 +3130,6 @@ const tradePreview = useMemo(() => {
     </Card>
   </ScreenShell>
 )}
-
 {screen === "PROFILE" && (
   <ScreenShell>
     <div
@@ -3109,16 +3264,14 @@ const tradePreview = useMemo(() => {
           maxWidth: 120,
         }}
       >
-        {user?.wallet?.address
-          ? `${user.wallet.address.slice(0, 4)}...${user.wallet.address.slice(-4)}`
-          : "No wallet"}
+        {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
       </span>
 
       <div style={{ display: "flex", gap: 6 }}>
         <MiniBtn
           onClick={() => {
-            navigator.clipboard.writeText(user?.wallet?.address || "");
-            setToast(`Deposit: ${user?.wallet?.address || "No wallet found"}`);
+            navigator.clipboard.writeText(solAddr || "");
+            setToast("Deposit address copied");
           }}
           style={{ padding: "6px 10px", width: "auto" }}
         >
@@ -3127,7 +3280,7 @@ const tradePreview = useMemo(() => {
 
         <MiniBtn
           onClick={() => {
-            navigator.clipboard.writeText(user?.wallet?.address || "");
+            navigator.clipboard.writeText(solAddr || "");
             setToast("Wallet copied");
           }}
           style={{ padding: "6px 10px", width: "auto" }}
@@ -3284,40 +3437,113 @@ const tradePreview = useMemo(() => {
       <div style={{ display: "grid", gap: 12 }}>
         <div>
           <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
+            Profile Logo
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 18,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "rgba(255,255,255,.04)",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <img
+                src={profileAvatar}
+                alt="profile avatar"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+            <label
+              style={{
+                padding: "10px 14px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Upload From Gallery
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > MAX_LOGO_BYTES) {
+                    setToast("Logo too large");
+                    return;
+                  }
+                  try {
+                    const data = await fileToDataUrl(file);
+                    setProfileAvatar(data);
+                    setToast("Profile logo updated");
+                  } catch {
+                    setToast("Image read failed");
+                  }
+                }}
+              />
+            </label>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            {PROFILE_PRESET_LOGOS.map((logo, idx) => (
+              <button
+                key={logo}
+                onClick={() => {
+                  setProfileAvatar(logo);
+                  setToast("Profile logo selected");
+                }}
+                style={{
+                  height: 78,
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  border:
+                    profileAvatar === logo
+                      ? "1px solid rgba(50,230,255,.42)"
+                      : "1px solid rgba(255,255,255,.08)",
+                  background: "rgba(255,255,255,.03)",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                <img
+                  src={logo}
+                  alt={`preset ${idx + 1}`}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="hr" />
+
+        <div>
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
             Theme
           </div>
 
           <div className="themeGrid">
-            <ThemeOption
-              theme="calm"
-              current={theme}
-              setTheme={setTheme}
-              label="Calm (Default)"
-            />
-            <ThemeOption
-              theme="neon"
-              current={theme}
-              setTheme={setTheme}
-              label="Neon"
-            />
-            <ThemeOption
-              theme="ocean"
-              current={theme}
-              setTheme={setTheme}
-              label="Ocean"
-            />
-            <ThemeOption
-              theme="rose"
-              current={theme}
-              setTheme={setTheme}
-              label="Rose"
-            />
-            <ThemeOption
-              theme="royal"
-              current={theme}
-              setTheme={setTheme}
-              label="Royal"
-            />
+            <ThemeOption theme="calm" current={theme} setTheme={setTheme} />
+            <ThemeOption theme="neon" current={theme} setTheme={setTheme} />
+            <ThemeOption theme="ocean" current={theme} setTheme={setTheme} />
+            <ThemeOption theme="rose" current={theme} setTheme={setTheme} />
+            <ThemeOption theme="royal" current={theme} setTheme={setTheme} />
           </div>
         </div>
 
@@ -3452,31 +3678,31 @@ const tradePreview = useMemo(() => {
             theme="calm"
             current={theme}
             setTheme={setTheme}
-            label="Calm (Default)"
+            label="Obsidian"
           />
           <ThemeOption
             theme="neon"
             current={theme}
             setTheme={setTheme}
-            label="Neon"
+            label="Deep Blue"
           />
           <ThemeOption
             theme="ocean"
             current={theme}
             setTheme={setTheme}
-            label="Ocean"
+            label="Ocean Glass"
           />
           <ThemeOption
             theme="rose"
             current={theme}
             setTheme={setTheme}
-            label="Rose"
+            label="Velvet Rose"
           />
           <ThemeOption
             theme="royal"
             current={theme}
             setTheme={setTheme}
-            label="Royal"
+            label="Royal Night"
           />
         </div>
 
