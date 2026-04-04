@@ -2,8 +2,9 @@ import IntroSplash from "./IntroSplash";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
+import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
 
-const INTRO_MS = 2600;
+const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
 
@@ -911,7 +912,7 @@ function Input({
           color: "var(--text)",
           borderRadius: 12,
           padding: "7px 10px",
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: 1000,
           cursor: "pointer",
         }}
@@ -1042,7 +1043,8 @@ function pctChangeFromChart(chart, lookback = 12) {
 
 function normalizeCoin(c = {}) {
   const totalSupply = Math.max(1, safeNum(c.totalSupply, 1_000_000_000));
-  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, 0));
+  const curveSupply = Math.max(1, safeNum(c.curveSupply, c.curve_supply || totalSupply));
+  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, c.reserve_token || 0));
   const circulating = Math.max(0, totalSupply - tokenReserve);
   const mc =
     safeNum(c.mc, 0) ||
@@ -1062,13 +1064,19 @@ function normalizeCoin(c = {}) {
     symbol: String(c.symbol || "").toUpperCase(),
     story: String(c.story || ""),
     logo: String(c.logo || ""),
+    metadataUri: String(c.metadataUri || c.metadata_uri || ""),
     creatorWallet: String(c.creatorWallet || c.creator_wallet || c.owner || ""),
     totalSupply,
+    curveSupply,
+    curveSold: Math.max(0, safeNum(c.curveSold, c.curve_sold || 0)),
     tokenReserve,
     circulating,
     volumeSol: Math.max(0, safeNum(c.volumeSol, c.volume_sol || 0)),
     priceSol: Math.max(0, safeNum(c.priceSol, c.last_price || 0)),
-    priceUsd: Math.max(0, safeNum(c.priceUsd, 0)),
+    priceUsd: Math.max(0, safeNum(c.priceUsd, c.price || 0)),
+    lastPriceUsd: Math.max(0, safeNum(c.lastPriceUsd, c.last_price_usd || c.priceUsd || c.price || 0)),
+    vTokens: Math.max(0, safeNum(c.vTokens, c.v_tokens || 0)),
+    vSol: Math.max(0, safeNum(c.vSol, c.v_sol || 0)),
     mc,
     ath: Math.max(mc, safeNum(c.ath, c.ath_market_cap || mc)),
     chart,
@@ -1094,7 +1102,7 @@ function getCoinPriceUsd(c) {
 function coinSubtitle(c) {
   const pct = pctChangeFromChart(c?.chart || []);
   const sign = pct > 0 ? "+" : "";
-  const age = timeAgo(c?.createdAt || c?.created_at || 0);
+  const age = timeAgo(c?.createdAt || c?.created_at);
   return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}% • ${age}`;
 }
 
@@ -1121,47 +1129,33 @@ function timeAgo(ts) {
   if (!Number.isFinite(n) || n <= 0) return "just now";
 
   const diff = Math.max(0, Date.now() - n);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const week = 7 * day;
-  const month = 30 * day;
-  const year = 365 * day;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
 
-  if (diff < minute) return "just now";
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
 
-  const formatUnit = (count, label) =>
-    `${count} ${label}${count === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
 
-  if (diff < hour) return formatUnit(Math.floor(diff / minute), "min");
-  if (diff < day) return formatUnit(Math.floor(diff / hour), "hour");
-  if (diff < week) return formatUnit(Math.floor(diff / day), "day");
-  if (diff < month) return formatUnit(Math.floor(diff / week), "week");
-  if (diff < year) return formatUnit(Math.floor(diff / month), "month");
-  return formatUnit(Math.floor(diff / year), "year");
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
 }
 
 function rangePointsFor(chartRange) {
   switch (String(chartRange || "1D").toUpperCase()) {
-    case "5M": return 18;
-    case "15M": return 26;
-    case "1H": return 38;
-    case "4H": return 56;
-    case "1D": return 84;
+    case "5M": return 20;
+    case "15M": return 32;
+    case "1H": return 48;
+    case "4H": return 72;
+    case "1D": return 96;
     case "1W": return 132;
-    default: return 84;
-  }
-}
-
-function rangeWindowRatio(chartRange) {
-  switch (String(chartRange || "1D").toUpperCase()) {
-    case "5M": return 0.12;
-    case "15M": return 0.2;
-    case "1H": return 0.34;
-    case "4H": return 0.52;
-    case "1D": return 0.74;
-    case "1W": return 1;
-    default: return 0.74;
+    case "1M": return 180;
+    default: return 96;
   }
 }
 
@@ -1336,36 +1330,6 @@ function ThemeOption({ theme, current, setTheme, label }) {
   );
 }
 
-function buildTradePulse(oldChart, oldValue, newValue, side, amount) {
-  const history = Array.isArray(oldChart)
-    ? oldChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => x > 0)
-    : [];
-
-  const base = Math.max(1, safeNum(oldValue, 1));
-  const next = Math.max(1, safeNum(newValue, base));
-  const solAmount = Math.max(0, safeNum(amount, 0));
-  const direction = String(side || "BUY").toUpperCase() === "SELL" ? -1 : 1;
-  const naturalDeltaPct = Math.abs(((next - base) / Math.max(base, 1e-9)) * 100);
-  const boostPct = Math.max(
-    direction > 0 ? 1.25 : 1.05,
-    Math.min(14, naturalDeltaPct * 1.8 + Math.sqrt(Math.max(solAmount, 0)) * 7)
-  );
-
-  const visibleTarget = direction > 0
-    ? base * (1 + boostPct / 100)
-    : Math.max(1, base * (1 - boostPct / 100));
-
-  const settle = direction > 0
-    ? Math.max(next, base + (visibleTarget - base) * 0.78)
-    : Math.min(next, Math.max(1, base - (base - visibleTarget) * 0.78));
-
-  const overshoot = direction > 0
-    ? Math.max(settle, base + (visibleTarget - base) * 1.04)
-    : Math.min(settle, Math.max(1, base - (base - visibleTarget) * 1.04));
-
-  return [...history.slice(-24), base, settle, overshoot, next];
-}
-
 function CoinMiniCard({ c, subtitle, onOpen }) {
   return (
     <button className="coinBtn" onClick={onOpen}>
@@ -1465,7 +1429,13 @@ export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
 
- const [showIntro, setShowIntro] = useState(false);
+ const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return sessionStorage.getItem("introSeen") !== "1";
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
     if (!showIntro) return;
@@ -1988,15 +1958,19 @@ async function handleTrade() {
     // sell = chart down
     const movePct =
       tradeMode === "BUY"
-        ? Math.max(1.35, Math.min(16, Math.sqrt(amount) * 7 + amount * 1.8))
-        : Math.max(1.1, Math.min(14, Math.sqrt(amount) * 6 + amount * 1.4));
+        ? Math.max(0.55, Math.min(12, amount * 1.65))
+        : Math.max(0.45, Math.min(10, amount * 1.35));
 
     const newMc =
       tradeMode === "BUY"
         ? oldMc * (1 + movePct / 100)
         : Math.max(1, oldMc * (1 - movePct / 100));
 
-    const nextChart = buildTradePulse(oldChart, oldMc, newMc, tradeMode, amount);
+    const midMc =
+      tradeMode === "BUY"
+        ? oldMc * (1 + movePct / 170)
+        : Math.max(1, oldMc * (1 - movePct / 185));
+    const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
 
     const optimisticCoin = {
       ...current,
@@ -2228,89 +2202,280 @@ const tradePreview = useMemo(() => {
 
 
 
+function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
+  const chartRef = useRef(null);
 
+  const [chartLook, setChartLook] = useState(() => {
+    try {
+      return localStorage.getItem("chart_look_v1") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
 
- function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
-  const visible = useMemo(() => {
+  const themeCfg = useMemo(() => {
+    return chartLook === "light"
+      ? {
+          cardBg: "linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,252,255,1))",
+          cardBorder: "1px solid rgba(15,23,42,.08)",
+          text: "#0F172A",
+          sub: "rgba(15,23,42,.58)",
+          chartBg: "#FFFFFF",
+          scale: "rgba(15,23,42,.08)",
+          up: "#16A34A",
+          down: "#EF4444",
+          wickUp: "#16A34A",
+          wickDown: "#EF4444",
+          pillBg: "rgba(15,23,42,.035)",
+          pillBorder: "1px solid rgba(15,23,42,.08)",
+          activeBtnBg:
+            "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
+          activeBtnText: "#03131A",
+          inactiveBtnText: "#0F172A",
+          line: "rgba(15,23,42,.08)",
+        }
+      : {
+          cardBg: "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
+          cardBorder: "1px solid rgba(255,255,255,.06)",
+          text: "var(--text)",
+          sub: "var(--muted2)",
+          chartBg: "#081018",
+          scale: "rgba(255,255,255,.06)",
+          up: "#35E0B6",
+          down: "#FF5F6D",
+          wickUp: "#35E0B6",
+          wickDown: "#FF5F6D",
+          pillBg: "rgba(255,255,255,.03)",
+          pillBorder: "1px solid rgba(255,255,255,.07)",
+          activeBtnBg:
+            "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
+          activeBtnText: "#03131A",
+          inactiveBtnText: "rgba(255,255,255,.92)",
+          line: "rgba(255,255,255,.04)",
+        };
+  }, [chartLook]);
+
+  const pricePoints = useMemo(() => {
     const raw = Array.isArray(coin?.chart) ? coin.chart : [];
-    const prepared = raw
+    const out = raw
       .map((n) => Math.max(0, safeNum(n, 0)))
-      .filter((n) => Number.isFinite(n) && n >= 0);
+      .filter((n) => Number.isFinite(n) && n > 0);
 
-    if (!prepared.length) return [0, 0, 0, 0, 0];
-    if (prepared.length === 1) {
-      return [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
+    if (!out.length) return [0.000001, 0.0000012, 0.00000115, 0.00000128, 0.00000125];
+    if (out.length === 1) return [out[0], out[0] * 1.01, out[0] * 1.005, out[0] * 1.015, out[0] * 1.01];
+    return out;
+  }, [coin?.chart]);
+
+  const rangeCfg = useMemo(() => {
+    const key = String(chartRange || "1D").toUpperCase();
+    if (key === "5M") return { take: 24, group: 1, stepSec: 60 };
+    if (key === "15M") return { take: 32, group: 1, stepSec: 3 * 60 };
+    if (key === "1H") return { take: 42, group: 2, stepSec: 10 * 60 };
+    if (key === "4H") return { take: 48, group: 2, stepSec: 30 * 60 };
+    if (key === "1W") return { take: 56, group: 3, stepSec: 12 * 60 * 60 };
+    return { take: 52, group: 2, stepSec: 60 * 60 };
+  }, [chartRange]);
+
+  const visible = useMemo(() => {
+    const take = Math.max(12, Math.min(pricePoints.length, rangeCfg.take));
+    return pricePoints.slice(-take);
+  }, [pricePoints, rangeCfg]);
+
+  const lineData = useMemo(() => {
+    const source = visible.length ? visible : [0.000001];
+    const bucket = Math.max(1, rangeCfg.group);
+    const baseTs = Math.floor(
+      (safeNum(coin?.createdAt || coin?.created_at, Date.now()) || Date.now()) / 1000
+    );
+
+    const grouped = [];
+    for (let i = 0; i < source.length; i += bucket) {
+      const chunk = source.slice(i, i + bucket);
+      if (!chunk.length) continue;
+
+      const avg = chunk.reduce((a, b) => a + safeNum(b, 0), 0) / chunk.length;
+      const prev = grouped.length ? grouped[grouped.length - 1].value : avg;
+      const smooth = grouped.length ? prev * 0.28 + avg * 0.72 : avg;
+
+      grouped.push({
+        time: baseTs + Math.floor((i / bucket) * rangeCfg.stepSec),
+        value: Math.max(0.0000000001, smooth),
+      });
     }
 
-    const ratio = rangeWindowRatio(chartRange);
-    const maxPoints = rangePointsFor(chartRange);
-    const dynamicWindow = Math.max(8, Math.round(prepared.length * ratio));
-    const take = Math.max(8, Math.min(prepared.length, maxPoints, dynamicWindow));
-    const sliced = prepared.slice(-take);
+    return grouped.length
+      ? grouped
+      : [{ time: Math.floor(Date.now() / 1000), value: 0.000001 }];
+  }, [visible, rangeCfg, coin?.createdAt, coin?.created_at]);
 
-    return sliced.length >= 2 ? sliced : [prepared[0], prepared[0], prepared[0], prepared[0], prepared[0]];
-  }, [coin?.chart, chartRange]);
+  const candleData = useMemo(() => {
+    if (!lineData.length) {
+      return [{
+        time: Math.floor(Date.now() / 1000),
+        open: 0.000001,
+        high: 0.0000011,
+        low: 0.00000095,
+        close: 0.00000102,
+      }];
+    }
 
-  const points = useMemo(() => {
-    if (visible.length < 2) return visible;
-    return visible.map((value, i, arr) => {
-      const p2 = arr[i - 2] ?? value;
-      const p1 = arr[i - 1] ?? value;
-      const n1 = arr[i + 1] ?? value;
-      const n2 = arr[i + 2] ?? value;
-      const smooth = (p2 * 1 + p1 * 2 + value * 4 + n1 * 2 + n2 * 1) / 10;
-      return i < 2 || i > arr.length - 3 ? value : smooth;
+    return lineData.map((point, idx) => {
+      const prev = idx > 0 ? safeNum(lineData[idx - 1]?.value, point.value) : safeNum(point.value, 0);
+      const curr = Math.max(0.0000000001, safeNum(point.value, 0));
+      const open = Math.max(0.0000000001, prev);
+      const close = curr;
+      const bodyHigh = Math.max(open, close);
+      const bodyLow = Math.min(open, close);
+      const delta = Math.max(Math.abs(close - open), curr * 0.01, 0.0000000001);
+
+      return {
+        time: point.time,
+        open,
+        high: bodyHigh + delta * 0.28,
+        low: Math.max(0.0000000001, bodyLow - delta * 0.28),
+        close,
+      };
     });
-  }, [visible]);
+  }, [lineData]);
 
   const pct = useMemo(() => {
-    const first = Math.max(0, safeNum(points[0], 0));
-    const last = Math.max(0, safeNum(points[points.length - 1], 0));
+    const first = Math.max(0, safeNum(lineData[0]?.value, 0));
+    const last = Math.max(0, safeNum(lineData[lineData.length - 1]?.value, 0));
     if (first <= 0 || last <= 0) return 0;
     const rawPct = ((last - first) / first) * 100;
     return Math.max(-9999, Math.min(9999, rawPct));
-  }, [points]);
+  }, [lineData]);
+
+  const livePrice = safeNum(
+    candleData[candleData.length - 1]?.close,
+    safeNum(pricePoints[pricePoints.length - 1], 0)
+  );
 
   const up = pct >= 0;
-  const last = points[points.length - 1] || 0;
+  const createdAgo = timeAgo(coin?.createdAt || coin?.created_at);
 
-  const w = 1000;
-  const h = height;
-  const padX = 20;
-  const padY = 18;
+  useEffect(() => {
+    try {
+      localStorage.setItem("chart_look_v1", chartLook);
+    } catch {}
+  }, [chartLook]);
 
-  const max = Math.max(...points, 1e-9);
-  const min = Math.min(...points, max);
-  const spread = Math.max(max - min, 1e-9);
-  const zoomBoost =
-    chartRange === "5M" ? 0.16 :
-    chartRange === "15M" ? 0.13 :
-    chartRange === "1H" ? 0.1 :
-    chartRange === "4H" ? 0.08 :
-    chartRange === "1D" ? 0.05 : 0.025;
-  const visualPadTop = Math.max(spread * (0.3 - zoomBoost), max * (0.03 - zoomBoost * 0.05), 1e-9);
-  const visualPadBottom = Math.max(spread * (0.1 - zoomBoost * 0.35), max * (0.01 - zoomBoost * 0.02), 1e-9);
-  const top = max + visualPadTop;
-  const bottom = Math.max(0, min - visualPadBottom);
-  const range = Math.max(top - bottom, 1e-9);
+  useEffect(() => {
+    const host = chartRef.current;
+    if (!host) return;
 
-  const coords = points.map((value, i) => {
-    const x = padX + (i * (w - padX * 2)) / Math.max(1, points.length - 1);
-    const y = h - padY - ((value - bottom) / range) * (h - padY * 2);
-    return [x, y];
-  });
+    host.innerHTML = "";
+    const width = Math.max(280, host.clientWidth || 280);
 
-  const linePath = coords.reduce((acc, [x, y], i, arr) => {
-    if (i === 0) return `M ${x} ${y}`;
-    const [px, py] = arr[i - 1];
-    const mx = (px + x) / 2;
-    return `${acc} Q ${mx} ${py}, ${x} ${y}`;
-  }, "");
+    const chart = createChart(host, {
+      width,
+      height,
+      layout: {
+        background: { type: ColorType.Solid, color: themeCfg.chartBg },
+        textColor: chartLook === "light" ? "#64748B" : "#94A3B8",
+        attributionLogo: false,
+        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      },
+      grid: {
+        vertLines: { visible: false, color: "transparent" },
+        horzLines: { visible: false, color: "transparent" },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        borderColor: "transparent",
+        scaleMargins: { top: 0.14, bottom: 0.12 },
+        entireTextOnly: true,
+      },
+      leftPriceScale: {
+        visible: false,
+        borderVisible: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        borderColor: "transparent",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 3,
+        barSpacing: Math.max(10, Math.min(18, width / Math.max(10, candleData.length))),
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        ticksVisible: false,
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: {
+          visible: true,
+          width: 1,
+          color: themeCfg.line,
+          style: 2,
+          labelBackgroundColor: chartLook === "light" ? "#E2E8F0" : "#102030",
+        },
+        horzLine: {
+          visible: true,
+          width: 1,
+          color: up ? themeCfg.up : themeCfg.down,
+          style: 2,
+          labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
+        },
+      },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+    });
 
-  const areaPath = `${linePath} L ${coords[coords.length - 1][0]} ${h - padY} L ${coords[0][0]} ${h - padY} Z`;
-  const txMarkers = coords.filter((_, i) => i > points.length - 6);
-  const dotX = coords[coords.length - 1]?.[0] || padX;
-  const dotY = coords[coords.length - 1]?.[1] || h / 2;
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: themeCfg.up,
+      downColor: themeCfg.down,
+      borderUpColor: themeCfg.up,
+      borderDownColor: themeCfg.down,
+      wickUpColor: themeCfg.wickUp,
+      wickDownColor: themeCfg.wickDown,
+      priceLineVisible: true,
+      lastValueVisible: true,
+      priceLineColor: up ? themeCfg.up : themeCfg.down,
+      baseLineVisible: false,
+      borderVisible: true,
+      priceFormat: {
+        type: "price",
+        precision: livePrice > 1 ? 4 : livePrice > 0.01 ? 6 : 8,
+        minMove: livePrice > 1 ? 0.0001 : livePrice > 0.01 ? 0.000001 : 0.00000001,
+      },
+    });
+
+    series.setData(candleData);
+    chart.timeScale().fitContent();
+
+    const handleResize = () => {
+      if (!chartRef.current) return;
+      chart.applyOptions({
+        width: Math.max(280, chartRef.current.clientWidth || 280),
+        height,
+      });
+      chart.timeScale().fitContent();
+    };
+
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(handleResize);
+      ro.observe(host);
+    } else {
+      window.addEventListener("resize", handleResize);
+    }
+
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", handleResize);
+      chart.remove();
+    };
+  }, [candleData, chartLook, height, themeCfg, up, livePrice]);
 
   return (
     <div
@@ -2318,17 +2483,8 @@ const tradePreview = useMemo(() => {
         width: "100%",
         borderRadius: 24,
         overflow: "hidden",
-
-
-
-
-
-
-
-
-                background:
-          "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
-        border: "1px solid rgba(255,255,255,.06)",
+        background: themeCfg.cardBg,
+        border: themeCfg.cardBorder,
         padding: 10,
       }}
     >
@@ -2343,149 +2499,127 @@ const tradePreview = useMemo(() => {
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: "var(--muted2)" }}>Live Price</div>
-          <div style={{ fontSize: 18, fontWeight: 1000 }}>{fmtUsd(last)}</div>
-          <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>
-           Created {timeAgo(coin?.createdAt || coin?.created_at)}
+          <div style={{ fontSize: 12, color: themeCfg.sub }}>Live Price</div>
+          <div style={{ fontSize: 18, fontWeight: 1000, color: themeCfg.text }}>
+            {typeof fmtUsd === "function" ? fmtUsd(livePrice) : livePrice}
+          </div>
+          <div style={{ fontSize: 11, color: themeCfg.sub, marginTop: 4 }}>
+            Created {createdAgo}
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: isMobile ? "flex-start" : "flex-end",
-            gap: 6,
-            flexWrap: "wrap",
-            marginLeft: "auto",
-            overflowX: "visible",
-            scrollbarWidth: "none",
-            maxWidth: isMobile ? "100%" : "calc(100% - 160px)",
-          }}
-        >
-          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setChartRange(value)}
-              style={{
-                height: 28,
-                minWidth: value === "1W" ? 52 : 40,
-                padding: "0 10px",
-                borderRadius: 10,
-                border:
-                  chartRange === value
-                    ? "1px solid rgba(50,230,255,.42)"
-                    : "1px solid rgba(255,255,255,.10)",
-                background:
-                  chartRange === value
-                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
-                    : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
-                color: chartRange === value ? "#03131A" : "rgba(255,255,255,.92)",
-                fontSize: 11,
-                fontWeight: 900,
-                letterSpacing: ".2px",
-                cursor: "pointer",
-                boxShadow:
-                  chartRange === value
-                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
-                    : "inset 0 1px 0 rgba(255,255,255,.04)",
-                flex: "0 0 auto",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+       <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "nowrap",
+    overflowX: "auto",
+    marginLeft: "auto",
+    maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
+    paddingBottom: 2,
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
+  }}
+>
+  <button
+    onClick={() => setChartLook((v) => (v === "dark" ? "light" : "dark"))}
+    style={{
+      height: 28,
+      minWidth: 72,
+      padding: "0 12px",
+      borderRadius: 999,
+      border: "1px solid rgba(50,230,255,.42)",
+      background: themeCfg.activeBtnBg,
+      color: themeCfg.activeBtnText,
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: ".2px",
+      cursor: "pointer",
+      boxShadow:
+        "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)",
+      flex: "0 0 auto",
+      whiteSpace: "nowrap",
+    }}
+  >
+    {chartLook === "dark" ? "Black" : "White"}
+  </button>
 
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 900,
-              color: up ? "var(--good)" : "var(--danger)",
-              padding: "7px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,.07)",
-              background: "rgba(255,255,255,.03)",
-              whiteSpace: "nowrap",
-              flex: "0 0 auto",
-              marginLeft: isMobile ? 0 : 4,
-            }}
-          >
-            {up ? "+" : ""}
-            {pct.toFixed(2)}%
-          </div>
-        </div>
+  {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
+    <button
+      key={value}
+      onClick={() => setChartRange(value)}
+      style={{
+        height: 28,
+        minWidth: value === "1W" ? 54 : 42,
+        padding: "0 10px",
+        borderRadius: 999,
+        border:
+          chartRange === value
+            ? "1px solid rgba(50,230,255,.42)"
+            : themeCfg.pillBorder,
+        background:
+          chartRange === value
+            ? themeCfg.activeBtnBg
+            : themeCfg.pillBg,
+        color:
+          chartRange === value
+            ? themeCfg.activeBtnText
+            : themeCfg.inactiveBtnText,
+        fontSize: 11,
+        fontWeight: 900,
+        letterSpacing: ".2px",
+        cursor: "pointer",
+        boxShadow:
+          chartRange === value
+            ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
+            : "inset 0 1px 0 rgba(255,255,255,.04)",
+        flex: "0 0 auto",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  ))}
+
+  <div
+    style={{
+      fontSize: 12,
+      fontWeight: 900,
+      color: up ? "var(--good)" : "var(--danger)",
+      padding: "7px 10px",
+      borderRadius: 999,
+      border: themeCfg.pillBorder,
+      background: themeCfg.pillBg,
+      whiteSpace: "nowrap",
+      flex: "0 0 auto",
+      marginLeft: 2,
+    }}
+  >
+    {up ? "+" : ""}
+    {pct.toFixed(2)}%
+  </div>
+</div> 
+
+
       </div>
 
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        style={{ width: "100%", height, display: "block" }}
-        preserveAspectRatio="none"
+      <div
+        style={{
+          width: "100%",
+          height,
+          borderRadius: 18,
+          overflow: "hidden",
+          background: themeCfg.chartBg,
+        }}
       >
-        <defs>
-          <linearGradient id="chartLineUp" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#63F5C8" />
-            <stop offset="100%" stopColor="#8EDBFF" />
-          </linearGradient>
-
-          <linearGradient id="chartLineDown" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#FF7B93" />
-            <stop offset="100%" stopColor="#FFB199" />
-          </linearGradient>
-
-          <linearGradient id="chartFillUp" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(99,245,200,.28)" />
-            <stop offset="100%" stopColor="rgba(99,245,200,0)" />
-          </linearGradient>
-
-          <linearGradient id="chartFillDown" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(255,123,147,.20)" />
-            <stop offset="100%" stopColor="rgba(255,123,147,0)" />
-          </linearGradient>
-
-          <filter id="chartGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        <path d={areaPath} fill={up ? "url(#chartFillUp)" : "url(#chartFillDown)"} />
-
-        <path
-          d={linePath}
-          fill="none"
-          stroke={up ? "url(#chartLineUp)" : "url(#chartLineDown)"}
-          strokeWidth="2.35"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          filter="url(#chartGlow)"
-        />
-
-        {txMarkers.map(([x, y], i) => (
-          <circle
-            key={`${x}-${y}-${i}`}
-            cx={x}
-            cy={y}
-            r={i === txMarkers.length - 1 ? 3.8 : 2.1}
-            fill={up ? "#63F5C8" : "#FF748D"}
-            opacity={i === txMarkers.length - 1 ? 1 : 0.42}
-          />
-        ))}
-
-        <circle
-          cx={dotX}
-          cy={dotY}
-          r="4.6"
-          fill={up ? "#63F5C8" : "#FF748D"}
-          stroke="rgba(255,255,255,.78)"
-          strokeWidth="1.2"
-        />
-      </svg>
+        <div ref={chartRef} style={{ width: "100%", height: "100%" }} />
+      </div>
     </div>
   );
 }
+
+
 
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
@@ -2871,7 +3005,7 @@ const tradePreview = useMemo(() => {
               <div className="pillRow" style={{ marginTop: 12 }}>
                 <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
                 <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
-                <Pill>Created {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
+                <Pill>Age {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
               </div>
             </div>
 
@@ -3129,7 +3263,7 @@ const tradePreview = useMemo(() => {
                 <div className="coinText">
                   <div className="coinName">{coin.name}</div>
                   <div className="coinMeta">
-                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL
+                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL • {timeAgo(coin.createdAt || coin.created_at)}
                   </div>
                 </div>
                 <div className="rightNum">
