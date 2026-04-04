@@ -2,7 +2,7 @@ import IntroSplash from "./IntroSplash";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
-import { createChart, ColorType, AreaSeries } from "lightweight-charts";
+import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
 
 const INTRO_MS = 2600;
 const APP_LOGO_URL = "/logo.png";
@@ -1497,7 +1497,8 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [chartRange, setChartRange] = useState("1D");
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
-
+const [coinActivity, setCoinActivity] = useState([]);
+const [loadingCoinActivity, setLoadingCoinActivity] = useState(false);
   const coinsLoadMoreRef = useRef(null);
   const didBootRef = useRef(false);
 
@@ -1928,39 +1929,71 @@ async function handleTrade() {
     setTrading(true);
 
     const current = { ...selectedCoin };
-    const oldMc = Math.max(1, safeNum(current.mc, 0) || 1);
-    const oldVolume = Math.max(0, safeNum(current.volumeSol, 0));
-    const oldChart = Array.isArray(current.chart) && current.chart.length
-      ? current.chart.map((x) => Math.max(0, safeNum(x, 0)))
-      : [oldMc];
 
-    // 🔥 front-end instant chart move
-    // buy = chart up
-    // sell = chart down
-    const movePct =
-      tradeMode === "BUY"
-        ? Math.max(0.55, Math.min(12, amount * 1.65))
-        : Math.max(0.45, Math.min(10, amount * 1.35));
 
-    const newMc =
-      tradeMode === "BUY"
-        ? oldMc * (1 + movePct / 100)
-        : Math.max(1, oldMc * (1 - movePct / 100));
 
-    const midMc =
-      tradeMode === "BUY"
-        ? oldMc * (1 + movePct / 170)
-        : Math.max(1, oldMc * (1 - movePct / 185));
-    const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
 
-    const optimisticCoin = {
-      ...current,
-      mc: newMc,
-      ath: Math.max(safeNum(current.ath, 0), newMc),
-      volumeSol: tradeMode === "BUY" ? oldVolume + amount : oldVolume + amount,
-      chart: nextChart,
-      lastTradeAt: Date.now(),
-    };
+
+const oldMc = Math.max(1, safeNum(current.mc, 0) || 1);
+const oldVolume = Math.max(0, safeNum(current.volumeSol, 0));
+
+const oldPrice =
+  Math.max(
+    0.0000000001,
+    safeNum(current.priceUsd, 0) ||
+      safeNum(current.lastPriceUsd, 0) ||
+      safeNum(current.chart?.[current.chart.length - 1], 0) ||
+      0.000001
+  );
+
+const oldChart = Array.isArray(current.chart) && current.chart.length
+  ? current.chart.map((x) => Math.max(0, safeNum(x, 0)))
+  : [oldPrice];
+
+const movePct =
+  tradeMode === "BUY"
+    ? Math.max(0.55, Math.min(12, amount * 1.65))
+    : Math.max(0.45, Math.min(10, amount * 1.35));
+
+const newPrice =
+  tradeMode === "BUY"
+    ? oldPrice * (1 + movePct / 100)
+    : Math.max(0.0000000001, oldPrice * (1 - movePct / 100));
+
+const midPrice =
+  tradeMode === "BUY"
+    ? oldPrice * (1 + movePct / 170)
+    : Math.max(0.0000000001, oldPrice * (1 - movePct / 185));
+
+const newMc =
+  tradeMode === "BUY"
+    ? oldMc * (1 + movePct / 100)
+    : Math.max(1, oldMc * (1 - movePct / 100));
+
+const nextChart = [...oldChart.slice(-27), oldPrice, midPrice, newPrice];
+
+const optimisticCoin = {
+  ...current,
+  mc: newMc,
+  priceUsd: newPrice,
+  lastPriceUsd: newPrice,
+  ath: Math.max(safeNum(current.ath, 0), newMc),
+  volumeSol: oldVolume + amount,
+  chart: nextChart,
+  lastTradeAt: Date.now(),
+};
+
+
+
+
+
+
+
+
+
+
+
+
 
     setCoins((prev) =>
       (prev || []).map((c) =>
@@ -1980,6 +2013,10 @@ async function handleTrade() {
       method: "POST",
       body: JSON.stringify(payload),
     });
+
+    if (!json?.ok || !json?.coin?.id) {
+  throw new Error(json?.error || (tradeMode === "BUY" ? "Buy failed" : "Sell failed"));
+}
 
     const updated = normalizeCoin(json?.coin || {});
 
@@ -2104,6 +2141,49 @@ async function handleTrade() {
       .slice(0, 20);
   }, [profileTxs, selectedCoin]);
 
+
+useEffect(() => {
+  let cancelled = false;
+
+  async function loadCoinActivity() {
+    if (!selectedCoin?.id) {
+      setCoinActivity([]);
+      return;
+    }
+
+    try {
+      setLoadingCoinActivity(true);
+
+      const json = await api(`/api/coin/${selectedCoin.id}/activity?limit=120`);
+      const items = Array.isArray(json?.activity)
+        ? json.activity
+        : Array.isArray(json?.items)
+        ? json.items
+        : [];
+
+      if (!cancelled) {
+        setCoinActivity(items);
+      }
+    } catch (e) {
+      if (!cancelled) {
+        setCoinActivity([]);
+      }
+    } finally {
+      if (!cancelled) {
+        setLoadingCoinActivity(false);
+      }
+    }
+  }
+
+  loadCoinActivity();
+
+  return () => {
+    cancelled = true;
+  };
+}, [selectedCoin?.id]);
+
+
+
   const currentCoinPriceUsd = getCoinPriceUsd(selectedCoin || {});
   const currentCoinPriceSol = Math.max(0, safeNum(selectedCoin?.priceSol, 0));
 
@@ -2184,7 +2264,7 @@ const tradePreview = useMemo(() => {
 
 
 
-function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
+function PriceChart({ coin, height = 280, chartRange, setChartRange, activity = [] }) {
   const chartRef = useRef(null);
 
   const [chartLook, setChartLook] = useState(() => {
@@ -2290,43 +2370,109 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       : [{ time: Math.floor(Date.now() / 1000), value: 0.000001 }];
   }, [visible, rangeCfg, coin?.createdAt, coin?.created_at]);
 
-  const candleData = useMemo(() => {
-    if (!lineData.length) {
-      return [{
-        time: Math.floor(Date.now() / 1000),
-        open: 0.000001,
-        high: 0.00000108,
-        low: 0.00000096,
-        close: 0.00000102,
-      }];
+
+
+
+
+
+const candleData = useMemo(() => {
+  const list = Array.isArray(activity) ? activity : [];
+  const rangeKey = String(chartRange || "1D").toUpperCase();
+
+  const bucketSec =
+    rangeKey === "5M" ? 5 * 60 :
+    rangeKey === "15M" ? 15 * 60 :
+    rangeKey === "1H" ? 60 * 60 :
+    rangeKey === "4H" ? 4 * 60 * 60 :
+    rangeKey === "1W" ? 24 * 60 * 60 :
+    24 * 60 * 60;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const fallbackPrice = Math.max(
+    0.0000000001,
+    safeNum(coin?.priceUsd, 0) ||
+      safeNum(coin?.lastPriceUsd, 0) ||
+      safeNum(coin?.chart?.[coin?.chart?.length - 1], 0) ||
+      0.000001
+  );
+
+  if (!list.length) {
+    return [
+      {
+        time: nowSec,
+        open: fallbackPrice,
+        high: fallbackPrice,
+        low: fallbackPrice,
+        close: fallbackPrice,
+      },
+    ];
+  }
+
+  const sorted = [...list]
+    .map((x) => ({
+      ts: Math.floor((safeNum(x?.ts, 0) || safeNum(x?.t, 0) || Date.now()) / 1000),
+      sol: Math.max(0, safeNum(x?.sol, 0)),
+      tokens: Math.max(0, safeNum(x?.tokens, 0)),
+    }))
+    .filter((x) => x.ts > 0)
+    .sort((a, b) => a.ts - b.ts);
+
+  const buckets = new Map();
+
+  for (const tx of sorted) {
+    const tradePrice =
+      tx.tokens > 0 ? Math.max(0.0000000001, (tx.sol / tx.tokens) * 80) : fallbackPrice;
+
+    const bucketTime = Math.floor(tx.ts / bucketSec) * bucketSec;
+    const prev = buckets.get(bucketTime);
+
+    if (!prev) {
+      buckets.set(bucketTime, {
+        time: bucketTime,
+        open: tradePrice,
+        high: tradePrice,
+        low: tradePrice,
+        close: tradePrice,
+      });
+    } else {
+      prev.high = Math.max(prev.high, tradePrice);
+      prev.low = Math.min(prev.low, tradePrice);
+      prev.close = tradePrice;
     }
+  }
 
-    return lineData.map((point, idx) => {
-      const prev = idx > 0 ? safeNum(lineData[idx - 1]?.value, point.value) : safeNum(point.value, 0);
-      const curr = Math.max(0.0000000001, safeNum(point.value, 0));
-      const open = Math.max(0.0000000001, prev);
-      const close = curr;
-      const bodyHigh = Math.max(open, close);
-      const bodyLow = Math.min(open, close);
-      const delta = Math.max(Math.abs(close - open), curr * 0.006, 0.0000000001);
+  const candles = Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 
-      return {
-        time: point.time,
-        open,
-        high: bodyHigh + delta * 0.18,
-        low: Math.max(0.0000000001, bodyLow - delta * 0.18),
-        close,
-      };
-    });
-  }, [lineData]);
+  return candles.length
+    ? candles
+    : [
+        {
+          time: nowSec,
+          open: fallbackPrice,
+          high: fallbackPrice,
+          low: fallbackPrice,
+          close: fallbackPrice,
+        },
+      ];
+}, [activity, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.chart]);
 
-  const pct = useMemo(() => {
-    const first = Math.max(0, safeNum(lineData[0]?.value, 0));
-    const last = Math.max(0, safeNum(lineData[lineData.length - 1]?.value, 0));
-    if (first <= 0 || last <= 0) return 0;
-    const rawPct = ((last - first) / first) * 100;
-    return Math.max(-9999, Math.min(9999, rawPct));
-  }, [lineData]);
+
+
+
+
+ const pct = useMemo(() => {
+  if (!candleData.length) return 0;
+
+  const first = Math.max(0, safeNum(candleData[0]?.open, 0));
+  const last = Math.max(0, safeNum(candleData[candleData.length - 1]?.close, 0));
+
+  if (first <= 0 || last <= 0) return 0;
+
+  const rawPct = ((last - first) / first) * 100;
+  return Math.max(-9999, Math.min(9999, rawPct));
+}, [candleData]);
+
+ 
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,
@@ -2959,8 +3105,6 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
         )}
 
 
-
-
 {screen === "COIN" && (
   <ScreenShell>
     {renderBackButton()}
@@ -2975,19 +3119,45 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 210px",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 188px",
               alignItems: "start",
-              gap: 14,
+              gap: 12,
             }}
           >
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 14, minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                minWidth: 0,
+              }}
+            >
               <CoinLogo c={selectedCoin} size={72} radius={20} />
 
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
+                <div
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 1000,
+                    lineHeight: 1.05,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
                   {selectedCoin.name}
                 </div>
-                <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 13,
+                    color: "var(--muted)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
                   {selectedCoin.symbol}
                 </div>
 
@@ -2995,13 +3165,34 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                   style={{
                     marginTop: 12,
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(110px, 1fr))",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
                     gap: 8,
-                    maxWidth: isMobile ? "100%" : 280,
+                    maxWidth: isMobile ? "100%" : 230,
                   }}
                 >
-                  <Pill style={{ justifyContent: "center", minHeight: 34 }}>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
-                  <Pill style={{ justifyContent: "center", minHeight: 34 }}>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
+                  <Pill
+                    style={{
+                      justifyContent: "center",
+                      minHeight: 34,
+                      fontSize: 12,
+                      padding: "8px 10px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    MC {fmtUsd(selectedCoin.mc || 0)}
+                  </Pill>
+
+                  <Pill
+                    style={{
+                      justifyContent: "center",
+                      minHeight: 34,
+                      fontSize: 12,
+                      padding: "8px 10px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    ATH {fmtUsd(selectedCoin.ath || 0)}
+                  </Pill>
                 </div>
               </div>
             </div>
@@ -3011,22 +3202,26 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                 display: "grid",
                 gap: 8,
                 width: "100%",
-                justifySelf: isMobile ? "stretch" : "end",
+                alignSelf: "start",
               }}
             >
               <MiniBtn
                 onClick={() => openCreatorFromCoin(selectedCoin)}
                 style={{
                   width: "100%",
-                  minHeight: 38,
+                  minHeight: 36,
                   borderRadius: 999,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 900,
-                  boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                  padding: "9px 12px",
+                  boxShadow:
+                    "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Creator Profile
               </MiniBtn>
+
               <MiniBtn
                 onClick={async () => {
                   const ok = await copyText(selectedCoin?.id || "");
@@ -3034,11 +3229,14 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                 }}
                 style={{
                   width: "100%",
-                  minHeight: 38,
+                  minHeight: 36,
                   borderRadius: 999,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 900,
-                  boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                  padding: "9px 12px",
+                  boxShadow:
+                    "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Copy Coin Address
@@ -3046,18 +3244,27 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             </div>
           </div>
 
-{selectedCoin.story ? (
-            <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
+          {selectedCoin.story ? (
+            <div
+              style={{
+                marginTop: 14,
+                color: "var(--muted)",
+                fontSize: 14,
+                lineHeight: 1.6,
+              }}
+            >
               {selectedCoin.story}
             </div>
           ) : null}
 
           <div className="hr" />
+
           <PriceChart
   coin={selectedCoin}
-  height={isMobile ? 268 : 372}
+  height={isMobile ? 272 : 388}
   chartRange={chartRange}
   setChartRange={setChartRange}
+  activity={coinActivity}
 />
         </Card>
 
