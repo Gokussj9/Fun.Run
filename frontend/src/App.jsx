@@ -2,9 +2,9 @@ import IntroSplash from "./IntroSplash";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
-import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+import { createChart, ColorType, AreaSeries } from "lightweight-charts";
 
-const INTRO_MS = 5000;
+const INTRO_MS = 2600;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
 
@@ -1043,8 +1043,7 @@ function pctChangeFromChart(chart, lookback = 12) {
 
 function normalizeCoin(c = {}) {
   const totalSupply = Math.max(1, safeNum(c.totalSupply, 1_000_000_000));
-  const curveSupply = Math.max(1, safeNum(c.curveSupply, c.curve_supply || totalSupply));
-  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, c.reserve_token || 0));
+  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, 0));
   const circulating = Math.max(0, totalSupply - tokenReserve);
   const mc =
     safeNum(c.mc, 0) ||
@@ -1064,19 +1063,13 @@ function normalizeCoin(c = {}) {
     symbol: String(c.symbol || "").toUpperCase(),
     story: String(c.story || ""),
     logo: String(c.logo || ""),
-    metadataUri: String(c.metadataUri || c.metadata_uri || ""),
     creatorWallet: String(c.creatorWallet || c.creator_wallet || c.owner || ""),
     totalSupply,
-    curveSupply,
-    curveSold: Math.max(0, safeNum(c.curveSold, c.curve_sold || 0)),
     tokenReserve,
     circulating,
     volumeSol: Math.max(0, safeNum(c.volumeSol, c.volume_sol || 0)),
     priceSol: Math.max(0, safeNum(c.priceSol, c.last_price || 0)),
-    priceUsd: Math.max(0, safeNum(c.priceUsd, c.price || 0)),
-    lastPriceUsd: Math.max(0, safeNum(c.lastPriceUsd, c.last_price_usd || c.priceUsd || c.price || 0)),
-    vTokens: Math.max(0, safeNum(c.vTokens, c.v_tokens || 0)),
-    vSol: Math.max(0, safeNum(c.vSol, c.v_sol || 0)),
+    priceUsd: Math.max(0, safeNum(c.priceUsd, 0)),
     mc,
     ath: Math.max(mc, safeNum(c.ath, c.ath_market_cap || mc)),
     chart,
@@ -1102,8 +1095,7 @@ function getCoinPriceUsd(c) {
 function coinSubtitle(c) {
   const pct = pctChangeFromChart(c?.chart || []);
   const sign = pct > 0 ? "+" : "";
-  const age = timeAgo(c?.createdAt || c?.created_at);
-  return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}% • ${age}`;
+  return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}%`;
 }
 
 async function copyText(text) {
@@ -1127,23 +1119,18 @@ async function fileToDataUrl(file) {
 function timeAgo(ts) {
   const n = Number(ts || 0);
   if (!Number.isFinite(n) || n <= 0) return "just now";
-
   const diff = Math.max(0, Date.now() - n);
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
-
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-
   const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
   const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-
-  const years = Math.floor(days / 365);
-  return `${years}y ago`;
+  return `${months}mo ago`;
 }
 
 function rangePointsFor(chartRange) {
@@ -1429,13 +1416,7 @@ export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
 
- const [showIntro, setShowIntro] = useState(() => {
-    try {
-      return sessionStorage.getItem("introSeen") !== "1";
-    } catch {
-      return true;
-    }
-  });
+ const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => {
     if (!showIntro) return;
@@ -2202,6 +2183,7 @@ const tradePreview = useMemo(() => {
 
 
 
+
 function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const chartRef = useRef(null);
 
@@ -2216,7 +2198,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const themeCfg = useMemo(() => {
     return chartLook === "light"
       ? {
-          cardBg: "linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,252,255,1))",
+          cardBg: "linear-gradient(180deg, rgba(255,255,255,.985), rgba(250,252,255,1))",
           cardBorder: "1px solid rgba(15,23,42,.08)",
           text: "#0F172A",
           sub: "rgba(15,23,42,.58)",
@@ -2232,14 +2214,14 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
           activeBtnText: "#03131A",
           inactiveBtnText: "#0F172A",
-          line: "rgba(15,23,42,.08)",
+          line: "rgba(15,23,42,.10)",
         }
       : {
           cardBg: "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
           cardBorder: "1px solid rgba(255,255,255,.06)",
           text: "var(--text)",
           sub: "var(--muted2)",
-          chartBg: "#081018",
+          chartBg: "#071019",
           scale: "rgba(255,255,255,.06)",
           up: "#35E0B6",
           down: "#FF5F6D",
@@ -2251,7 +2233,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
           activeBtnText: "#03131A",
           inactiveBtnText: "rgba(255,255,255,.92)",
-          line: "rgba(255,255,255,.04)",
+          line: "rgba(255,255,255,.05)",
         };
   }, [chartLook]);
 
@@ -2295,7 +2277,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
 
       const avg = chunk.reduce((a, b) => a + safeNum(b, 0), 0) / chunk.length;
       const prev = grouped.length ? grouped[grouped.length - 1].value : avg;
-      const smooth = grouped.length ? prev * 0.28 + avg * 0.72 : avg;
+      const smooth = grouped.length ? prev * 0.32 + avg * 0.68 : avg;
 
       grouped.push({
         time: baseTs + Math.floor((i / bucket) * rangeCfg.stepSec),
@@ -2313,8 +2295,8 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       return [{
         time: Math.floor(Date.now() / 1000),
         open: 0.000001,
-        high: 0.0000011,
-        low: 0.00000095,
+        high: 0.00000108,
+        low: 0.00000096,
         close: 0.00000102,
       }];
     }
@@ -2326,13 +2308,13 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       const close = curr;
       const bodyHigh = Math.max(open, close);
       const bodyLow = Math.min(open, close);
-      const delta = Math.max(Math.abs(close - open), curr * 0.01, 0.0000000001);
+      const delta = Math.max(Math.abs(close - open), curr * 0.006, 0.0000000001);
 
       return {
         time: point.time,
         open,
-        high: bodyHigh + delta * 0.28,
-        low: Math.max(0.0000000001, bodyLow - delta * 0.28),
+        high: bodyHigh + delta * 0.18,
+        low: Math.max(0.0000000001, bodyLow - delta * 0.18),
         close,
       };
     });
@@ -2395,11 +2377,12 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
         borderColor: "transparent",
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 3,
-        barSpacing: Math.max(10, Math.min(18, width / Math.max(10, candleData.length))),
-        fixLeftEdge: true,
-        fixRightEdge: true,
+        rightOffset: 10,
+        barSpacing: Math.max(4, Math.min(7, width / Math.max(36, candleData.length * 3.2))),
+        fixLeftEdge: false,
+        fixRightEdge: false,
         ticksVisible: false,
+        minBarSpacing: 3.5,
       },
       crosshair: {
         mode: 0,
@@ -2443,6 +2426,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       priceLineColor: up ? themeCfg.up : themeCfg.down,
       baseLineVisible: false,
       borderVisible: true,
+      thinBars: true,
       priceFormat: {
         type: "price",
         precision: livePrice > 1 ? 4 : livePrice > 0.01 ? 6 : 8,
@@ -2495,7 +2479,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           justifyContent: "space-between",
           gap: 12,
           marginBottom: 12,
-          flexWrap: isMobile ? "wrap" : "nowrap",
+          flexWrap: "wrap",
         }}
       >
         <div style={{ minWidth: 0 }}>
@@ -2508,100 +2492,98 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           </div>
         </div>
 
-       <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "nowrap",
-    overflowX: "auto",
-    marginLeft: "auto",
-    maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
-    paddingBottom: 2,
-    scrollbarWidth: "none",
-    msOverflowStyle: "none",
-  }}
->
-  <button
-    onClick={() => setChartLook((v) => (v === "dark" ? "light" : "dark"))}
-    style={{
-      height: 28,
-      minWidth: 72,
-      padding: "0 12px",
-      borderRadius: 999,
-      border: "1px solid rgba(50,230,255,.42)",
-      background: themeCfg.activeBtnBg,
-      color: themeCfg.activeBtnText,
-      fontSize: 11,
-      fontWeight: 900,
-      letterSpacing: ".2px",
-      cursor: "pointer",
-      boxShadow:
-        "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)",
-      flex: "0 0 auto",
-      whiteSpace: "nowrap",
-    }}
-  >
-    {chartLook === "dark" ? "Black" : "White"}
-  </button>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "nowrap",
+            overflowX: "auto",
+            marginLeft: "auto",
+            maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
+            paddingBottom: 2,
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
+          <button
+            onClick={() => setChartLook((v) => (v === "dark" ? "light" : "dark"))}
+            style={{
+              height: 28,
+              minWidth: 72,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(50,230,255,.42)",
+              background: themeCfg.activeBtnBg,
+              color: themeCfg.activeBtnText,
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: ".2px",
+              cursor: "pointer",
+              boxShadow:
+                "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)",
+              flex: "0 0 auto",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {chartLook === "dark" ? "Black" : "White"}
+          </button>
 
-  {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
-    <button
-      key={value}
-      onClick={() => setChartRange(value)}
-      style={{
-        height: 28,
-        minWidth: value === "1W" ? 54 : 42,
-        padding: "0 10px",
-        borderRadius: 999,
-        border:
-          chartRange === value
-            ? "1px solid rgba(50,230,255,.42)"
-            : themeCfg.pillBorder,
-        background:
-          chartRange === value
-            ? themeCfg.activeBtnBg
-            : themeCfg.pillBg,
-        color:
-          chartRange === value
-            ? themeCfg.activeBtnText
-            : themeCfg.inactiveBtnText,
-        fontSize: 11,
-        fontWeight: 900,
-        letterSpacing: ".2px",
-        cursor: "pointer",
-        boxShadow:
-          chartRange === value
-            ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
-            : "inset 0 1px 0 rgba(255,255,255,.04)",
-        flex: "0 0 auto",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </button>
-  ))}
+          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setChartRange(value)}
+              style={{
+                height: 28,
+                minWidth: value === "1W" ? 54 : 42,
+                padding: "0 10px",
+                borderRadius: 999,
+                border:
+                  chartRange === value
+                    ? "1px solid rgba(50,230,255,.42)"
+                    : themeCfg.pillBorder,
+                background:
+                  chartRange === value
+                    ? themeCfg.activeBtnBg
+                    : themeCfg.pillBg,
+                color:
+                  chartRange === value
+                    ? themeCfg.activeBtnText
+                    : themeCfg.inactiveBtnText,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: ".2px",
+                cursor: "pointer",
+                boxShadow:
+                  chartRange === value
+                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
+                    : "inset 0 1px 0 rgba(255,255,255,.04)",
+                flex: "0 0 auto",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </button>
+          ))}
 
-  <div
-    style={{
-      fontSize: 12,
-      fontWeight: 900,
-      color: up ? "var(--good)" : "var(--danger)",
-      padding: "7px 10px",
-      borderRadius: 999,
-      border: themeCfg.pillBorder,
-      background: themeCfg.pillBg,
-      whiteSpace: "nowrap",
-      flex: "0 0 auto",
-      marginLeft: 2,
-    }}
-  >
-    {up ? "+" : ""}
-    {pct.toFixed(2)}%
-  </div>
-</div> 
-
-
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: up ? "var(--good)" : "var(--danger)",
+              padding: "7px 10px",
+              borderRadius: 999,
+              border: themeCfg.pillBorder,
+              background: themeCfg.pillBg,
+              whiteSpace: "nowrap",
+              flex: "0 0 auto",
+              marginLeft: 2,
+            }}
+          >
+            {up ? "+" : ""}
+            {pct.toFixed(2)}%
+          </div>
+        </div>
       </div>
 
       <div
@@ -2618,7 +2600,6 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
     </div>
   );
 }
-
 
 
 
@@ -2829,7 +2810,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                       <CoinLogo c={c} size={42} radius={14} />
                       <div className="space">
                         <div style={{ fontWeight: 1000, fontSize: 13 }}>{c.name}</div>
-                        <div className="miniMuted">{c.symbol} • {timeAgo(c.createdAt || c.created_at)}</div>
+                        <div className="miniMuted">{c.symbol}</div>
                       </div>
                     </div>
 
@@ -2991,26 +2972,59 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
     ) : (
       <>
         <Card>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-            <CoinLogo c={selectedCoin} size={72} radius={20} />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 210px",
+              alignItems: "start",
+              gap: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14, minWidth: 0 }}>
+              <CoinLogo c={selectedCoin} size={72} radius={20} />
 
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
-                {selectedCoin.name}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
-                {selectedCoin.symbol}
-              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
+                  {selectedCoin.name}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
+                  {selectedCoin.symbol}
+                </div>
 
-              <div className="pillRow" style={{ marginTop: 12 }}>
-                <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
-                <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
-                <Pill>Age {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(110px, 1fr))",
+                    gap: 8,
+                    maxWidth: isMobile ? "100%" : 280,
+                  }}
+                >
+                  <Pill style={{ justifyContent: "center", minHeight: 34 }}>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
+                  <Pill style={{ justifyContent: "center", minHeight: 34 }}>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
+                </div>
               </div>
             </div>
 
-            <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
-              <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                width: "100%",
+                justifySelf: isMobile ? "stretch" : "end",
+              }}
+            >
+              <MiniBtn
+                onClick={() => openCreatorFromCoin(selectedCoin)}
+                style={{
+                  width: "100%",
+                  minHeight: 38,
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 900,
+                  boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                }}
+              >
                 Creator Profile
               </MiniBtn>
               <MiniBtn
@@ -3018,13 +3032,21 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                   const ok = await copyText(selectedCoin?.id || "");
                   setToast(ok ? "Coin address copied" : "Copy failed");
                 }}
+                style={{
+                  width: "100%",
+                  minHeight: 38,
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 900,
+                  boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+                }}
               >
                 Copy Coin Address
               </MiniBtn>
             </div>
           </div>
 
-          {selectedCoin.story ? (
+{selectedCoin.story ? (
             <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
               {selectedCoin.story}
             </div>
@@ -3033,7 +3055,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           <div className="hr" />
           <PriceChart
   coin={selectedCoin}
-  height={isMobile ? 240 : 320}
+  height={isMobile ? 268 : 372}
   chartRange={chartRange}
   setChartRange={setChartRange}
 />
@@ -3263,7 +3285,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                 <div className="coinText">
                   <div className="coinName">{coin.name}</div>
                   <div className="coinMeta">
-                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL • {timeAgo(coin.createdAt || coin.created_at)}
+                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL
                   </div>
                 </div>
                 <div className="rightNum">
@@ -3449,17 +3471,18 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
 
     <div
       style={{
-        marginTop: 10,
+        marginTop: 12,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: 10,
+        flexWrap: "wrap",
       }}
     >
       <span
         style={{
           fontSize: 12,
-          fontWeight: 700,
+          fontWeight: 800,
           color: "var(--text)",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -3470,13 +3493,21 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
         {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
       </span>
 
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <MiniBtn
           onClick={() => {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Deposit address copied");
           }}
-          style={{ padding: "6px 10px", width: "auto" }}
+          style={{
+            padding: "5px 10px",
+            width: "auto",
+            minHeight: 32,
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 900,
+            boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+          }}
         >
           Deposit
         </MiniBtn>
@@ -3486,17 +3517,35 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Wallet copied");
           }}
-          style={{ padding: "6px 10px", width: "auto" }}
+          style={{
+            padding: "5px 10px",
+            width: "auto",
+            minHeight: 32,
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 900,
+            boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+          }}
         >
           Copy
         </MiniBtn>
       </div>
     </div>
 
-    <div style={{ marginTop: 8 }}>
-      <MiniBtn onClick={() => setWithdrawOpen(true)} style={{ width: "100%" }}>
-  Withdraw
-</MiniBtn>
+    <div style={{ marginTop: 10 }}>
+      <MiniBtn
+        onClick={() => setWithdrawOpen(true)}
+        style={{
+          width: "100%",
+          minHeight: 40,
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 900,
+          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+        }}
+      >
+        Withdraw
+      </MiniBtn>
     </div>
   </div>
 
@@ -3511,20 +3560,40 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   <div className="stat" style={{ minHeight: 150 }}>
     <div className="statLabel">Affiliate Reward</div>
     <div className="statValue">{fmtSol(profile?.referralRewardsSol || 0)} SOL</div>
-    <div style={{ marginTop: 8 }}>
-     <MiniBtn onClick={() => handleClaim("REF")}>
-  Claim
-</MiniBtn>
+    <div style={{ marginTop: 10 }}>
+      <MiniBtn
+        onClick={() => handleClaim("REF")}
+        style={{
+          minHeight: 38,
+          padding: "0 16px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 900,
+          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+        }}
+      >
+        Claim
+      </MiniBtn>
     </div>
   </div>
 
   <div className="stat" style={{ minHeight: 150 }}>
     <div className="statLabel">Creator Reward</div>
     <div className="statValue">{fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL</div>
-    <div style={{ marginTop: 8 }}>
-     <MiniBtn onClick={() => handleClaim("CREATOR")}>
-  Claim
-</MiniBtn>
+    <div style={{ marginTop: 10 }}>
+      <MiniBtn
+        onClick={() => handleClaim("CREATOR")}
+        style={{
+          minHeight: 38,
+          padding: "0 16px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 900,
+          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
+        }}
+      >
+        Claim
+      </MiniBtn>
     </div>
   </div>
 </div>
