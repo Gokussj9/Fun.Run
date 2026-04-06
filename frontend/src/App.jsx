@@ -1160,13 +1160,13 @@ function rangePointsFor(chartRange) {
 }
 
 const CHART_TIMEFRAMES = {
-  "5M": { ms: 5 * 60 * 1000, bars: 72 },
-  "15M": { ms: 15 * 60 * 1000, bars: 72 },
-  "1H": { ms: 60 * 60 * 1000, bars: 72 },
-  "4H": { ms: 4 * 60 * 60 * 1000, bars: 72 },
-  "1D": { ms: 24 * 60 * 60 * 1000, bars: 60 },
-  "1W": { ms: 7 * 24 * 60 * 60 * 1000, bars: 40 },
-  "1M": { ms: 30 * 24 * 60 * 60 * 1000, bars: 24 },
+  "5M": { ms: 5 * 60 * 1000, label: "5m", bars: 100 },
+  "15M": { ms: 15 * 60 * 1000, label: "15m", bars: 100 },
+  "1H": { ms: 60 * 60 * 1000, label: "1h", bars: 100 },
+  "4H": { ms: 4 * 60 * 60 * 1000, label: "4h", bars: 100 },
+  "1D": { ms: 24 * 60 * 60 * 1000, label: "1D", bars: 100 },
+  "1W": { ms: 7 * 24 * 60 * 60 * 1000, label: "1W", bars: 100 },
+  "1M": { ms: 30 * 24 * 60 * 60 * 1000, label: "1M", bars: 100 },
 };
 
 function getTimeframeCfg(range) {
@@ -1204,20 +1204,26 @@ function buildCandlesFromActivity(activity, coin, chartRange) {
   const bucketMs = cfg.ms;
   const maxBars = cfg.bars;
   const now = Date.now();
-  const fallbackPrice = Math.max(
-    0.00000001,
-    safeNum(coin?.priceUsd, 0) ||
-      safeNum(coin?.lastPriceUsd, 0) ||
-      safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
-      0.000001
-  );
+
+  const fallbackPrice =
+    Math.max(
+      0.00000001,
+      safeNum(coin?.priceUsd, 0) ||
+        safeNum(coin?.lastPriceUsd, 0) ||
+        safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
+        0.000001
+    );
+
   const createdAt = safeNum(coin?.createdAt || coin?.created_at, now);
   const startWindow = Math.max(createdAt, now - bucketMs * maxBars);
   const startBucket = bucketStartMs(startWindow, bucketMs);
   const currentBucket = bucketStartMs(now, bucketMs);
 
   const trades = (Array.isArray(activity) ? activity : [])
-    .map((t) => ({ ...t, ts: safeNum(t?.ts || t?.t, 0) }))
+    .map((t) => ({
+      ...t,
+      ts: safeNum(t?.ts || t?.t, 0),
+    }))
     .filter((t) => t.ts > 0)
     .sort((a, b) => a.ts - b.ts);
 
@@ -1226,63 +1232,57 @@ function buildCandlesFromActivity(activity, coin, chartRange) {
   let lastClose = fallbackPrice;
 
   const pushFlat = (timeSec, closeVal) => {
-    candles.push({ time: timeSec, open: closeVal, high: closeVal, low: closeVal, close: closeVal });
+    candles.push({
+      time: timeSec,
+      open: closeVal,
+      high: closeVal,
+      low: closeVal,
+      close: closeVal,
+    });
   };
-
-  if (!trades.length) {
-    const raw = Array.isArray(coin?.chart)
-      ? coin.chart.map((x) => Math.max(0.00000001, safeNum(x, 0))).filter(Boolean)
-      : [];
-    if (raw.length) {
-      const sliced = raw.slice(-maxBars);
-      const seedStart = currentBucket - bucketMs * Math.max(0, sliced.length - 1);
-      return sliced.map((price, idx) => {
-        const prev = idx > 0 ? sliced[idx - 1] : price;
-        return {
-          time: Math.floor((seedStart + idx * bucketMs) / 1000),
-          open: prev,
-          high: Math.max(prev, price),
-          low: Math.min(prev, price),
-          close: price,
-        };
-      });
-    }
-    pushFlat(Math.floor(currentBucket / 1000), fallbackPrice);
-    return candles;
-  }
 
   for (const trade of trades) {
     const tradeBucket = bucketStartMs(trade.ts, bucketMs);
     const tradePrice = getTradePriceUsd(trade, coin, lastClose);
+
     while (cursor < tradeBucket) {
       pushFlat(Math.floor(cursor / 1000), lastClose);
       cursor += bucketMs;
     }
-    const key = Math.floor(tradeBucket / 1000);
+
     const existing = candles[candles.length - 1];
-    if (existing && existing.time === key) {
+
+    if (existing && existing.time === Math.floor(tradeBucket / 1000)) {
       existing.high = Math.max(existing.high, tradePrice);
       existing.low = Math.min(existing.low, tradePrice);
       existing.close = tradePrice;
     } else {
       candles.push({
-        time: key,
+        time: Math.floor(tradeBucket / 1000),
         open: lastClose,
         high: Math.max(lastClose, tradePrice),
         low: Math.min(lastClose, tradePrice),
         close: tradePrice,
       });
     }
+
     lastClose = tradePrice;
     cursor = tradeBucket + bucketMs;
   }
 
-  while (cursor <= currentBucket) {
-    pushFlat(Math.floor(cursor / 1000), lastClose);
-    cursor += bucketMs;
-  }
+  // 🔥 FIX: agar price same ho to thoda variation add karo (real look)
+  const adjusted = candles.map((c, i) => {
+    const base = c.close || fallbackPrice;
+    const wiggle = base * 0.002; // 0.2% variation
 
-  return candles.slice(-maxBars);
+    return {
+      ...c,
+      high: c.high === c.low ? base + wiggle : c.high,
+      low: c.high === c.low ? base - wiggle : c.low,
+    };
+  });
+
+  return adjusted.slice(-maxBars);
 }
 
 function getCoin24hMovePct(c) {
@@ -1799,14 +1799,16 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
         [];
 
       const incoming = (rawCoins || [])
-        .map((c) => {
-          try {
-            return normalizeCoin(c);
-          } catch {
-            return null;
-          }
-        })
-        .filter((c) => c && c.id);
+  .map((c) => {
+    try {
+      const coin = normalizeCoin(c);
+      if (!coin?.id) return null;
+      return coin;
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
 
       const incomingHot = (rawHot || [])
         .map((c) => {
@@ -2411,10 +2413,10 @@ const tradePreview = useMemo(() => {
  
 
 
-
-
 function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const chartRef = useRef(null);
+  const [activity, setActivity] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   const [chartLook, setChartLook] = useState(() => {
     try {
@@ -2425,143 +2427,227 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   });
 
   const themeCfg = useMemo(() => {
-    return chartLook === "light"
+    const isLight = chartLook === "light";
+
+    return isLight
       ? {
-          cardBg: "linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,250,252,.98))",
-          cardBorder: "1px solid rgba(15,23,42,.10)",
-          text: "#0F172A",
-          sub: "rgba(15,23,42,.58)",
+          wrapBg: "#FFFFFF",
           chartBg: "#FFFFFF",
+          topText: "#0F172A",
+          subText: "#475569",
+          faintText: "#64748B",
           grid: "rgba(15,23,42,.06)",
-          scale: "rgba(15,23,42,.10)",
+          axis: "rgba(15,23,42,.10)",
           up: "#10B981",
-          down: "#EF4444",
-          wickUp: "#0F9F72",
-          wickDown: "#DC2626",
-          pillBg: "rgba(15,23,42,.04)",
-          pillBorder: "1px solid rgba(15,23,42,.08)",
+          down: "#F43F5E",
+          wickUp: "#10B981",
+          wickDown: "#F43F5E",
+          btnBg: "#F8FAFC",
+          btnBorder: "rgba(15,23,42,.08)",
+          btnText: "#111827",
+          activeBg: "#E6FFFB",
+          activeText: "#0F172A",
+          activeBorder: "rgba(34,211,238,.45)",
+          pctBg: "rgba(16,185,129,.08)",
         }
       : {
-          cardBg: "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
-          cardBorder: "1px solid rgba(255,255,255,.06)",
-          text: "var(--text)",
-          sub: "var(--muted2)",
-          chartBg: "#0B1118",
-          grid: "rgba(255,255,255,.05)",
-          scale: "rgba(255,255,255,.08)",
-          up: "#35E0B6",
-          down: "#FF5F6D",
-          wickUp: "#35E0B6",
-          wickDown: "#FF5F6D",
-          pillBg: "rgba(255,255,255,.03)",
-          pillBorder: "1px solid rgba(255,255,255,.07)",
+          wrapBg: "#091018",
+          chartBg: "#091018",
+          topText: "#F8FAFC",
+          subText: "#94A3B8",
+          faintText: "#64748B",
+          grid: "rgba(148,163,184,.10)",
+          axis: "rgba(148,163,184,.14)",
+          up: "#23D7A0",
+          down: "#F43F5E",
+          wickUp: "#23D7A0",
+          wickDown: "#F43F5E",
+          btnBg: "rgba(255,255,255,.04)",
+          btnBorder: "rgba(255,255,255,.08)",
+          btnText: "rgba(255,255,255,.90)",
+          activeBg: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
+          activeText: "#03131A",
+          activeBorder: "rgba(36,224,255,.45)",
+          pctBg: "rgba(35,215,160,.10)",
         };
   }, [chartLook]);
-
-  const pricePoints = useMemo(() => {
-    const raw = Array.isArray(coin?.chart) ? coin.chart : [];
-    const out = raw
-      .map((n) => Math.max(0, safeNum(n, 0)))
-      .filter((n) => Number.isFinite(n) && n > 0);
-
-    if (!out.length) return [0.000001, 0.0000012, 0.00000115, 0.00000128, 0.00000125];
-    if (out.length === 1) return [out[0], out[0] * 1.01, out[0] * 1.005, out[0] * 1.015, out[0] * 1.01];
-    return out;
-  }, [coin?.chart]);
-
-  const rangeCfg = useMemo(() => {
-    const key = String(chartRange || "1D").toUpperCase();
-    if (key === "5M") return { take: 24, group: 1, stepSec: 60 };
-    if (key === "15M") return { take: 32, group: 1, stepSec: 3 * 60 };
-    if (key === "1H") return { take: 42, group: 2, stepSec: 10 * 60 };
-    if (key === "4H") return { take: 48, group: 2, stepSec: 30 * 60 };
-    if (key === "1W") return { take: 56, group: 3, stepSec: 12 * 60 * 60 };
-    return { take: 52, group: 2, stepSec: 60 * 60 };
-  }, [chartRange]);
-
-  const visible = useMemo(() => {
-    const take = Math.max(12, Math.min(pricePoints.length, rangeCfg.take));
-    return pricePoints.slice(-take);
-  }, [pricePoints, rangeCfg]);
-
-  const lineData = useMemo(() => {
-    const source = visible.length ? visible : [0.000001];
-    const bucket = Math.max(1, rangeCfg.group);
-    const baseTs = Math.floor(
-      (safeNum(coin?.createdAt || coin?.created_at, Date.now()) || Date.now()) / 1000
-    );
-
-    const grouped = [];
-    for (let i = 0; i < source.length; i += bucket) {
-      const chunk = source.slice(i, i + bucket);
-      if (!chunk.length) continue;
-
-      const avg = chunk.reduce((a, b) => a + safeNum(b, 0), 0) / chunk.length;
-      const prev = grouped.length ? grouped[grouped.length - 1].value : avg;
-      const smooth = grouped.length ? prev * 0.35 + avg * 0.65 : avg;
-
-      grouped.push({
-        time: baseTs + Math.floor((i / bucket) * rangeCfg.stepSec),
-        value: Math.max(0.0000000001, smooth),
-      });
-    }
-
-    return grouped.length
-      ? grouped
-      : [{ time: Math.floor(Date.now() / 1000), value: 0.000001 }];
-  }, [visible, rangeCfg, coin?.createdAt, coin?.created_at]);
-
-  const candleData = useMemo(() => {
-    if (!lineData.length) {
-      return [{
-        time: Math.floor(Date.now() / 1000),
-        open: 0.000001,
-        high: 0.0000011,
-        low: 0.00000095,
-        close: 0.00000102,
-      }];
-    }
-
-    return lineData.map((point, idx) => {
-      const prev = idx > 0 ? safeNum(lineData[idx - 1]?.value, point.value) : safeNum(point.value, 0);
-      const curr = Math.max(0.0000000001, safeNum(point.value, 0));
-      const open = Math.max(0.0000000001, prev);
-      const close = curr;
-      const bodyHigh = Math.max(open, close);
-      const bodyLow = Math.min(open, close);
-      const delta = Math.max(Math.abs(close - open), curr * 0.012, 0.0000000001);
-
-      return {
-        time: point.time,
-        open,
-        high: bodyHigh + delta * 0.42,
-        low: Math.max(0.0000000001, bodyLow - delta * 0.42),
-        close,
-      };
-    });
-  }, [lineData]);
-
-  const pct = useMemo(() => {
-    const first = Math.max(0, safeNum(lineData[0]?.value, 0));
-    const last = Math.max(0, safeNum(lineData[lineData.length - 1]?.value, 0));
-    if (first <= 0 || last <= 0) return 0;
-    const rawPct = ((last - first) / first) * 100;
-    return Math.max(-9999, Math.min(9999, rawPct));
-  }, [lineData]);
-
-  const livePrice = safeNum(
-    candleData[candleData.length - 1]?.close,
-    safeNum(pricePoints[pricePoints.length - 1], 0)
-  );
-
-  const up = pct >= 0;
-  const createdAgo = timeAgo(coin?.createdAt || coin?.created_at);
 
   useEffect(() => {
     try {
       localStorage.setItem("chart_look_v1", chartLook);
     } catch {}
   }, [chartLook]);
+
+  useEffect(() => {
+    let mounted = true;
+    let timer = null;
+
+    async function loadActivity() {
+      if (!coin?.id) return;
+      try {
+        setActivityLoading(true);
+        const json = await api(`/api/coin/${coin.id}/activity?limit=400`);
+        if (!mounted) return;
+
+        const rows = Array.isArray(json?.activity)
+          ? json.activity
+          : Array.isArray(json?.items)
+          ? json.items
+          : [];
+
+        setActivity(rows);
+      } catch {
+        if (mounted) setActivity([]);
+      } finally {
+        if (mounted) setActivityLoading(false);
+      }
+    }
+
+    loadActivity();
+    timer = setInterval(loadActivity, 10000);
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [coin?.id]);
+
+  const candleData = useMemo(() => {
+    const cfg = getTimeframeCfg(chartRange);
+    const bucketMs = cfg.ms;
+    const maxBars = cfg.bars;
+    const now = Date.now();
+
+    const fallbackPrice = Math.max(
+      0.00000001,
+      safeNum(coin?.priceUsd, 0) ||
+        safeNum(coin?.lastPriceUsd, 0) ||
+        safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
+        0.000001
+    );
+
+    const createdAt = safeNum(coin?.createdAt || coin?.created_at, now);
+    const startWindow = Math.max(createdAt, now - bucketMs * maxBars);
+    const startBucket = bucketStartMs(startWindow, bucketMs);
+    const currentBucket = bucketStartMs(now, bucketMs);
+
+    const trades = (Array.isArray(activity) ? activity : [])
+      .map((t) => ({
+        ...t,
+        ts: safeNum(t?.ts || t?.t, 0),
+      }))
+      .filter((t) => t.ts > 0)
+      .sort((a, b) => a.ts - b.ts);
+
+    const candles = [];
+    let cursor = startBucket;
+    let lastClose = fallbackPrice;
+
+    const pushFlat = (timeSec, closeVal) => {
+      const tiny = Math.max(closeVal * 0.0008, 0.00000001);
+      candles.push({
+        time: timeSec,
+        open: closeVal,
+        high: closeVal + tiny,
+        low: Math.max(0.00000001, closeVal - tiny),
+        close: closeVal,
+      });
+    };
+
+   if (!trades.length) {
+  return [
+    {
+      time: Math.floor(currentBucket / 1000),
+      open: fallbackPrice,
+      high: fallbackPrice * 1.0003,
+      low: fallbackPrice * 0.9997,
+      close: fallbackPrice,
+    },
+  ];
+}
+
+    for (const trade of trades) {
+      const tradeBucket = bucketStartMs(trade.ts, bucketMs);
+      const tradePrice = getTradePriceUsd(trade, coin, lastClose);
+
+      while (cursor < tradeBucket) {
+        pushFlat(Math.floor(cursor / 1000), lastClose);
+        cursor += bucketMs;
+      }
+
+      const existing = candles[candles.length - 1];
+      const bucketSec = Math.floor(tradeBucket / 1000);
+
+      if (existing && existing.time === bucketSec) {
+        existing.high = Math.max(existing.high, tradePrice);
+        existing.low = Math.min(existing.low, tradePrice);
+        existing.close = tradePrice;
+      } else {
+        candles.push({
+          time: bucketSec,
+          open: lastClose,
+          high: Math.max(lastClose, tradePrice),
+          low: Math.min(lastClose, tradePrice),
+          close: tradePrice,
+        });
+      }
+
+      lastClose = tradePrice;
+      cursor = tradeBucket + bucketMs;
+    }
+
+    while (cursor <= currentBucket) {
+      pushFlat(Math.floor(cursor / 1000), lastClose);
+      cursor += bucketMs;
+    }
+
+    return candles.slice(-maxBars).map((c) => {
+      const bodyTop = Math.max(c.open, c.close);
+      const bodyBottom = Math.min(c.open, c.close);
+      const body = Math.max(bodyTop - bodyBottom, 0);
+      const minBody = Math.max(c.close * 0.00008, 0.000000003);
+    const wickPad = Math.max(c.close * 0.00002, minBody * 0.15, 0.000000001);
+
+      let open = c.open;
+      let close = c.close;
+
+      if (body < minBody) {
+        if (close >= open) {
+          close = open + minBody;
+        } else {
+          open = close + minBody;
+        }
+      }
+
+      const hiBase = Math.max(open, close, c.high);
+      const loBase = Math.min(open, close, c.low);
+
+      return {
+        time: c.time,
+        open,
+        high: hiBase + wickPad,
+        low: Math.max(0.00000001, loBase - wickPad),
+        close,
+      };
+    });
+  }, [activity, coin, chartRange]);
+
+  const pct = useMemo(() => {
+    if (!candleData.length) return 0;
+    const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.00000001));
+    const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
+    const rawPct = ((last - first) / first) * 100;
+    return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
+  }, [candleData]);
+
+  const livePrice = safeNum(
+    candleData[candleData.length - 1]?.close,
+    Math.max(0.00000001, safeNum(coin?.priceUsd, 0.000001))
+  );
+
+  const up = pct >= 0;
+  const createdAgo = timeAgo(coin?.createdAt || coin?.created_at);
+  const isLight = chartLook === "light";
 
   useEffect(() => {
     const host = chartRef.current;
@@ -2575,37 +2661,38 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       height,
       layout: {
         background: { type: ColorType.Solid, color: themeCfg.chartBg },
-        textColor: chartLook === "light" ? "#64748B" : "#94A3B8",
+        textColor: themeCfg.faintText,
         attributionLogo: false,
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
       },
       grid: {
-        vertLines: { color: "transparent" },
+        vertLines: { color: themeCfg.grid, visible: true },
         horzLines: { color: themeCfg.grid, visible: true },
       },
       rightPriceScale: {
-        borderColor: themeCfg.scale,
-        scaleMargins: { top: 0.15, bottom: 0.12 },
+        borderColor: themeCfg.axis,
+        scaleMargins: { top: 0.10, bottom: 0.08 },
         entireTextOnly: true,
       },
       leftPriceScale: { visible: false },
       timeScale: {
-        borderColor: themeCfg.scale,
+        borderColor: themeCfg.axis,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 4,
-        barSpacing: Math.max(9, Math.min(18, width / Math.max(10, candleData.length))),
+        rightOffset: 2,
+        barSpacing: Math.max(2.2, Math.min(candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2, width / Math.max(100, candleData.length))),
+        minBarSpacing: 6,
         fixLeftEdge: true,
         fixRightEdge: true,
       },
       crosshair: {
         mode: 0,
         vertLine: {
-          color: chartLook === "light" ? "rgba(15,23,42,.14)" : "rgba(255,255,255,.14)",
-          labelBackgroundColor: chartLook === "light" ? "#E2E8F0" : "#1E293B",
+          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
+          labelBackgroundColor: isLight ? "#E2E8F0" : "#1E293B",
         },
         horzLine: {
-          color: chartLook === "light" ? "rgba(15,23,42,.14)" : "rgba(255,255,255,.14)",
+          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
           labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
         },
       },
@@ -2640,12 +2727,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
     });
 
     series.setData(candleData);
-
     chart.timeScale().fitContent();
-    chart.priceScale("right").applyOptions({
-      autoScale: true,
-      scaleMargins: { top: 0.15, bottom: 0.12 },
-    });
 
     const handleResize = () => {
       if (!chartRef.current) return;
@@ -2669,17 +2751,17 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       else window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [candleData, chartLook, height, themeCfg, up, livePrice]);
+  }, [candleData, chartLook, height, themeCfg, up, livePrice, isLight]);
 
   return (
     <div
       style={{
         width: "100%",
-        borderRadius: 24,
+        borderRadius: 20,
         overflow: "hidden",
-        background: themeCfg.cardBg,
-        border: themeCfg.cardBorder,
-        padding: 10,
+        background: themeCfg.wrapBg,
+        border: isLight ? "1px solid rgba(15,23,42,.06)" : "1px solid rgba(255,255,255,.06)",
+        padding: 0,
       }}
     >
       <div
@@ -2688,17 +2770,43 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           alignItems: isMobile ? "flex-start" : "center",
           justifyContent: "space-between",
           gap: 12,
-          marginBottom: 12,
+          marginBottom: 10,
           flexWrap: isMobile ? "wrap" : "nowrap",
+          padding: "12px 14px 0 14px",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: themeCfg.sub }}>Live Price</div>
-          <div style={{ fontSize: 18, fontWeight: 1000, color: themeCfg.text }}>
-            {typeof fmtUsd === "function" ? fmtUsd(livePrice) : livePrice}
+        <div style={{ minWidth: 0, paddingTop: 2 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: isLight ? "#334155" : themeCfg.subText,
+              lineHeight: 1.2,
+            }}
+          >
+            Live Price
           </div>
-          <div style={{ fontSize: 11, color: themeCfg.sub, marginTop: 4 }}>
-            Created {createdAgo}
+
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 1000,
+              color: isLight ? "#020617" : themeCfg.topText,
+              lineHeight: 1.15,
+              marginTop: 4,
+            }}
+          >
+            {fmtUsd(livePrice)}
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: isLight ? "#475569" : themeCfg.subText,
+              marginTop: 6,
+              lineHeight: 1.2,
+            }}
+          >
+            Created {createdAgo} {activityLoading ? "• syncing..." : ""}
           </div>
         </div>
 
@@ -2707,100 +2815,75 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             display: "flex",
             alignItems: "center",
             justifyContent: isMobile ? "flex-start" : "flex-end",
-            gap: 6,
+            gap: 8,
             flexWrap: "wrap",
             marginLeft: "auto",
-            maxWidth: isMobile ? "100%" : "calc(100% - 180px)",
+            maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
           }}
         >
-          {[["dark", "Black"], ["light", "White"]].map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setChartLook(value)}
-              style={{
-                height: 28,
-                minWidth: 58,
-                padding: "0 10px",
-                borderRadius: 10,
-                border:
-                  chartLook === value
-                    ? "1px solid rgba(50,230,255,.42)"
-                    : themeCfg.pillBorder,
-                background:
-                  chartLook === value
-                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
-                    : themeCfg.pillBg,
-                color:
-                  chartLook === value
-                    ? "#03131A"
-                    : chartLook === "light"
-                    ? "#0F172A"
-                    : "rgba(255,255,255,.92)",
-                fontSize: 11,
-                fontWeight: 900,
-                letterSpacing: ".2px",
-                cursor: "pointer",
-                boxShadow:
-                  chartLook === value
-                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
-                    : "inset 0 1px 0 rgba(255,255,255,.04)",
-                flex: "0 0 auto",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          <button
+            onClick={() => setChartLook(chartLook === "dark" ? "light" : "dark")}
+            style={{
+              height: 30,
+              minWidth: 72,
+              padding: "0 14px",
+              borderRadius: 11,
+              border: "1px solid rgba(0,0,0,.08)",
+              background: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
+              color: "#03131A",
+              fontSize: 11,
+              fontWeight: 1000,
+              cursor: "pointer",
+            }}
+          >
+            {chartLook === "dark" ? "Light" : "Dark"}
+          </button>
 
-          {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setChartRange(value)}
-              style={{
-                height: 28,
-                minWidth: value === "1W" ? 52 : 40,
-                padding: "0 10px",
-                borderRadius: 10,
-                border:
-                  chartRange === value
-                    ? "1px solid rgba(50,230,255,.42)"
-                    : themeCfg.pillBorder,
-                background:
-                  chartRange === value
-                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
-                    : themeCfg.pillBg,
-                color:
-                  chartRange === value
-                    ? "#03131A"
-                    : chartLook === "light"
-                    ? "#0F172A"
-                    : "rgba(255,255,255,.92)",
-                fontSize: 11,
-                fontWeight: 900,
-                letterSpacing: ".2px",
-                cursor: "pointer",
-                boxShadow:
-                  chartRange === value
-                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
-                    : "inset 0 1px 0 rgba(255,255,255,.04)",
-                flex: "0 0 auto",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          {["5M", "15M", "1H", "4H", "1D", "1W"].map((value) => {
+            const active = chartRange === value;
+
+            return (
+              <button
+                key={value}
+                onClick={() => setChartRange(value)}
+                style={{
+                  height: 30,
+                  minWidth: value === "15M" ? 50 : value === "1W" ? 58 : 42,
+                  padding: "0 12px",
+                  borderRadius: 11,
+                  border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
+                  background: active ? themeCfg.activeBg : themeCfg.btnBg,
+                  color: active ? themeCfg.activeText : themeCfg.btnText,
+                  fontSize: 11,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                {value === "5M"
+                  ? "5m"
+                  : value === "15M"
+                  ? "15m"
+                  : value === "1H"
+                  ? "1h"
+                  : value === "4H"
+                  ? "4h"
+                  : value === "1D"
+                  ? "1D"
+                  : "Week"}
+              </button>
+            );
+          })}
 
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 900,
-              color: up ? "var(--good)" : "var(--danger)",
-              padding: "7px 10px",
+              fontSize: 11,
+              fontWeight: 1000,
+              color: up ? themeCfg.up : themeCfg.down,
+              padding: "8px 10px",
               borderRadius: 999,
-              border: themeCfg.pillBorder,
-              background: themeCfg.pillBg,
+              border: `1px solid ${isLight ? "rgba(15,23,42,.08)" : "rgba(255,255,255,.08)"}`,
+              background: up ? themeCfg.pctBg : "rgba(244,63,94,.08)",
               whiteSpace: "nowrap",
-              flex: "0 0 auto",
-              marginLeft: isMobile ? 0 : 4,
             }}
           >
             {up ? "+" : ""}
@@ -2809,7 +2892,16 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
         </div>
       </div>
 
-      <div ref={chartRef} style={{ width: "100%", height }} />
+      <div
+        ref={chartRef}
+        style={{
+          width: "100%",
+          height,
+          borderRadius: 20,
+          overflow: "hidden",
+          marginTop: 8,
+        }}
+      />
     </div>
   );
 }
@@ -3201,11 +3293,11 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
                 {selectedCoin.symbol}
               </div>
 
-              <div className="pillRow" style={{ marginTop: 12 }}>
+          
                 <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
                 <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
-                <Pill>Age {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
-              </div>
+                
+              
             </div>
 
             <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
@@ -3220,6 +3312,8 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
               >
                 Copy Coin Address
               </MiniBtn>
+
+
             </div>
           </div>
 
@@ -3229,10 +3323,10 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             </div>
           ) : null}
 
-          <div className="hr" />
+          
           <PriceChart
   coin={selectedCoin}
-  height={isMobile ? 240 : 320}
+  height={isMobile ? 300 : 420}
   chartRange={chartRange}
   setChartRange={setChartRange}
 />
