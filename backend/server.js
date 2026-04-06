@@ -180,8 +180,11 @@ function mapDbCoinToApi(row = {}) {
       ? chartInput.slice(-MAX_CHART_POINTS)
       : [seedPrice, seedPrice, seedPrice, seedPrice, seedPrice];
 
+      const safeId = String(row.id || row.coin_id || "").trim();
+if (!safeId) return null;
+
   return {
-    id: String(row.id || ""),
+    id: safeId,
     name: String(row.name || "").trim(),
     symbol: String(row.symbol || "").trim().toUpperCase(),
     story: String(row.story || "").trim(),
@@ -872,7 +875,9 @@ app.get("/api/coin/list", async (req, res) => {
 
     if (error) throw error;
 
-    const coins = Array.isArray(data) ? data.map(mapDbCoinToApi) : [];
+    const coins = Array.isArray(data)
+  ? data.map(mapDbCoinToApi).filter((c) => c && c.id)
+  : [];
 
     const hotCutoff = nowMS() - 15 * 60 * 1000;
     const { data: hotRows, error: hotError } = await supabase
@@ -890,6 +895,7 @@ app.get("/api/coin/list", async (req, res) => {
       count: count || 0,
       page,
       pageSize,
+      hasMore: from + coins.length < (count || 0),
       hot15m: Array.isArray(hotRows) ? hotRows.map(mapDbCoinToApi) : [],
     });
   } catch (e) {
@@ -903,14 +909,37 @@ app.get("/api/coin/:coinId/activity", async (req, res) => {
     await requireSupabase();
 
     const coinId = String(req.params.coinId || "").trim();
-    const limit = Math.max(1, Math.min(100, safeNum(req.query?.limit, 50)));
+    const limit = Math.max(1, Math.min(500, safeNum(req.query?.limit, 300)));
 
     if (!coinId) {
       return res.json({ ok: false, error: "coinId required" });
     }
 
-    const activity = await getRecentCoinActivity(coinId, limit);
-    return res.json({ ok: true, activity });
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("coin_id", coinId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    const activity = Array.isArray(data)
+      ? data.map((t) => ({
+          id: t.id,
+          coinId: t.coin_id,
+          wallet: t.wallet,
+          type: String(t.type || "TX").toUpperCase(),
+          side: String(t.type || "TX").toUpperCase(),
+          sol: safeNum(t.sol, 0),
+          tokens: safeNum(t.tokens, 0),
+          fee: safeNum(t.fee, 0),
+          ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+          t: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+        }))
+      : [];
+
+    return res.json({ ok: true, activity, items: activity });
   } catch (e) {
     console.log("coin/activity error:", e?.message || e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -1308,45 +1337,7 @@ app.post("/api/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF")
 
 
 
-app.get("/api/coin/:coinId/activity", async (req, res) => {
-  try {
-    await requireSupabase();
 
-    const coinId = String(req.params.coinId || "").trim();
-    if (!coinId) {
-      return res.json({ ok: false, error: "coinId required" });
-    }
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("coin_id", coinId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) throw error;
-
-    const items = Array.isArray(data)
-      ? data.map((t) => ({
-          id: t.id,
-          coinId: t.coin_id,
-          wallet: t.wallet,
-          type: String(t.type || "TX").toUpperCase(),
-          side: String(t.type || "TX").toUpperCase(),
-          sol: safeNum(t.sol, 0),
-          tokens: safeNum(t.tokens, 0),
-          fee: safeNum(t.fee, 0),
-          ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-          t: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-        }))
-      : [];
-
-    return res.json({ ok: true, items });
-  } catch (e) {
-    console.log("coin/activity error:", e?.message || e);
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
 
 
 

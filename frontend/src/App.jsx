@@ -2,9 +2,9 @@ import IntroSplash from "./IntroSplash";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
-import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+import { createChart, ColorType, CandlestickSeries, CrosshairMode } from "lightweight-charts";
 
-const INTRO_MS = 2600;
+const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
 
@@ -1043,7 +1043,8 @@ function pctChangeFromChart(chart, lookback = 12) {
 
 function normalizeCoin(c = {}) {
   const totalSupply = Math.max(1, safeNum(c.totalSupply, 1_000_000_000));
-  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, 0));
+  const curveSupply = Math.max(1, safeNum(c.curveSupply, c.curve_supply || totalSupply));
+  const tokenReserve = Math.max(0, safeNum(c.tokenReserve, c.reserve_token || 0));
   const circulating = Math.max(0, totalSupply - tokenReserve);
   const mc =
     safeNum(c.mc, 0) ||
@@ -1063,13 +1064,19 @@ function normalizeCoin(c = {}) {
     symbol: String(c.symbol || "").toUpperCase(),
     story: String(c.story || ""),
     logo: String(c.logo || ""),
+    metadataUri: String(c.metadataUri || c.metadata_uri || ""),
     creatorWallet: String(c.creatorWallet || c.creator_wallet || c.owner || ""),
     totalSupply,
+    curveSupply,
+    curveSold: Math.max(0, safeNum(c.curveSold, c.curve_sold || 0)),
     tokenReserve,
     circulating,
     volumeSol: Math.max(0, safeNum(c.volumeSol, c.volume_sol || 0)),
     priceSol: Math.max(0, safeNum(c.priceSol, c.last_price || 0)),
-    priceUsd: Math.max(0, safeNum(c.priceUsd, 0)),
+    priceUsd: Math.max(0, safeNum(c.priceUsd, c.price || 0)),
+    lastPriceUsd: Math.max(0, safeNum(c.lastPriceUsd, c.last_price_usd || c.priceUsd || c.price || 0)),
+    vTokens: Math.max(0, safeNum(c.vTokens, c.v_tokens || 0)),
+    vSol: Math.max(0, safeNum(c.vSol, c.v_sol || 0)),
     mc,
     ath: Math.max(mc, safeNum(c.ath, c.ath_market_cap || mc)),
     chart,
@@ -1093,9 +1100,10 @@ function getCoinPriceUsd(c) {
 }
 
 function coinSubtitle(c) {
-  const pct = pctChangeFromChart(c?.chart || []);
-  const sign = pct > 0 ? "+" : "";
-  return `MC ${fmtUsd(c?.mc || 0)} • ${sign}${pct.toFixed(2)}%`;
+  const move24h = getCoin24hMovePct(c);
+  const sign = move24h > 0 ? "+" : "";
+  const age = getCoinAgeLabel(c);
+  return `Age ${age} • 24h ${sign}${move24h.toFixed(2)}%`;
 }
 
 async function copyText(text) {
@@ -1119,18 +1127,23 @@ async function fileToDataUrl(file) {
 function timeAgo(ts) {
   const n = Number(ts || 0);
   if (!Number.isFinite(n) || n <= 0) return "just now";
+
   const diff = Math.max(0, Date.now() - n);
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
+
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
+
   const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
+  if (days < 30) return `${days}d ago`;
+
   const months = Math.floor(days / 30);
-  return `${months}mo ago`;
+  if (months < 12) return `${months}mo ago`;
+
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
 }
 
 function rangePointsFor(chartRange) {
@@ -1144,6 +1157,146 @@ function rangePointsFor(chartRange) {
     case "1M": return 180;
     default: return 96;
   }
+}
+
+const CHART_TIMEFRAMES = {
+  "5M": { ms: 5 * 60 * 1000, bars: 72 },
+  "15M": { ms: 15 * 60 * 1000, bars: 72 },
+  "1H": { ms: 60 * 60 * 1000, bars: 72 },
+  "4H": { ms: 4 * 60 * 60 * 1000, bars: 72 },
+  "1D": { ms: 24 * 60 * 60 * 1000, bars: 60 },
+  "1W": { ms: 7 * 24 * 60 * 60 * 1000, bars: 40 },
+  "1M": { ms: 30 * 24 * 60 * 60 * 1000, bars: 24 },
+};
+
+function getTimeframeCfg(range) {
+  return CHART_TIMEFRAMES[String(range || "1D").toUpperCase()] || CHART_TIMEFRAMES["1D"];
+}
+
+function bucketStartMs(ts, bucketMs) {
+  const n = safeNum(ts, Date.now());
+  return Math.floor(n / bucketMs) * bucketMs;
+}
+
+function getApproxSolUsd(coin) {
+  const priceUsd = safeNum(coin?.priceUsd, 0);
+  const priceSol = safeNum(coin?.priceSol, 0);
+  if (priceUsd > 0 && priceSol > 0) return priceUsd / Math.max(priceSol, 1e-12);
+  return 80;
+}
+
+function getTradePriceUsd(trade, coin, fallback) {
+  const direct = safeNum(trade?.priceUsd, 0);
+  if (direct > 0) return direct;
+  const sol = Math.max(0, safeNum(trade?.sol, 0));
+  const tokens = Math.max(0, safeNum(trade?.tokens, 0));
+  const solUsd = getApproxSolUsd(coin);
+  if (sol > 0 && tokens > 0) {
+    const pxSol = sol / Math.max(tokens, 1e-12);
+    const pxUsd = pxSol * solUsd;
+    if (Number.isFinite(pxUsd) && pxUsd > 0) return pxUsd;
+  }
+  return Math.max(0.00000001, safeNum(fallback, safeNum(coin?.priceUsd, 0.000001)));
+}
+
+function buildCandlesFromActivity(activity, coin, chartRange) {
+  const cfg = getTimeframeCfg(chartRange);
+  const bucketMs = cfg.ms;
+  const maxBars = cfg.bars;
+  const now = Date.now();
+  const fallbackPrice = Math.max(
+    0.00000001,
+    safeNum(coin?.priceUsd, 0) ||
+      safeNum(coin?.lastPriceUsd, 0) ||
+      safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
+      0.000001
+  );
+  const createdAt = safeNum(coin?.createdAt || coin?.created_at, now);
+  const startWindow = Math.max(createdAt, now - bucketMs * maxBars);
+  const startBucket = bucketStartMs(startWindow, bucketMs);
+  const currentBucket = bucketStartMs(now, bucketMs);
+
+  const trades = (Array.isArray(activity) ? activity : [])
+    .map((t) => ({ ...t, ts: safeNum(t?.ts || t?.t, 0) }))
+    .filter((t) => t.ts > 0)
+    .sort((a, b) => a.ts - b.ts);
+
+  const candles = [];
+  let cursor = startBucket;
+  let lastClose = fallbackPrice;
+
+  const pushFlat = (timeSec, closeVal) => {
+    candles.push({ time: timeSec, open: closeVal, high: closeVal, low: closeVal, close: closeVal });
+  };
+
+  if (!trades.length) {
+    const raw = Array.isArray(coin?.chart)
+      ? coin.chart.map((x) => Math.max(0.00000001, safeNum(x, 0))).filter(Boolean)
+      : [];
+    if (raw.length) {
+      const sliced = raw.slice(-maxBars);
+      const seedStart = currentBucket - bucketMs * Math.max(0, sliced.length - 1);
+      return sliced.map((price, idx) => {
+        const prev = idx > 0 ? sliced[idx - 1] : price;
+        return {
+          time: Math.floor((seedStart + idx * bucketMs) / 1000),
+          open: prev,
+          high: Math.max(prev, price),
+          low: Math.min(prev, price),
+          close: price,
+        };
+      });
+    }
+    pushFlat(Math.floor(currentBucket / 1000), fallbackPrice);
+    return candles;
+  }
+
+  for (const trade of trades) {
+    const tradeBucket = bucketStartMs(trade.ts, bucketMs);
+    const tradePrice = getTradePriceUsd(trade, coin, lastClose);
+    while (cursor < tradeBucket) {
+      pushFlat(Math.floor(cursor / 1000), lastClose);
+      cursor += bucketMs;
+    }
+    const key = Math.floor(tradeBucket / 1000);
+    const existing = candles[candles.length - 1];
+    if (existing && existing.time === key) {
+      existing.high = Math.max(existing.high, tradePrice);
+      existing.low = Math.min(existing.low, tradePrice);
+      existing.close = tradePrice;
+    } else {
+      candles.push({
+        time: key,
+        open: lastClose,
+        high: Math.max(lastClose, tradePrice),
+        low: Math.min(lastClose, tradePrice),
+        close: tradePrice,
+      });
+    }
+    lastClose = tradePrice;
+    cursor = tradeBucket + bucketMs;
+  }
+
+  while (cursor <= currentBucket) {
+    pushFlat(Math.floor(cursor / 1000), lastClose);
+    cursor += bucketMs;
+  }
+
+  return candles.slice(-maxBars);
+}
+
+function getCoin24hMovePct(c) {
+  const chart = Array.isArray(c?.chart) ? c.chart.map((x) => safeNum(x, 0)).filter((x) => x > 0) : [];
+  if (chart.length < 2) return 0;
+  const lookback = Math.min(24, chart.length - 1);
+  const start = Math.max(0.00000001, safeNum(chart[chart.length - 1 - lookback], chart[0]));
+  const end = Math.max(0.00000001, safeNum(chart[chart.length - 1], start));
+  const pct = ((end - start) / start) * 100;
+  return Number.isFinite(pct) ? Math.max(-9999, Math.min(9999, pct)) : 0;
+}
+
+function getCoinAgeLabel(c) {
+  return timeAgo(c?.createdAt || c?.created_at);
 }
 
 function getReferralLink(addr) {
@@ -1318,19 +1471,50 @@ function ThemeOption({ theme, current, setTheme, label }) {
 }
 
 function CoinMiniCard({ c, subtitle, onOpen }) {
+  const move24h = getCoin24hMovePct(c);
+  const isUp = move24h >= 0;
+  const age = getCoinAgeLabel(c);
+
   return (
     <button className="coinBtn" onClick={onOpen}>
       <div className="coinRow">
         <CoinLogo c={c} size={46} radius={16} />
 
         <div className="coinText">
-          <div className="coinName">{c?.name || c?.symbol || "—"}</div>
-          <div className="coinMeta">{subtitle || coinSubtitle(c)}</div>
+          <div className="coinName" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>{c?.name || c?.symbol || "—"}</span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 1000,
+                padding: "4px 8px",
+                borderRadius: 999,
+                color: isUp ? "#07140F" : "#19080B",
+                background: isUp
+                  ? "linear-gradient(135deg, rgba(53,224,182,.98), rgba(120,255,210,.98))"
+                  : "linear-gradient(135deg, rgba(255,95,109,.98), rgba(255,140,120,.98))",
+                boxShadow: isUp ? "0 6px 18px rgba(53,224,182,.25)" : "0 6px 18px rgba(255,95,109,.25)",
+              }}
+            >
+              {isUp ? "PUMP" : "DUMP"}
+            </span>
+          </div>
+          <div className="coinMeta" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", whiteSpace: "normal" }}>
+            <span>{c?.symbol || "—"}</span>
+            <span>•</span>
+            <span>Age {age}</span>
+            <span>•</span>
+            <span style={{ color: isUp ? "#35E0B6" : "#FF5F6D", fontWeight: 1000 }}>
+              24h {move24h > 0 ? "+" : ""}{move24h.toFixed(2)}%
+            </span>
+          </div>
         </div>
 
         <div className="rightNum">
-          <div className="rightNumMain">{fmtUsd(c?.mc || 0)}</div>
-          <div className="rightNumSub">MC</div>
+          <div className="rightNumMain" style={{ color: "#FFFFFF", fontWeight: 1000 }}>{fmtUsd(c?.mc || 0)}</div>
+          <div className="rightNumSub" style={{ color: isUp ? "#35E0B6" : "#FF5F6D", fontWeight: 1000 }}>
+            {move24h > 0 ? "+" : ""}{move24h.toFixed(2)}%
+          </div>
         </div>
       </div>
     </button>
@@ -1416,7 +1600,13 @@ export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
 
- const [showIntro, setShowIntro] = useState(false);
+ const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return sessionStorage.getItem("introSeen") !== "1";
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
     if (!showIntro) return;
@@ -1497,8 +1687,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [chartRange, setChartRange] = useState("1D");
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
-const [coinActivity, setCoinActivity] = useState([]);
-const [loadingCoinActivity, setLoadingCoinActivity] = useState(false);
+
   const coinsLoadMoreRef = useRef(null);
   const didBootRef = useRef(false);
 
@@ -1586,17 +1775,56 @@ const [loadingCoinActivity, setLoadingCoinActivity] = useState(false);
     try {
       setLoadingCoins(true);
 
-      const json = await api(`/api/coin/list?page=${page}`);
-      const incoming = Array.isArray(json?.coins) ? json.coins.map(normalizeCoin) : [];
-      const incomingHot = Array.isArray(json?.hot15m) ? json.hot15m.map(normalizeCoin) : [];
+      let json = null;
+      try {
+        json = await api(`/api/coin/list?page=${page}`);
+      } catch {
+        const res = await fetch(`${API_BASE}/api/coin/list?page=${page}`);
+        json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || `Request failed (${res.status})`);
+        }
+      }
+
+      const rawCoins =
+        Array.isArray(json?.coins) ? json.coins :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.data) ? json.data :
+        Array.isArray(json) ? json :
+        [];
+
+      const rawHot =
+        Array.isArray(json?.hot15m) ? json.hot15m :
+        Array.isArray(json?.hot) ? json.hot :
+        [];
+
+      const incoming = (rawCoins || [])
+        .map((c) => {
+          try {
+            return normalizeCoin(c);
+          } catch {
+            return null;
+          }
+        })
+        .filter((c) => c && c.id);
+
+      const incomingHot = (rawHot || [])
+        .map((c) => {
+          try {
+            return normalizeCoin(c);
+          } catch {
+            return null;
+          }
+        })
+        .filter((c) => c && c.id);
 
       setHot15m(incomingHot);
 
       setCoins((prev) => {
-        if (!append) return incoming;
-
+        const base = append ? [...(prev || []), ...incoming] : incoming;
         const map = new Map();
-        [...(prev || []), ...incoming].forEach((c) => {
+
+        base.forEach((c) => {
           if (c?.id) map.set(String(c.id), c);
         });
 
@@ -1929,71 +2157,39 @@ async function handleTrade() {
     setTrading(true);
 
     const current = { ...selectedCoin };
+    const oldMc = Math.max(1, safeNum(current.mc, 0) || 1);
+    const oldVolume = Math.max(0, safeNum(current.volumeSol, 0));
+    const oldChart = Array.isArray(current.chart) && current.chart.length
+      ? current.chart.map((x) => Math.max(0, safeNum(x, 0)))
+      : [oldMc];
 
+    // 🔥 front-end instant chart move
+    // buy = chart up
+    // sell = chart down
+    const movePct =
+      tradeMode === "BUY"
+        ? Math.max(0.55, Math.min(12, amount * 1.65))
+        : Math.max(0.45, Math.min(10, amount * 1.35));
 
+    const newMc =
+      tradeMode === "BUY"
+        ? oldMc * (1 + movePct / 100)
+        : Math.max(1, oldMc * (1 - movePct / 100));
 
+    const midMc =
+      tradeMode === "BUY"
+        ? oldMc * (1 + movePct / 170)
+        : Math.max(1, oldMc * (1 - movePct / 185));
+    const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
 
-
-const oldMc = Math.max(1, safeNum(current.mc, 0) || 1);
-const oldVolume = Math.max(0, safeNum(current.volumeSol, 0));
-
-const oldPrice =
-  Math.max(
-    0.0000000001,
-    safeNum(current.priceUsd, 0) ||
-      safeNum(current.lastPriceUsd, 0) ||
-      safeNum(current.chart?.[current.chart.length - 1], 0) ||
-      0.000001
-  );
-
-const oldChart = Array.isArray(current.chart) && current.chart.length
-  ? current.chart.map((x) => Math.max(0, safeNum(x, 0)))
-  : [oldPrice];
-
-const movePct =
-  tradeMode === "BUY"
-    ? Math.max(0.55, Math.min(12, amount * 1.65))
-    : Math.max(0.45, Math.min(10, amount * 1.35));
-
-const newPrice =
-  tradeMode === "BUY"
-    ? oldPrice * (1 + movePct / 100)
-    : Math.max(0.0000000001, oldPrice * (1 - movePct / 100));
-
-const midPrice =
-  tradeMode === "BUY"
-    ? oldPrice * (1 + movePct / 170)
-    : Math.max(0.0000000001, oldPrice * (1 - movePct / 185));
-
-const newMc =
-  tradeMode === "BUY"
-    ? oldMc * (1 + movePct / 100)
-    : Math.max(1, oldMc * (1 - movePct / 100));
-
-const nextChart = [...oldChart.slice(-27), oldPrice, midPrice, newPrice];
-
-const optimisticCoin = {
-  ...current,
-  mc: newMc,
-  priceUsd: newPrice,
-  lastPriceUsd: newPrice,
-  ath: Math.max(safeNum(current.ath, 0), newMc),
-  volumeSol: oldVolume + amount,
-  chart: nextChart,
-  lastTradeAt: Date.now(),
-};
-
-
-
-
-
-
-
-
-
-
-
-
+    const optimisticCoin = {
+      ...current,
+      mc: newMc,
+      ath: Math.max(safeNum(current.ath, 0), newMc),
+      volumeSol: tradeMode === "BUY" ? oldVolume + amount : oldVolume + amount,
+      chart: nextChart,
+      lastTradeAt: Date.now(),
+    };
 
     setCoins((prev) =>
       (prev || []).map((c) =>
@@ -2013,10 +2209,6 @@ const optimisticCoin = {
       method: "POST",
       body: JSON.stringify(payload),
     });
-
-    if (!json?.ok || !json?.coin?.id) {
-  throw new Error(json?.error || (tradeMode === "BUY" ? "Buy failed" : "Sell failed"));
-}
 
     const updated = normalizeCoin(json?.coin || {});
 
@@ -2141,49 +2333,6 @@ const optimisticCoin = {
       .slice(0, 20);
   }, [profileTxs, selectedCoin]);
 
-
-useEffect(() => {
-  let cancelled = false;
-
-  async function loadCoinActivity() {
-    if (!selectedCoin?.id) {
-      setCoinActivity([]);
-      return;
-    }
-
-    try {
-      setLoadingCoinActivity(true);
-
-      const json = await api(`/api/coin/${selectedCoin.id}/activity?limit=120`);
-      const items = Array.isArray(json?.activity)
-        ? json.activity
-        : Array.isArray(json?.items)
-        ? json.items
-        : [];
-
-      if (!cancelled) {
-        setCoinActivity(items);
-      }
-    } catch (e) {
-      if (!cancelled) {
-        setCoinActivity([]);
-      }
-    } finally {
-      if (!cancelled) {
-        setLoadingCoinActivity(false);
-      }
-    }
-  }
-
-  loadCoinActivity();
-
-  return () => {
-    cancelled = true;
-  };
-}, [selectedCoin?.id]);
-
-
-
   const currentCoinPriceUsd = getCoinPriceUsd(selectedCoin || {});
   const currentCoinPriceSol = Math.max(0, safeNum(selectedCoin?.priceSol, 0));
 
@@ -2264,7 +2413,7 @@ const tradePreview = useMemo(() => {
 
 
 
-function PriceChart({ coin, height = 280, chartRange, setChartRange, activity = [] }) {
+function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const chartRef = useRef(null);
 
   const [chartLook, setChartLook] = useState(() => {
@@ -2278,42 +2427,34 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, activity = 
   const themeCfg = useMemo(() => {
     return chartLook === "light"
       ? {
-          cardBg: "linear-gradient(180deg, rgba(255,255,255,.985), rgba(250,252,255,1))",
-          cardBorder: "1px solid rgba(15,23,42,.08)",
+          cardBg: "linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,250,252,.98))",
+          cardBorder: "1px solid rgba(15,23,42,.10)",
           text: "#0F172A",
           sub: "rgba(15,23,42,.58)",
           chartBg: "#FFFFFF",
-          scale: "rgba(15,23,42,.08)",
-          up: "#16A34A",
+          grid: "rgba(15,23,42,.06)",
+          scale: "rgba(15,23,42,.10)",
+          up: "#10B981",
           down: "#EF4444",
-          wickUp: "#16A34A",
-          wickDown: "#EF4444",
-          pillBg: "rgba(15,23,42,.035)",
+          wickUp: "#0F9F72",
+          wickDown: "#DC2626",
+          pillBg: "rgba(15,23,42,.04)",
           pillBorder: "1px solid rgba(15,23,42,.08)",
-          activeBtnBg:
-            "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
-          activeBtnText: "#03131A",
-          inactiveBtnText: "#0F172A",
-          line: "rgba(15,23,42,.10)",
         }
       : {
           cardBg: "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))",
           cardBorder: "1px solid rgba(255,255,255,.06)",
           text: "var(--text)",
           sub: "var(--muted2)",
-          chartBg: "#071019",
-          scale: "rgba(255,255,255,.06)",
+          chartBg: "#0B1118",
+          grid: "rgba(255,255,255,.05)",
+          scale: "rgba(255,255,255,.08)",
           up: "#35E0B6",
           down: "#FF5F6D",
           wickUp: "#35E0B6",
           wickDown: "#FF5F6D",
           pillBg: "rgba(255,255,255,.03)",
           pillBorder: "1px solid rgba(255,255,255,.07)",
-          activeBtnBg:
-            "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))",
-          activeBtnText: "#03131A",
-          inactiveBtnText: "rgba(255,255,255,.92)",
-          line: "rgba(255,255,255,.05)",
         };
   }, [chartLook]);
 
@@ -2357,7 +2498,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, activity = 
 
       const avg = chunk.reduce((a, b) => a + safeNum(b, 0), 0) / chunk.length;
       const prev = grouped.length ? grouped[grouped.length - 1].value : avg;
-      const smooth = grouped.length ? prev * 0.32 + avg * 0.68 : avg;
+      const smooth = grouped.length ? prev * 0.35 + avg * 0.65 : avg;
 
       grouped.push({
         time: baseTs + Math.floor((i / bucket) * rangeCfg.stepSec),
@@ -2370,109 +2511,43 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, activity = 
       : [{ time: Math.floor(Date.now() / 1000), value: 0.000001 }];
   }, [visible, rangeCfg, coin?.createdAt, coin?.created_at]);
 
-
-
-
-
-
-const candleData = useMemo(() => {
-  const list = Array.isArray(activity) ? activity : [];
-  const rangeKey = String(chartRange || "1D").toUpperCase();
-
-  const bucketSec =
-    rangeKey === "5M" ? 5 * 60 :
-    rangeKey === "15M" ? 15 * 60 :
-    rangeKey === "1H" ? 60 * 60 :
-    rangeKey === "4H" ? 4 * 60 * 60 :
-    rangeKey === "1W" ? 24 * 60 * 60 :
-    24 * 60 * 60;
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  const fallbackPrice = Math.max(
-    0.0000000001,
-    safeNum(coin?.priceUsd, 0) ||
-      safeNum(coin?.lastPriceUsd, 0) ||
-      safeNum(coin?.chart?.[coin?.chart?.length - 1], 0) ||
-      0.000001
-  );
-
-  if (!list.length) {
-    return [
-      {
-        time: nowSec,
-        open: fallbackPrice,
-        high: fallbackPrice,
-        low: fallbackPrice,
-        close: fallbackPrice,
-      },
-    ];
-  }
-
-  const sorted = [...list]
-    .map((x) => ({
-      ts: Math.floor((safeNum(x?.ts, 0) || safeNum(x?.t, 0) || Date.now()) / 1000),
-      sol: Math.max(0, safeNum(x?.sol, 0)),
-      tokens: Math.max(0, safeNum(x?.tokens, 0)),
-    }))
-    .filter((x) => x.ts > 0)
-    .sort((a, b) => a.ts - b.ts);
-
-  const buckets = new Map();
-
-  for (const tx of sorted) {
-    const tradePrice =
-      tx.tokens > 0 ? Math.max(0.0000000001, (tx.sol / tx.tokens) * 80) : fallbackPrice;
-
-    const bucketTime = Math.floor(tx.ts / bucketSec) * bucketSec;
-    const prev = buckets.get(bucketTime);
-
-    if (!prev) {
-      buckets.set(bucketTime, {
-        time: bucketTime,
-        open: tradePrice,
-        high: tradePrice,
-        low: tradePrice,
-        close: tradePrice,
-      });
-    } else {
-      prev.high = Math.max(prev.high, tradePrice);
-      prev.low = Math.min(prev.low, tradePrice);
-      prev.close = tradePrice;
+  const candleData = useMemo(() => {
+    if (!lineData.length) {
+      return [{
+        time: Math.floor(Date.now() / 1000),
+        open: 0.000001,
+        high: 0.0000011,
+        low: 0.00000095,
+        close: 0.00000102,
+      }];
     }
-  }
 
-  const candles = Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+    return lineData.map((point, idx) => {
+      const prev = idx > 0 ? safeNum(lineData[idx - 1]?.value, point.value) : safeNum(point.value, 0);
+      const curr = Math.max(0.0000000001, safeNum(point.value, 0));
+      const open = Math.max(0.0000000001, prev);
+      const close = curr;
+      const bodyHigh = Math.max(open, close);
+      const bodyLow = Math.min(open, close);
+      const delta = Math.max(Math.abs(close - open), curr * 0.012, 0.0000000001);
 
-  return candles.length
-    ? candles
-    : [
-        {
-          time: nowSec,
-          open: fallbackPrice,
-          high: fallbackPrice,
-          low: fallbackPrice,
-          close: fallbackPrice,
-        },
-      ];
-}, [activity, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.chart]);
+      return {
+        time: point.time,
+        open,
+        high: bodyHigh + delta * 0.42,
+        low: Math.max(0.0000000001, bodyLow - delta * 0.42),
+        close,
+      };
+    });
+  }, [lineData]);
 
-
-
-
-
- const pct = useMemo(() => {
-  if (!candleData.length) return 0;
-
-  const first = Math.max(0, safeNum(candleData[0]?.open, 0));
-  const last = Math.max(0, safeNum(candleData[candleData.length - 1]?.close, 0));
-
-  if (first <= 0 || last <= 0) return 0;
-
-  const rawPct = ((last - first) / first) * 100;
-  return Math.max(-9999, Math.min(9999, rawPct));
-}, [candleData]);
-
- 
+  const pct = useMemo(() => {
+    const first = Math.max(0, safeNum(lineData[0]?.value, 0));
+    const last = Math.max(0, safeNum(lineData[lineData.length - 1]?.value, 0));
+    if (first <= 0 || last <= 0) return 0;
+    const rawPct = ((last - first) / first) * 100;
+    return Math.max(-9999, Math.min(9999, rawPct));
+  }, [lineData]);
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,
@@ -2505,45 +2580,32 @@ const candleData = useMemo(() => {
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
       },
       grid: {
-        vertLines: { visible: false, color: "transparent" },
-        horzLines: { visible: false, color: "transparent" },
+        vertLines: { color: "transparent" },
+        horzLines: { color: themeCfg.grid, visible: true },
       },
       rightPriceScale: {
-        borderVisible: false,
-        borderColor: "transparent",
-        scaleMargins: { top: 0.14, bottom: 0.12 },
+        borderColor: themeCfg.scale,
+        scaleMargins: { top: 0.15, bottom: 0.12 },
         entireTextOnly: true,
       },
-      leftPriceScale: {
-        visible: false,
-        borderVisible: false,
-      },
+      leftPriceScale: { visible: false },
       timeScale: {
-        borderVisible: false,
-        borderColor: "transparent",
+        borderColor: themeCfg.scale,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 10,
-        barSpacing: Math.max(4, Math.min(7, width / Math.max(36, candleData.length * 3.2))),
-        fixLeftEdge: false,
-        fixRightEdge: false,
-        ticksVisible: false,
-        minBarSpacing: 3.5,
+        rightOffset: 4,
+        barSpacing: Math.max(9, Math.min(18, width / Math.max(10, candleData.length))),
+        fixLeftEdge: true,
+        fixRightEdge: true,
       },
       crosshair: {
         mode: 0,
         vertLine: {
-          visible: true,
-          width: 1,
-          color: themeCfg.line,
-          style: 2,
-          labelBackgroundColor: chartLook === "light" ? "#E2E8F0" : "#102030",
+          color: chartLook === "light" ? "rgba(15,23,42,.14)" : "rgba(255,255,255,.14)",
+          labelBackgroundColor: chartLook === "light" ? "#E2E8F0" : "#1E293B",
         },
         horzLine: {
-          visible: true,
-          width: 1,
-          color: up ? themeCfg.up : themeCfg.down,
-          style: 2,
+          color: chartLook === "light" ? "rgba(15,23,42,.14)" : "rgba(255,255,255,.14)",
           labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
         },
       },
@@ -2570,9 +2632,6 @@ const candleData = useMemo(() => {
       priceLineVisible: true,
       lastValueVisible: true,
       priceLineColor: up ? themeCfg.up : themeCfg.down,
-      baseLineVisible: false,
-      borderVisible: true,
-      thinBars: true,
       priceFormat: {
         type: "price",
         precision: livePrice > 1 ? 4 : livePrice > 0.01 ? 6 : 8,
@@ -2581,7 +2640,12 @@ const candleData = useMemo(() => {
     });
 
     series.setData(candleData);
+
     chart.timeScale().fitContent();
+    chart.priceScale("right").applyOptions({
+      autoScale: true,
+      scaleMargins: { top: 0.15, bottom: 0.12 },
+    });
 
     const handleResize = () => {
       if (!chartRef.current) return;
@@ -2625,7 +2689,7 @@ const candleData = useMemo(() => {
           justifyContent: "space-between",
           gap: 12,
           marginBottom: 12,
-          flexWrap: "wrap",
+          flexWrap: isMobile ? "wrap" : "nowrap",
         }}
       >
         <div style={{ minWidth: 0 }}>
@@ -2642,38 +2706,50 @@ const candleData = useMemo(() => {
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: isMobile ? "flex-start" : "flex-end",
             gap: 6,
-            flexWrap: "nowrap",
-            overflowX: "auto",
+            flexWrap: "wrap",
             marginLeft: "auto",
-            maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
-            paddingBottom: 2,
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
+            maxWidth: isMobile ? "100%" : "calc(100% - 180px)",
           }}
         >
-          <button
-            onClick={() => setChartLook((v) => (v === "dark" ? "light" : "dark"))}
-            style={{
-              height: 28,
-              minWidth: 72,
-              padding: "0 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(50,230,255,.42)",
-              background: themeCfg.activeBtnBg,
-              color: themeCfg.activeBtnText,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: ".2px",
-              cursor: "pointer",
-              boxShadow:
-                "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)",
-              flex: "0 0 auto",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {chartLook === "dark" ? "Black" : "White"}
-          </button>
+          {[["dark", "Black"], ["light", "White"]].map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setChartLook(value)}
+              style={{
+                height: 28,
+                minWidth: 58,
+                padding: "0 10px",
+                borderRadius: 10,
+                border:
+                  chartLook === value
+                    ? "1px solid rgba(50,230,255,.42)"
+                    : themeCfg.pillBorder,
+                background:
+                  chartLook === value
+                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
+                    : themeCfg.pillBg,
+                color:
+                  chartLook === value
+                    ? "#03131A"
+                    : chartLook === "light"
+                    ? "#0F172A"
+                    : "rgba(255,255,255,.92)",
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: ".2px",
+                cursor: "pointer",
+                boxShadow:
+                  chartLook === value
+                    ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
+                    : "inset 0 1px 0 rgba(255,255,255,.04)",
+                flex: "0 0 auto",
+              }}
+            >
+              {label}
+            </button>
+          ))}
 
           {[["5M", "5m"], ["15M", "15m"], ["1H", "1h"], ["4H", "4h"], ["1D", "1D"], ["1W", "Week"]].map(([value, label]) => (
             <button
@@ -2681,21 +2757,23 @@ const candleData = useMemo(() => {
               onClick={() => setChartRange(value)}
               style={{
                 height: 28,
-                minWidth: value === "1W" ? 54 : 42,
+                minWidth: value === "1W" ? 52 : 40,
                 padding: "0 10px",
-                borderRadius: 999,
+                borderRadius: 10,
                 border:
                   chartRange === value
                     ? "1px solid rgba(50,230,255,.42)"
                     : themeCfg.pillBorder,
                 background:
                   chartRange === value
-                    ? themeCfg.activeBtnBg
+                    ? "linear-gradient(180deg, rgba(26,255,214,.95), rgba(0,224,255,.95))"
                     : themeCfg.pillBg,
                 color:
                   chartRange === value
-                    ? themeCfg.activeBtnText
-                    : themeCfg.inactiveBtnText,
+                    ? "#03131A"
+                    : chartLook === "light"
+                    ? "#0F172A"
+                    : "rgba(255,255,255,.92)",
                 fontSize: 11,
                 fontWeight: 900,
                 letterSpacing: ".2px",
@@ -2705,7 +2783,6 @@ const candleData = useMemo(() => {
                     ? "0 8px 22px rgba(0,224,255,.22), inset 0 1px 0 rgba(255,255,255,.32)"
                     : "inset 0 1px 0 rgba(255,255,255,.04)",
                 flex: "0 0 auto",
-                whiteSpace: "nowrap",
               }}
             >
               {label}
@@ -2723,7 +2800,7 @@ const candleData = useMemo(() => {
               background: themeCfg.pillBg,
               whiteSpace: "nowrap",
               flex: "0 0 auto",
-              marginLeft: 2,
+              marginLeft: isMobile ? 0 : 4,
             }}
           >
             {up ? "+" : ""}
@@ -2732,20 +2809,11 @@ const candleData = useMemo(() => {
         </div>
       </div>
 
-      <div
-        style={{
-          width: "100%",
-          height,
-          borderRadius: 18,
-          overflow: "hidden",
-          background: themeCfg.chartBg,
-        }}
-      >
-        <div ref={chartRef} style={{ width: "100%", height: "100%" }} />
-      </div>
+      <div ref={chartRef} style={{ width: "100%", height }} />
     </div>
   );
 }
+
 
 
 
@@ -2929,14 +2997,18 @@ const candleData = useMemo(() => {
               />
 
               <div className="coinList">
-                {(homeFeedMode === "HOT" ? hot15m : homeFeedMode === "LATEST" ? latestCoins : coins).map((c) => (
-                  <CoinMiniCard
-                    key={c.id}
-                    c={c}
-                    subtitle={coinSubtitle(c)}
-                    onOpen={() => openCoin(c)}
-                  />
-                ))}
+                {(homeFeedMode === "HOT" ? hot15m : homeFeedMode === "LATEST" ? latestCoins : coins).length ? (
+                  (homeFeedMode === "HOT" ? hot15m : homeFeedMode === "LATEST" ? latestCoins : coins).map((c) => (
+                    <CoinMiniCard
+                      key={c.id}
+                      c={c}
+                      subtitle={coinSubtitle(c)}
+                      onOpen={() => openCoin(c)}
+                    />
+                  ))
+                ) : (
+                  <div className="miniMuted">No coins loaded yet.</div>
+                )}
               </div>
 
               <div ref={coinsLoadMoreRef} style={{ height: 10 }} />
@@ -2956,7 +3028,7 @@ const candleData = useMemo(() => {
                       <CoinLogo c={c} size={42} radius={14} />
                       <div className="space">
                         <div style={{ fontWeight: 1000, fontSize: 13 }}>{c.name}</div>
-                        <div className="miniMuted">{c.symbol}</div>
+                        <div className="miniMuted">{c.symbol} • {timeAgo(c.createdAt || c.created_at)}</div>
                       </div>
                     </div>
 
@@ -3105,6 +3177,8 @@ const candleData = useMemo(() => {
         )}
 
 
+
+
 {screen === "COIN" && (
   <ScreenShell>
     {renderBackButton()}
@@ -3116,127 +3190,32 @@ const candleData = useMemo(() => {
     ) : (
       <>
         <Card>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) 188px",
-              alignItems: "start",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                minWidth: 0,
-              }}
-            >
-              <CoinLogo c={selectedCoin} size={72} radius={20} />
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+            <CoinLogo c={selectedCoin} size={72} radius={20} />
 
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 1000,
-                    lineHeight: 1.05,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {selectedCoin.name}
-                </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
+                {selectedCoin.name}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
+                {selectedCoin.symbol}
+              </div>
 
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 13,
-                    color: "var(--muted)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {selectedCoin.symbol}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                    maxWidth: isMobile ? "100%" : 230,
-                  }}
-                >
-                  <Pill
-                    style={{
-                      justifyContent: "center",
-                      minHeight: 34,
-                      fontSize: 12,
-                      padding: "8px 10px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    MC {fmtUsd(selectedCoin.mc || 0)}
-                  </Pill>
-
-                  <Pill
-                    style={{
-                      justifyContent: "center",
-                      minHeight: 34,
-                      fontSize: 12,
-                      padding: "8px 10px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    ATH {fmtUsd(selectedCoin.ath || 0)}
-                  </Pill>
-                </div>
+              <div className="pillRow" style={{ marginTop: 12 }}>
+                <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
+                <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
+                <Pill>Age {timeAgo(selectedCoin.createdAt || selectedCoin.created_at)}</Pill>
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                width: "100%",
-                alignSelf: "start",
-              }}
-            >
-              <MiniBtn
-                onClick={() => openCreatorFromCoin(selectedCoin)}
-                style={{
-                  width: "100%",
-                  minHeight: 36,
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  padding: "9px 12px",
-                  boxShadow:
-                    "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-                  whiteSpace: "nowrap",
-                }}
-              >
+            <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
+              <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
                 Creator Profile
               </MiniBtn>
-
               <MiniBtn
                 onClick={async () => {
                   const ok = await copyText(selectedCoin?.id || "");
                   setToast(ok ? "Coin address copied" : "Copy failed");
-                }}
-                style={{
-                  width: "100%",
-                  minHeight: 36,
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  padding: "9px 12px",
-                  boxShadow:
-                    "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-                  whiteSpace: "nowrap",
                 }}
               >
                 Copy Coin Address
@@ -3245,26 +3224,17 @@ const candleData = useMemo(() => {
           </div>
 
           {selectedCoin.story ? (
-            <div
-              style={{
-                marginTop: 14,
-                color: "var(--muted)",
-                fontSize: 14,
-                lineHeight: 1.6,
-              }}
-            >
+            <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
               {selectedCoin.story}
             </div>
           ) : null}
 
           <div className="hr" />
-
           <PriceChart
   coin={selectedCoin}
-  height={isMobile ? 272 : 388}
+  height={isMobile ? 240 : 320}
   chartRange={chartRange}
   setChartRange={setChartRange}
-  activity={coinActivity}
 />
         </Card>
 
@@ -3492,7 +3462,7 @@ const candleData = useMemo(() => {
                 <div className="coinText">
                   <div className="coinName">{coin.name}</div>
                   <div className="coinMeta">
-                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL
+                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL • {timeAgo(coin.createdAt || coin.created_at)}
                   </div>
                 </div>
                 <div className="rightNum">
@@ -3678,18 +3648,17 @@ const candleData = useMemo(() => {
 
     <div
       style={{
-        marginTop: 12,
+        marginTop: 10,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: 10,
-        flexWrap: "wrap",
       }}
     >
       <span
         style={{
           fontSize: 12,
-          fontWeight: 800,
+          fontWeight: 700,
           color: "var(--text)",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -3700,21 +3669,13 @@ const candleData = useMemo(() => {
         {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
       </span>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 6 }}>
         <MiniBtn
           onClick={() => {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Deposit address copied");
           }}
-          style={{
-            padding: "5px 10px",
-            width: "auto",
-            minHeight: 32,
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 900,
-            boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-          }}
+          style={{ padding: "6px 10px", width: "auto" }}
         >
           Deposit
         </MiniBtn>
@@ -3724,35 +3685,17 @@ const candleData = useMemo(() => {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Wallet copied");
           }}
-          style={{
-            padding: "5px 10px",
-            width: "auto",
-            minHeight: 32,
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 900,
-            boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-          }}
+          style={{ padding: "6px 10px", width: "auto" }}
         >
           Copy
         </MiniBtn>
       </div>
     </div>
 
-    <div style={{ marginTop: 10 }}>
-      <MiniBtn
-        onClick={() => setWithdrawOpen(true)}
-        style={{
-          width: "100%",
-          minHeight: 40,
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 900,
-          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-        }}
-      >
-        Withdraw
-      </MiniBtn>
+    <div style={{ marginTop: 8 }}>
+      <MiniBtn onClick={() => setWithdrawOpen(true)} style={{ width: "100%" }}>
+  Withdraw
+</MiniBtn>
     </div>
   </div>
 
@@ -3767,40 +3710,20 @@ const candleData = useMemo(() => {
   <div className="stat" style={{ minHeight: 150 }}>
     <div className="statLabel">Affiliate Reward</div>
     <div className="statValue">{fmtSol(profile?.referralRewardsSol || 0)} SOL</div>
-    <div style={{ marginTop: 10 }}>
-      <MiniBtn
-        onClick={() => handleClaim("REF")}
-        style={{
-          minHeight: 38,
-          padding: "0 16px",
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 900,
-          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-        }}
-      >
-        Claim
-      </MiniBtn>
+    <div style={{ marginTop: 8 }}>
+     <MiniBtn onClick={() => handleClaim("REF")}>
+  Claim
+</MiniBtn>
     </div>
   </div>
 
   <div className="stat" style={{ minHeight: 150 }}>
     <div className="statLabel">Creator Reward</div>
     <div className="statValue">{fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL</div>
-    <div style={{ marginTop: 10 }}>
-      <MiniBtn
-        onClick={() => handleClaim("CREATOR")}
-        style={{
-          minHeight: 38,
-          padding: "0 16px",
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 900,
-          boxShadow: "0 8px 18px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.08)",
-        }}
-      >
-        Claim
-      </MiniBtn>
+    <div style={{ marginTop: 8 }}>
+     <MiniBtn onClick={() => handleClaim("CREATOR")}>
+  Claim
+</MiniBtn>
     </div>
   </div>
 </div>
