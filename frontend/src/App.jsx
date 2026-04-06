@@ -2696,17 +2696,17 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
         },
       },
-      handleScroll: {
-        mouseWheel: false,
-        pressedMouseMove: true,
-        horzTouchDrag: true,
-        vertTouchDrag: false,
-      },
+     handleScroll: {
+  mouseWheel: true,
+  pressedMouseMove: true,
+  horzTouchDrag: true,
+  vertTouchDrag: false,
+},
       handleScale: {
-        axisPressedMouseMove: false,
-        mouseWheel: false,
-        pinch: false,
-      },
+  axisPressedMouseMove: true,
+  mouseWheel: true,
+  pinch: true,
+},
     });
 
     const series = chart.addSeries(CandlestickSeries, {
@@ -2806,7 +2806,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
               lineHeight: 1.2,
             }}
           >
-            Created {createdAgo} {activityLoading ? "• syncing..." : ""}
+            Created {createdAgo}
           </div>
         </div>
 
