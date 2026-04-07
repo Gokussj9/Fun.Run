@@ -2696,13 +2696,13 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
           labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
         },
       },
-     handleScroll: {
+  handleScroll: {
   mouseWheel: true,
   pressedMouseMove: true,
   horzTouchDrag: true,
-  vertTouchDrag: false,
+  vertTouchDrag: true,
 },
-      handleScale: {
+  handleScale: {
   axisPressedMouseMove: true,
   mouseWheel: true,
   pinch: true,
