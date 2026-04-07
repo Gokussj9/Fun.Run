@@ -2818,7 +2818,9 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
             gap: 8,
             flexWrap: "wrap",
             marginLeft: "auto",
-            maxWidth: isMobile ? "100%" : "calc(100% - 170px)",
+            maxWidth: "100%",
+            width: "100%",
+marginLeft: 0,
           }}
         >
           <button
