@@ -1771,44 +1771,70 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
       .sort((a, b) => Number(b?.volumeSol || 0) - Number(a?.volumeSol || 0));
   }, [coins]);
 
-  async function loadCoins(page = 0, append = false) {
-    try {
-      setLoadingCoins(true);
+ async function loadCoins(page = 0, append = false) {
+  try {
+    setLoadingCoins(true);
 
-      let json = null;
+    const cacheKey = `coins_page_${page}`;
+    const cacheTTL = 30000; // 30 sec
+    let json = null;
+
+    if (!append) {
       try {
-        json = await api(`/api/coin/list?page=${page}`);
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (cached && Date.now() - Number(cached.ts || 0) < cacheTTL) {
+            json = cached.data || null;
+          }
+        }
+      } catch {}
+    }
+
+    if (!json) {
+      try {
+        json = await api(`/api/coin/list?page=${page}&limit=50`);
       } catch {
-        const res = await fetch(`${API_BASE}/api/coin/list?page=${page}`);
+        const res = await fetch(`${API_BASE}/api/coin/list?page=${page}&limit=50`);
         json = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
         }
       }
 
-      const rawCoins =
-        Array.isArray(json?.coins) ? json.coins :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json) ? json :
-        [];
-
-      const rawHot =
-        Array.isArray(json?.hot15m) ? json.hot15m :
-        Array.isArray(json?.hot) ? json.hot :
-        [];
-
-      const incoming = (rawCoins || [])
-  .map((c) => {
-    try {
-      const coin = normalizeCoin(c);
-      if (!coin?.id) return null;
-      return coin;
-    } catch {
-      return null;
+      if (!append) {
+        try {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ ts: Date.now(), data: json })
+          );
+        } catch {}
+      }
     }
-  })
-  .filter(Boolean);
+
+    const rawCoins =
+      Array.isArray(json?.coins) ? json.coins :
+      Array.isArray(json?.items) ? json.items :
+      Array.isArray(json?.data) ? json.data :
+      Array.isArray(json) ? json :
+      [];
+
+    const rawHot =
+      Array.isArray(json?.hot15m) ? json.hot15m :
+      Array.isArray(json?.hot) ? json.hot :
+      [];
+
+    const incoming = (rawCoins || [])
+      .map((c) => {
+        try {
+          const coin = normalizeCoin(c);
+          if (!coin?.id) return null;
+          return coin;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
       const incomingHot = (rawHot || [])
         .map((c) => {
@@ -2482,35 +2508,61 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
     let mounted = true;
     let timer = null;
 
-    async function loadActivity() {
-      if (!coin?.id) return;
-      try {
-        setActivityLoading(true);
-        const json = await api(`/api/coin/${coin.id}/activity?limit=400`);
-        if (!mounted) return;
+async function loadActivity(force = false) {
+  if (!coin?.id) return;
 
-        const rows = Array.isArray(json?.activity)
-          ? json.activity
-          : Array.isArray(json?.items)
-          ? json.items
-          : [];
+  const cacheKey = `coin_activity_${coin.id}`;
+  const cacheTTL = 30000; // 30 sec
 
-        setActivity(rows);
-      } catch {
-        if (mounted) setActivity([]);
-      } finally {
-        if (mounted) setActivityLoading(false);
+  try {
+    setActivityLoading(true);
+
+    if (!force) {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        if (
+          cached &&
+          Array.isArray(cached.rows) &&
+          Date.now() - Number(cached.ts || 0) < cacheTTL
+        ) {
+          if (mounted) setActivity(cached.rows);
+          setActivityLoading(false);
+          return;
+        }
       }
     }
 
-    loadActivity();
-    timer = setInterval(loadActivity, 10000);
+    const json = await api(`/api/coin/${coin.id}/activity?limit=60`);
+    if (!mounted) return;
 
-    return () => {
-      mounted = false;
-      if (timer) clearInterval(timer);
-    };
-  }, [coin?.id]);
+    const rows = Array.isArray(json?.activity)
+      ? json.activity
+      : Array.isArray(json?.items)
+      ? json.items
+      : [];
+
+    setActivity(rows);
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({ ts: Date.now(), rows })
+    );
+  } catch {
+    if (mounted) setActivity([]);
+  } finally {
+    if (mounted) setActivityLoading(false);
+  }
+}
+
+loadActivity();
+timer = setInterval(() => loadActivity(true), 30000);
+
+return () => {
+  mounted = false;
+  if (timer) clearInterval(timer);
+};
+}, [coin?.id]);
+
 
   const candleData = useMemo(() => {
     const cfg = getTimeframeCfg(chartRange);
@@ -2554,16 +2606,22 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
       });
     };
 
-   if (!trades.length) {
-  return [
-    {
-      time: Math.floor(currentBucket / 1000),
+  if (!trades.length) {
+  const candles = [];
+  let cursor = startBucket;
+
+  while (cursor <= currentBucket) {
+    candles.push({
+      time: Math.floor(cursor / 1000),
       open: fallbackPrice,
       high: fallbackPrice * 1.0003,
       low: fallbackPrice * 0.9997,
       close: fallbackPrice,
-    },
-  ];
+    });
+    cursor += bucketMs;
+  }
+
+  return candles.slice(-maxBars);
 }
 
     for (const trade of trades) {
