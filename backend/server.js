@@ -827,21 +827,13 @@ app.get("/", async (req, res) => {
 
 app.get("/health", async (req, res) => {
   try {
-    await requireSupabase();
-    const { count, error } = await supabase
-      .from("coins")
-      .select("id", { count: "exact", head: true });
-
-    if (error) throw error;
-
     return res.json({
       ok: true,
       dbMode: "supabase-direct",
-      coins: count || 0,
-      ts: nowMS(),
+      ts: Date.now(),
     });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    return res.status(500).json({ ok: false });
   }
 });
 
