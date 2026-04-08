@@ -6,6 +6,7 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 import { createClient } from "@supabase/supabase-js";
+import postgres from "postgres";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
@@ -14,6 +15,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 5000);
 const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
@@ -74,12 +76,21 @@ app.use(
 app.use(morgan("tiny"));
 
 // -------------------- CLIENTS --------------------
-const supabase =
+const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false },
-      })
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
     : null;
+
+const sql = DATABASE_URL
+  ? postgres(DATABASE_URL, {
+      ssl: "require",
+      max: 5,
+      idle_timeout: 20,
+      connect_timeout: 15,
+      prepare: false,
+      transform: postgres.camel,
+    })
+  : null;
 
 const connection = new Connection(SOLANA_RPC, "confirmed");
 
@@ -326,35 +337,104 @@ async function uploadMetadataToIPFS(metadata) {
   };
 }
 
-async function requireSupabase() {
-  if (!supabase) throw new Error("supabase not configured");
+async function requireDb() {
+  if (!sql) throw new Error("DATABASE_URL not configured");
+}
+
+async function ensureSchema() {
+  await requireDb();
+
+  await sql`
+    create table if not exists coins (
+      id text primary key,
+      name text,
+      symbol text,
+      story text,
+      logo text,
+      metadata_uri text,
+      creator_wallet text,
+      created_at timestamptz default now(),
+      total_supply numeric,
+      curve_supply numeric,
+      curve_sold numeric,
+      v_sol numeric,
+      v_tokens numeric,
+      reserve_sol numeric,
+      reserve_token numeric,
+      market_cap numeric,
+      last_price numeric,
+      ath_market_cap numeric,
+      volume_sol numeric default 0,
+      last_trade_at bigint default 0,
+      creator_rewards numeric default 0,
+      chart jsonb default '[]'::jsonb,
+      holders jsonb default '{}'::jsonb
+    )`;
+
+  await sql`
+    create table if not exists profiles (
+      wallet text primary key,
+      referrer text,
+      referral_rewards numeric default 0,
+      creator_rewards numeric default 0,
+      owner_rewards numeric default 0,
+      referral_code text,
+      referral_count integer default 0,
+      created_at timestamptz default now(),
+      updated_at timestamptz default now()
+    )`;
+
+  await sql`
+    create table if not exists transactions (
+      id text primary key,
+      wallet text,
+      coin_id text,
+      type text,
+      sol numeric default 0,
+      tokens numeric default 0,
+      fee numeric default 0,
+      created_at timestamptz default now()
+    )`;
+
+  await sql`create index if not exists coins_created_at_idx on coins (created_at desc)`;
+  await sql`create index if not exists coins_creator_wallet_idx on coins (creator_wallet)`;
+  await sql`create index if not exists tx_coin_id_created_at_idx on transactions (coin_id, created_at desc)`;
+  await sql`create index if not exists tx_wallet_created_at_idx on transactions (wallet, created_at desc)`;
+  await sql`create index if not exists profiles_referrer_idx on profiles (referrer)`;
+}
+
+function profileToDbRow(profile = {}) {
+  return {
+    wallet: String(profile.wallet || "").trim(),
+    referrer: String(profile.referrer || "").trim(),
+    referral_rewards: Math.max(0, safeNum(profile.referral_rewards, 0)),
+    creator_rewards: Math.max(0, safeNum(profile.creator_rewards, 0)),
+    owner_rewards: Math.max(0, safeNum(profile.owner_rewards, 0)),
+    referral_code: String(profile.referral_code || ""),
+    referral_count: Math.max(0, safeNum(profile.referral_count, 0)),
+    created_at: profile.created_at || new Date().toISOString(),
+    updated_at: profile.updated_at || new Date().toISOString(),
+  };
 }
 
 async function getProfile(wallet, createIfMissing = true) {
   const w = String(wallet || "").trim();
   if (!w) return null;
 
-  await requireSupabase();
+  await requireDb();
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("wallet", w)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (data) return ensureProfileShape(data, w);
+  const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
+  if (rows[0]) return ensureProfileShape(rows[0], w);
   if (!createIfMissing) return null;
 
-  const payload = ensureProfileShape({ wallet: w }, w);
-  const { data: inserted, error: insertError } = await supabase
-    .from("profiles")
-    .upsert(payload, { onConflict: "wallet" })
-    .select("*")
-    .single();
+  const payload = profileToDbRow(ensureProfileShape({ wallet: w }, w));
+  const inserted = await sql`
+    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
+    values (${payload.wallet}, ${payload.referrer}, ${payload.referral_rewards}, ${payload.creator_rewards}, ${payload.owner_rewards}, ${payload.referral_code}, ${payload.referral_count}, ${payload.created_at}, ${payload.updated_at})
+    on conflict (wallet) do update set updated_at = excluded.updated_at
+    returning *`;
 
-  if (insertError) throw insertError;
-  return ensureProfileShape(inserted, w);
+  return ensureProfileShape(inserted[0], w);
 }
 
 async function patchProfile(wallet, patch = {}) {
@@ -362,37 +442,35 @@ async function patchProfile(wallet, patch = {}) {
   if (!w) throw new Error("wallet required");
 
   const current = await getProfile(w, true);
-  const next = ensureProfileShape(
-    {
-      ...current,
-      ...patch,
-      wallet: w,
-      updated_at: new Date().toISOString(),
-    },
-    w
-  );
+  const next = profileToDbRow(ensureProfileShape({
+    ...current,
+    ...patch,
+    wallet: w,
+    updated_at: new Date().toISOString(),
+  }, w));
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert(next, { onConflict: "wallet" })
-    .select("*")
-    .single();
+  const rows = await sql`
+    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
+    values (${next.wallet}, ${next.referrer}, ${next.referral_rewards}, ${next.creator_rewards}, ${next.owner_rewards}, ${next.referral_code}, ${next.referral_count}, ${next.created_at}, ${next.updated_at})
+    on conflict (wallet) do update set
+      referrer = excluded.referrer,
+      referral_rewards = excluded.referral_rewards,
+      creator_rewards = excluded.creator_rewards,
+      owner_rewards = excluded.owner_rewards,
+      referral_code = excluded.referral_code,
+      referral_count = excluded.referral_count,
+      updated_at = excluded.updated_at
+    returning *`;
 
-  if (error) throw error;
-  return ensureProfileShape(data, w);
+  return ensureProfileShape(rows[0], w);
 }
 
 async function countReferrals(wallet) {
   const w = String(wallet || "").trim();
   if (!w) return 0;
-
-  const { count, error } = await supabase
-    .from("profiles")
-    .select("wallet", { count: "exact", head: true })
-    .eq("referrer", w);
-
-  if (error) throw error;
-  return count || 0;
+  await requireDb();
+  const rows = await sql`select count(*)::int as count from profiles where referrer = ${w}`;
+  return safeNum(rows?.[0]?.count, 0);
 }
 
 async function syncReferralCount(wallet) {
@@ -402,6 +480,7 @@ async function syncReferralCount(wallet) {
 }
 
 async function insertTransaction(tx = {}) {
+  await requireDb();
   const row = {
     id: String(tx.id || uid()),
     wallet: String(tx.wallet || ""),
@@ -413,69 +492,121 @@ async function insertTransaction(tx = {}) {
     created_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from("transactions").insert(row);
-  if (error) throw error;
+  await sql`
+    insert into transactions (id, wallet, coin_id, type, sol, tokens, fee, created_at)
+    values (${row.id}, ${row.wallet}, ${row.coin_id}, ${row.type}, ${row.sol}, ${row.tokens}, ${row.fee}, ${row.created_at})`;
   return row;
 }
 
 async function getCoinRowById(coinId) {
   const id = String(coinId || "").trim();
   if (!id) return null;
-
-  const { data, error } = await supabase
-    .from("coins")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data || null;
+  await requireDb();
+  const rows = await sql`select * from coins where id = ${id} limit 1`;
+  return rows[0] || null;
 }
 
 async function getRecentCoinActivity(coinId, limit = 50) {
   const id = String(coinId || "").trim();
   if (!id) return [];
-
-  const safeLimit = Math.max(1, Math.min(100, safeNum(limit, 50)));
-
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("coin_id", id)
-    .order("created_at", { ascending: false })
-    .limit(safeLimit);
-
-  if (error) throw error;
-
-  return Array.isArray(data)
-    ? data.map((t) => ({
+  await requireDb();
+  const safeLimit = Math.max(1, Math.min(120, safeNum(limit, 50)));
+  const rows = await sql`select id, coin_id, type, sol, tokens, fee, created_at, wallet from transactions where coin_id = ${id} order by created_at desc limit ${safeLimit}`;
+  return Array.isArray(rows)
+    ? rows.map((t) => ({
         id: t.id,
-        coinId: t.coin_id,
+        coinId: t.coinId || t.coin_id,
         side: String(t.type || "TX").toUpperCase(),
         type: String(t.type || "TX").toUpperCase(),
         sol: safeNum(t.sol, 0),
         tokens: safeNum(t.tokens, 0),
         fee: safeNum(t.fee, 0),
-        ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+        ts: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
         wallet: t.wallet,
       }))
     : [];
 }
 
 async function saveCoin(coin) {
+  await requireDb();
   const payload = {
     id: String(coin.id || uid()),
     ...coinToDbUpdate(coin),
   };
 
-  const { data, error } = await supabase
-    .from("coins")
-    .upsert(payload, { onConflict: "id" })
-    .select("*")
-    .single();
+  const rows = await sql`
+    insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart, holders)
+    values (
+      ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story}, ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
+      ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold}, ${payload.v_sol}, ${payload.v_tokens}, ${payload.reserve_sol}, ${payload.reserve_token},
+      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${sql.json(payload.chart || [])}, ${sql.json(payload.holders || {})}
+    )
+    on conflict (id) do update set
+      name = excluded.name,
+      symbol = excluded.symbol,
+      story = excluded.story,
+      logo = excluded.logo,
+      metadata_uri = excluded.metadata_uri,
+      creator_wallet = excluded.creator_wallet,
+      created_at = excluded.created_at,
+      total_supply = excluded.total_supply,
+      curve_supply = excluded.curve_supply,
+      curve_sold = excluded.curve_sold,
+      v_sol = excluded.v_sol,
+      v_tokens = excluded.v_tokens,
+      reserve_sol = excluded.reserve_sol,
+      reserve_token = excluded.reserve_token,
+      market_cap = excluded.market_cap,
+      last_price = excluded.last_price,
+      ath_market_cap = excluded.ath_market_cap,
+      volume_sol = excluded.volume_sol,
+      last_trade_at = excluded.last_trade_at,
+      creator_rewards = excluded.creator_rewards,
+      chart = excluded.chart,
+      holders = excluded.holders
+    returning *`;
 
-  if (error) throw error;
-  return mapDbCoinToApi(data);
+  return mapDbCoinToApi(rows[0]);
+}
+
+async function migrateFromSupabaseIfNeeded() {
+  if (!supabaseAdmin || !sql) return { skipped: true, reason: "missing supabase or database url" };
+
+  const countRows = await sql`select count(*)::int as count from coins`;
+  if (safeNum(countRows?.[0]?.count, 0) > 0) return { skipped: true, reason: "coins already exist" };
+
+  const [coinRows, profileRows, txRows] = await Promise.all([
+    supabaseAdmin.from("coins").select("*").limit(5000),
+    supabaseAdmin.from("profiles").select("*").limit(5000),
+    supabaseAdmin.from("transactions").select("*").limit(20000),
+  ]);
+
+  if (coinRows.error) throw coinRows.error;
+  if (profileRows.error) throw profileRows.error;
+  if (txRows.error) throw txRows.error;
+
+  for (const row of coinRows.data || []) {
+    await sql`
+      insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart, holders)
+      values (${row.id}, ${row.name || ""}, ${row.symbol || ""}, ${row.story || ""}, ${row.logo || ""}, ${row.metadata_uri || ""}, ${row.creator_wallet || ""}, ${row.created_at || new Date().toISOString()}, ${safeNum(row.total_supply, TOTAL_SUPPLY)}, ${safeNum(row.curve_supply, saleSupplyFromTotal(safeNum(row.total_supply, TOTAL_SUPPLY)))}, ${safeNum(row.curve_sold, 0)}, ${safeNum(row.v_sol, VIRTUAL_SOL)}, ${safeNum(row.v_tokens, calcVirtualTokens(row.total_supply, row.curve_supply, row.v_tokens))}, ${safeNum(row.reserve_sol, 0)}, ${safeNum(row.reserve_token, saleSupplyFromTotal(safeNum(row.total_supply, TOTAL_SUPPLY)))}, ${safeNum(row.market_cap, 0)}, ${safeNum(row.last_price, 0)}, ${safeNum(row.ath_market_cap, 0)}, ${safeNum(row.volume_sol, 0)}, ${safeNum(row.last_trade_at, 0)}, ${safeNum(row.creator_rewards, 0)}, ${sql.json(Array.isArray(row.chart) ? row.chart : [])}, ${sql.json(row.holders || {})})
+      on conflict (id) do nothing`;
+  }
+
+  for (const row of profileRows.data || []) {
+    await sql`
+      insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
+      values (${row.wallet}, ${row.referrer || ""}, ${safeNum(row.referral_rewards, 0)}, ${safeNum(row.creator_rewards, 0)}, ${safeNum(row.owner_rewards, 0)}, ${row.referral_code || String(row.wallet || "").slice(0,6)}, ${safeNum(row.referral_count, 0)}, ${row.created_at || new Date().toISOString()}, ${row.updated_at || new Date().toISOString()})
+      on conflict (wallet) do nothing`;
+  }
+
+  for (const row of txRows.data || []) {
+    await sql`
+      insert into transactions (id, wallet, coin_id, type, sol, tokens, fee, created_at)
+      values (${row.id}, ${row.wallet || ""}, ${row.coin_id || ""}, ${row.type || "TX"}, ${safeNum(row.sol, 0)}, ${safeNum(row.tokens, 0)}, ${safeNum(row.fee, 0)}, ${row.created_at || new Date().toISOString()})
+      on conflict (id) do nothing`;
+  }
+
+  return { ok: true, coins: (coinRows.data || []).length, profiles: (profileRows.data || []).length, txs: (txRows.data || []).length };
 }
 
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
@@ -820,7 +951,7 @@ app.get("/", async (req, res) => {
   return res.json({
     ok: true,
     name: "pumpmini-backend",
-    dbMode: "supabase-direct",
+    dbMode: "neon-postgres",
     ts: nowMS(),
   });
 });
@@ -829,7 +960,7 @@ app.get("/health", async (req, res) => {
   try {
     return res.json({
       ok: true,
-      dbMode: "supabase-direct",
+      dbMode: "neon-postgres",
       ts: Date.now(),
     });
   } catch (e) {
@@ -852,42 +983,10 @@ app.get("/api/balance/:wallet", async (req, res) => {
 
 app.get("/api/coin/:id/activity", async (req, res) => {
   try {
+    await requireDb();
     const limit = Math.min(120, Math.max(20, Number(req.query.limit || 60)));
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("id, type, sol, tokens, created_at, wallet")
-      .eq("coin_id", req.params.id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-
-    return res.json({
-      ok: true,
-      activity: data || []
-    });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message || "activity failed" });
-  }
-});
-app.get("/api/coin/:id/activity", async (req, res) => {
-  try {
-    const limit = Math.min(120, Math.max(20, Number(req.query.limit || 60)));
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("id, type, sol, tokens, created_at, wallet")
-      .eq("coin_id", req.params.id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-
-    return res.json({
-      ok: true,
-      activity: data || []
-    });
+    const activity = await getRecentCoinActivity(req.params.id, limit);
+    return res.json({ ok: true, activity });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || "activity failed" });
   }
@@ -895,7 +994,7 @@ app.get("/api/coin/:id/activity", async (req, res) => {
 
 app.post("/api/coin/create", async (req, res) => {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const name = String(req.body?.name || "").trim();
     const symbol = String(req.body?.symbol || "").trim().toUpperCase();
@@ -1015,7 +1114,7 @@ app.post("/api/coin/create", async (req, res) => {
 
 app.post("/api/referral/set", async (req, res) => {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
     const referrer = String(req.body?.referrer || "").trim();
@@ -1049,7 +1148,7 @@ app.post("/api/referral/set", async (req, res) => {
 
 async function doTrade(req, res, side) {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
     const coinId = String(req.body?.coinId || "").trim();
@@ -1143,7 +1242,7 @@ app.post("/api/coin/sell", (req, res) => doTrade(req, res, "sell"));
 
 app.post("/api/claim", async (req, res) => {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
     const kind = String(req.body?.kind || "").trim().toUpperCase();
@@ -1187,7 +1286,7 @@ app.post("/api/claim", async (req, res) => {
 
 async function handleWithdraw(req, res, forcedKind = "") {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
     const to = String(req.body?.to || "").trim();
@@ -1290,7 +1389,7 @@ app.post("/api/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF")
 
 app.get("/api/profile/:wallet", async (req, res) => {
   try {
-    await requireSupabase();
+    await requireDb();
 
     const wallet = String(req.params.wallet || "").trim();
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
@@ -1302,69 +1401,38 @@ app.get("/api/profile/:wallet", async (req, res) => {
       await patchProfile(wallet, { referral_count: referralCount });
     }
 
-    const { data: creationRows, error: creationError } = await supabase
-      .from("coins")
-      .select("*")
-      .eq("creator_wallet", wallet)
-      .order("created_at", { ascending: false })
-      .limit(1000);
+    const creationRows = await sql`select * from coins where creator_wallet = ${wallet} order by created_at desc limit 1000`;
+    const myCreations = Array.isArray(creationRows) ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
 
-    if (creationError) throw creationError;
+    const txArr = await sql`select * from transactions where wallet = ${wallet} order by created_at desc limit ${PROFILE_HOLDING_TX_SCAN}`;
+    const walletTxRows = Array.isArray(txArr) ? txArr : [];
 
-    const myCreations = Array.isArray(creationRows) ? creationRows.map(mapDbCoinToApi) : [];
-
-    const { data: txRows, error: txError } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("wallet", wallet)
-      .order("created_at", { ascending: false })
-      .limit(PROFILE_HOLDING_TX_SCAN);
-
-    if (txError) throw txError;
-
-    const walletTxRows = Array.isArray(txRows) ? txRows : [];
     const lastTx = walletTxRows.slice(0, PROFILE_TX_LIMIT).map((t) => ({
       id: t.id,
-      coinId: t.coin_id,
+      coinId: t.coinId || t.coin_id,
       side: String(t.type || "TX").toUpperCase(),
       type: String(t.type || "TX").toUpperCase(),
       sol: safeNum(t.sol, 0),
       tokens: safeNum(t.tokens, 0),
       fee: safeNum(t.fee, 0),
-      ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-      t: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      ts: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      t: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
       wallet: t.wallet,
     }));
 
-    const touchedCoinIds = Array.from(
-      new Set(
-        walletTxRows
-          .map((t) => String(t.coin_id || "").trim())
-          .filter(Boolean)
-      )
-    ).slice(0, 200);
-
+    const touchedCoinIds = Array.from(new Set(walletTxRows.map((t) => String(t.coinId || t.coin_id || "").trim()).filter(Boolean))).slice(0, 200);
     let holdingRows = [];
     if (touchedCoinIds.length) {
-      const { data: heldCoins, error: heldError } = await supabase
-        .from("coins")
-        .select("*")
-        .in("id", touchedCoinIds);
-
-      if (heldError) throw heldError;
-      holdingRows = Array.isArray(heldCoins) ? heldCoins : [];
+      holdingRows = await sql`select * from coins where id = any(${touchedCoinIds})`;
     }
 
     const holdings = holdingRows
       .map(mapDbCoinToApi)
+      .filter(Boolean)
       .map((c) => {
         const amount = Math.max(0, safeNum(c.holders?.[wallet], 0));
         if (amount <= 0) return null;
-
-        const txTimes = lastTx
-          .filter((t) => String(t.coinId || "") === String(c.id))
-          .map((t) => safeNum(t.t, 0));
-
+        const txTimes = lastTx.filter((t) => String(t.coinId || "") === String(c.id)).map((t) => safeNum(t.t, 0));
         return {
           coinId: c.id,
           symbol: c.symbol,
@@ -1372,10 +1440,7 @@ app.get("/api/profile/:wallet", async (req, res) => {
           logo: c.logo,
           amount,
           totalSupply: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)),
-          pct:
-            Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0
-              ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100
-              : 0,
+          pct: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0 ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100 : 0,
           lastAt: Math.max(safeNum(c.lastTradeAt, 0), ...(txTimes.length ? txTimes : [0])),
         };
       })
@@ -1394,24 +1459,19 @@ app.get("/api/profile/:wallet", async (req, res) => {
     return res.json({
       ok: true,
       profile: {
+        wallet,
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
         referralCount,
         referralRewardsSol: Math.max(0, safeNum(p?.referral_rewards, 0)),
         creatorRewardsSol: Math.max(0, safeNum(p?.creator_rewards, 0)),
         ownerRewardsSol: Math.max(0, safeNum(p?.owner_rewards, 0)),
-        referralRewards: {
-          totalSol: Math.max(0, safeNum(p?.referral_rewards, 0)),
-        },
-        ownerRewards: {
-          totalSol: Math.max(0, safeNum(p?.owner_rewards, 0)),
-        },
-        rewards: {
-          totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)),
-          byCoin: rewardsByCoin,
-        },
+        referralRewards: { totalSol: Math.max(0, safeNum(p?.referral_rewards, 0)) },
+        ownerRewards: { totalSol: Math.max(0, safeNum(p?.owner_rewards, 0)) },
+        rewards: { totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)), byCoin: rewardsByCoin },
         holdings,
         txs: lastTx,
+        creations: myCreations,
       },
       myCreations,
       lastTx,
@@ -1425,33 +1485,34 @@ app.get("/api/profile/:wallet", async (req, res) => {
 
 // -------------------- START --------------------
 try {
-  await requireSupabase();
-} catch (e) {
-  console.log("⚠️ Supabase not ready, but server starting...");
-} {
-  try {
-    await requireSupabase();
+  await ensureSchema();
 
-    app.listen(PORT, () => {
-      console.log("✅ Backend running on port:", PORT);
-      console.log("✅ Solana RPC:", SOLANA_RPC);
-      console.log("✅ DB MODE: supabase-direct");
-      console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
-      console.log("✅ JSON_LIMIT:", JSON_LIMIT);
-      console.log("✅ Fee:", FEE_PCT + "%");
-      console.log(
-        "✅ Rewards: creator",
-        CREATOR_PCT_OF_FEE + "% of fee, owner",
-        OWNER_PCT_OF_FEE + "% of fee, referral",
-        REFERRAL_PCT_OF_FEE + "% of fee"
-      );
-      console.log("✅ AMM virtual:", "vSOL", VIRTUAL_SOL, "vTOK%", VIRTUAL_TOKEN_PCT);
-      console.log("✅ SOL_USD:", SOL_USD);
-    });
-  } catch (e) {
-    console.error("❌ Startup failed:", e?.message || e);
-    process.exit(1);
+  try {
+    const migrated = await migrateFromSupabaseIfNeeded();
+    if (migrated?.ok) console.log("✅ Migrated from Supabase:", migrated);
+  } catch (migrateErr) {
+    console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
   }
+
+  app.listen(PORT, () => {
+    console.log("✅ Backend running on port:", PORT);
+    console.log("✅ Solana RPC:", SOLANA_RPC);
+    console.log("✅ DB MODE: neon-postgres");
+    console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
+    console.log("✅ JSON_LIMIT:", JSON_LIMIT);
+    console.log("✅ Fee:", FEE_PCT + "%");
+    console.log(
+      "✅ Rewards: creator",
+      CREATOR_PCT_OF_FEE + "% of fee, owner",
+      OWNER_PCT_OF_FEE + "% of fee, referral",
+      REFERRAL_PCT_OF_FEE + "% of fee"
+    );
+    console.log("✅ AMM virtual:", "vSOL", VIRTUAL_SOL, "vTOK%", VIRTUAL_TOKEN_PCT);
+    console.log("✅ SOL_USD:", SOL_USD);
+  });
+} catch (e) {
+  console.error("❌ Startup failed:", e?.message || e);
+  process.exit(1);
 }
 
 process.on("SIGINT", async () => {
