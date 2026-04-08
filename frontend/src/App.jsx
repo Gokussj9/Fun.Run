@@ -6,7 +6,7 @@ import { createChart, ColorType, CandlestickSeries, CrosshairMode } from "lightw
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
-const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
+const API_BASE = (import.meta.env?.VITE_API_BASE || "https://zooming-solace-production-c360.up.railway.app").trim();
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
@@ -473,13 +473,9 @@ function ThemeStyles() {
   padding: 14px;
   border-radius: 18px;
 
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.08),
-    rgba(255,255,255,0.03)
-  );
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.035));
 
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
 
   text-align: center;
 
@@ -1862,7 +1858,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
       });
 
       setCoinsPage(page);
-      setCoinsHasMore(incoming.length >= 100);
+      setCoinsHasMore(incoming.length >= 50);
 
       if (page === 0) {
         try {
