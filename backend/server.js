@@ -498,6 +498,41 @@ async function insertTransaction(tx = {}) {
   return row;
 }
 
+async function upsertHolding(wallet, coinId, tokensDeltaMode = "set", tokensValue = 0) {
+  const w = String(wallet || "").trim();
+  const c = String(coinId || "").trim();
+  if (!w || !c) return null;
+
+  const current = await sql`
+    select wallet, coin_id, tokens
+    from holdings
+    where wallet = ${w} and coin_id = ${c}
+    limit 1
+  `;
+
+  const prev = current?.[0] ? Number(current[0].tokens || 0) : 0;
+
+  let nextTokens = 0;
+  if (tokensDeltaMode === "inc") {
+    nextTokens = Math.max(0, prev + Number(tokensValue || 0));
+  } else if (tokensDeltaMode === "dec") {
+    nextTokens = Math.max(0, prev - Number(tokensValue || 0));
+  } else {
+    nextTokens = Math.max(0, Number(tokensValue || 0));
+  }
+
+  await sql`
+    insert into holdings (wallet, coin_id, tokens, updated_at)
+    values (${w}, ${c}, ${nextTokens}, now())
+    on conflict (wallet, coin_id)
+    do update set
+      tokens = excluded.tokens,
+      updated_at = now()
+  `;
+
+  return nextTokens;
+}
+
 async function getCoinRowById(coinId) {
   const id = String(coinId || "").trim();
   if (!id) return null;
@@ -1211,6 +1246,21 @@ async function doTrade(req, res, side) {
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
       });
 
+            await upsertHolding(
+        wallet,
+        coin.id,
+        "set",
+        Math.max(0, safeNum(coin?.holders?.[wallet], 0))
+      );
+
+            await upsertCandlesForTrade(
+        coin.id,
+        Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
+        sideLower === "buy"
+          ? Math.max(0, safeNum(sol, 0))
+          : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0))
+      );
+
       return {
         ok: true,
         coin,
@@ -1404,10 +1454,15 @@ app.get("/api/profile/:wallet", async (req, res) => {
     const creationRows = await sql`select * from coins where creator_wallet = ${wallet} order by created_at desc limit 1000`;
     const myCreations = Array.isArray(creationRows) ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
 
-    const txArr = await sql`select * from transactions where wallet = ${wallet} order by created_at desc limit ${PROFILE_HOLDING_TX_SCAN}`;
+      const txArr = await sql`
+      select * from transactions
+      where wallet = ${wallet}
+      order by created_at desc
+      limit ${PROFILE_TX_LIMIT}
+    `;
     const walletTxRows = Array.isArray(txArr) ? txArr : [];
 
-    const lastTx = walletTxRows.slice(0, PROFILE_TX_LIMIT).map((t) => ({
+    const lastTx = walletTxRows.map((t) => ({
       id: t.id,
       coinId: t.coinId || t.coin_id,
       side: String(t.type || "TX").toUpperCase(),
@@ -1420,19 +1475,38 @@ app.get("/api/profile/:wallet", async (req, res) => {
       wallet: t.wallet,
     }));
 
-    const touchedCoinIds = Array.from(new Set(walletTxRows.map((t) => String(t.coinId || t.coin_id || "").trim()).filter(Boolean))).slice(0, 200);
+    const holdingBaseRows = await sql`
+      select wallet, coin_id, tokens, updated_at
+      from holdings
+      where wallet = ${wallet} and tokens > 0
+      order by updated_at desc
+      limit 500
+    `;
+
+    const holdingCoinIds = Array.from(
+      new Set((holdingBaseRows || []).map((r) => String(r.coin_id || "").trim()).filter(Boolean))
+    );
+
     let holdingRows = [];
-    if (touchedCoinIds.length) {
-      holdingRows = await sql`select * from coins where id = any(${touchedCoinIds})`;
+    if (holdingCoinIds.length) {
+      holdingRows = await sql`
+        select * from coins
+        where id = any(${holdingCoinIds})
+      `;
     }
+
+    const holdingMap = new Map(
+      (holdingBaseRows || []).map((r) => [String(r.coin_id || "").trim(), r])
+    );
 
     const holdings = holdingRows
       .map(mapDbCoinToApi)
       .filter(Boolean)
       .map((c) => {
-        const amount = Math.max(0, safeNum(c.holders?.[wallet], 0));
+        const h = holdingMap.get(String(c.id)) || null;
+        const amount = Math.max(0, safeNum(h?.tokens, 0));
         if (amount <= 0) return null;
-        const txTimes = lastTx.filter((t) => String(t.coinId || "") === String(c.id)).map((t) => safeNum(t.t, 0));
+
         return {
           coinId: c.id,
           symbol: c.symbol,
@@ -1440,8 +1514,13 @@ app.get("/api/profile/:wallet", async (req, res) => {
           logo: c.logo,
           amount,
           totalSupply: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)),
-          pct: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0 ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100 : 0,
-          lastAt: Math.max(safeNum(c.lastTradeAt, 0), ...(txTimes.length ? txTimes : [0])),
+          pct:
+            Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0
+              ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100
+              : 0,
+          lastAt: h?.updated_at
+            ? new Date(h.updated_at).getTime()
+            : safeNum(c.lastTradeAt, 0),
         };
       })
       .filter(Boolean)

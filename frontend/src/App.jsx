@@ -1174,6 +1174,69 @@ function bucketStartMs(ts, bucketMs) {
   return Math.floor(n / bucketMs) * bucketMs;
 }
 
+const CANDLE_TIMEFRAMES = {
+  "5M": 5 * 60 * 1000,
+  "15M": 15 * 60 * 1000,
+  "1H": 60 * 60 * 1000,
+  "4H": 4 * 60 * 60 * 1000,
+  "1D": 24 * 60 * 60 * 1000,
+  "1W": 7 * 24 * 60 * 60 * 1000,
+  "1M": 30 * 24 * 60 * 60 * 1000,
+};
+
+async function upsertCandlesForTrade(coinId, priceUsd, solAmount = 0) {
+  const id = String(coinId || "").trim();
+  const close = Math.max(0, safeNum(priceUsd, 0));
+  const vol = Math.max(0, safeNum(solAmount, 0));
+  if (!id || close <= 0) return;
+
+  const now = Date.now();
+
+  for (const [timeframe, bucketMs] of Object.entries(CANDLE_TIMEFRAMES)) {
+    const bucket = bucketStartMs(now, bucketMs);
+
+    const rows = await sql`
+      select open, high, low, close, volume_sol, trades_count
+      from candles
+      where coin_id = ${id}
+        and timeframe = ${timeframe}
+        and bucket_time = ${bucket}
+      limit 1
+    `;
+
+    const prev = rows?.[0] || null;
+
+    if (!prev) {
+      await sql`
+        insert into candles (
+          coin_id, timeframe, bucket_time,
+          open, high, low, close,
+          volume_sol, trades_count, updated_at
+        )
+        values (
+          ${id}, ${timeframe}, ${bucket},
+          ${close}, ${close}, ${close}, ${close},
+          ${vol}, 1, now()
+        )
+      `;
+    } else {
+      await sql`
+        update candles
+        set
+          high = greatest(high, ${close}),
+          low = least(low, ${close}),
+          close = ${close},
+          volume_sol = coalesce(volume_sol, 0) + ${vol},
+          trades_count = coalesce(trades_count, 0) + 1,
+          updated_at = now()
+        where coin_id = ${id}
+          and timeframe = ${timeframe}
+          and bucket_time = ${bucket}
+      `;
+    }
+  }
+}
+
 function getApproxSolUsd(coin) {
   const priceUsd = safeNum(coin?.priceUsd, 0);
   const priceSol = safeNum(coin?.priceSol, 0);
