@@ -18,6 +18,7 @@ const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const ENABLE_SUPABASE_MIGRATION = String(process.env.ENABLE_SUPABASE_MIGRATION || "") === "1";
 
 const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
 const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
@@ -396,11 +397,38 @@ async function ensureSchema() {
       created_at timestamptz default now()
     )`;
 
+  await sql`
+    create table if not exists holdings (
+      wallet text not null,
+      coin_id text not null,
+      tokens numeric default 0,
+      updated_at timestamptz default now(),
+      primary key (wallet, coin_id)
+    )`;
+
+  await sql`
+    create table if not exists candles (
+      coin_id text not null,
+      timeframe text not null,
+      bucket_time bigint not null,
+      open numeric default 0,
+      high numeric default 0,
+      low numeric default 0,
+      close numeric default 0,
+      volume_sol numeric default 0,
+      trades_count integer default 0,
+      updated_at timestamptz default now(),
+      primary key (coin_id, timeframe, bucket_time)
+    )`;
+
   await sql`create index if not exists coins_created_at_idx on coins (created_at desc)`;
   await sql`create index if not exists coins_creator_wallet_idx on coins (creator_wallet)`;
   await sql`create index if not exists tx_coin_id_created_at_idx on transactions (coin_id, created_at desc)`;
   await sql`create index if not exists tx_wallet_created_at_idx on transactions (wallet, created_at desc)`;
   await sql`create index if not exists profiles_referrer_idx on profiles (referrer)`;
+  await sql`create index if not exists holdings_wallet_idx on holdings (wallet)`;
+  await sql`create index if not exists holdings_coin_id_idx on holdings (coin_id)`;
+  await sql`create index if not exists candles_coin_tf_bucket_idx on candles (coin_id, timeframe, bucket_time desc)`;
 }
 
 function profileToDbRow(profile = {}) {
@@ -604,45 +632,6 @@ async function saveCoin(coin) {
   return mapDbCoinToApi(rows[0]);
 }
 
-async function migrateFromSupabaseIfNeeded() {
-  if (!supabaseAdmin || !sql) return { skipped: true, reason: "missing supabase or database url" };
-
-  const countRows = await sql`select count(*)::int as count from coins`;
-  if (safeNum(countRows?.[0]?.count, 0) > 0) return { skipped: true, reason: "coins already exist" };
-
-  const [coinRows, profileRows, txRows] = await Promise.all([
-    supabaseAdmin.from("coins").select("*").limit(5000),
-    supabaseAdmin.from("profiles").select("*").limit(5000),
-    supabaseAdmin.from("transactions").select("*").limit(20000),
-  ]);
-
-  if (coinRows.error) throw coinRows.error;
-  if (profileRows.error) throw profileRows.error;
-  if (txRows.error) throw txRows.error;
-
-  for (const row of coinRows.data || []) {
-    await sql`
-      insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart, holders)
-      values (${row.id}, ${row.name || ""}, ${row.symbol || ""}, ${row.story || ""}, ${row.logo || ""}, ${row.metadata_uri || ""}, ${row.creator_wallet || ""}, ${row.created_at || new Date().toISOString()}, ${safeNum(row.total_supply, TOTAL_SUPPLY)}, ${safeNum(row.curve_supply, saleSupplyFromTotal(safeNum(row.total_supply, TOTAL_SUPPLY)))}, ${safeNum(row.curve_sold, 0)}, ${safeNum(row.v_sol, VIRTUAL_SOL)}, ${safeNum(row.v_tokens, calcVirtualTokens(row.total_supply, row.curve_supply, row.v_tokens))}, ${safeNum(row.reserve_sol, 0)}, ${safeNum(row.reserve_token, saleSupplyFromTotal(safeNum(row.total_supply, TOTAL_SUPPLY)))}, ${safeNum(row.market_cap, 0)}, ${safeNum(row.last_price, 0)}, ${safeNum(row.ath_market_cap, 0)}, ${safeNum(row.volume_sol, 0)}, ${safeNum(row.last_trade_at, 0)}, ${safeNum(row.creator_rewards, 0)}, ${sql.json(Array.isArray(row.chart) ? row.chart : [])}, ${sql.json(row.holders || {})})
-      on conflict (id) do nothing`;
-  }
-
-  for (const row of profileRows.data || []) {
-    await sql`
-      insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
-      values (${row.wallet}, ${row.referrer || ""}, ${safeNum(row.referral_rewards, 0)}, ${safeNum(row.creator_rewards, 0)}, ${safeNum(row.owner_rewards, 0)}, ${row.referral_code || String(row.wallet || "").slice(0,6)}, ${safeNum(row.referral_count, 0)}, ${row.created_at || new Date().toISOString()}, ${row.updated_at || new Date().toISOString()})
-      on conflict (wallet) do nothing`;
-  }
-
-  for (const row of txRows.data || []) {
-    await sql`
-      insert into transactions (id, wallet, coin_id, type, sol, tokens, fee, created_at)
-      values (${row.id}, ${row.wallet || ""}, ${row.coin_id || ""}, ${row.type || "TX"}, ${safeNum(row.sol, 0)}, ${safeNum(row.tokens, 0)}, ${safeNum(row.fee, 0)}, ${row.created_at || new Date().toISOString()})
-      on conflict (id) do nothing`;
-  }
-
-  return { ok: true, coins: (coinRows.data || []).length, profiles: (profileRows.data || []).length, txs: (txRows.data || []).length };
-}
 
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
   const history = Array.isArray(prevChart)
@@ -993,13 +982,20 @@ app.get("/", async (req, res) => {
 
 app.get("/health", async (req, res) => {
   try {
+    let coins = 0;
+    if (sql) {
+      const rows = await sql`select count(*)::int as count from coins`;
+      coins = safeNum(rows?.[0]?.count, 0);
+    }
+
     return res.json({
       ok: true,
       dbMode: "neon-postgres",
+      coins,
       ts: Date.now(),
     });
   } catch (e) {
-    return res.status(500).json({ ok: false });
+    return res.status(500).json({ ok: false, error: e?.message || "health failed" });
   }
 });
 
@@ -1015,6 +1011,44 @@ app.get("/api/balance/:wallet", async (req, res) => {
     return res.json({ ok: true, sol: 0 });
   }
 });
+
+
+app.get("/api/coin/list", async (req, res) => {
+  try {
+    await requireDb();
+
+    const page = Math.max(0, Number(req.query.page || 0));
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+    const offset = page * limit;
+
+    const rows = await sql`
+      select *
+      from coins
+      order by created_at desc
+      limit ${limit} offset ${offset}
+    `;
+
+    const coins = Array.isArray(rows)
+      ? rows.map(mapDbCoinToApi).filter(Boolean)
+      : [];
+
+    return res.json({
+      ok: true,
+      coins,
+      page,
+      limit,
+      hasMore: coins.length >= limit,
+      hot15m: [],
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || "coin list failed",
+    });
+  }
+});
+
+
 
 app.get("/api/coin/:id/activity", async (req, res) => {
   try {
@@ -1566,17 +1600,23 @@ app.get("/api/profile/:wallet", async (req, res) => {
 try {
   await ensureSchema();
 
-  try {
-    const migrated = await migrateFromSupabaseIfNeeded();
-    if (migrated?.ok) console.log("✅ Migrated from Supabase:", migrated);
-  } catch (migrateErr) {
-    console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
+  if (ENABLE_SUPABASE_MIGRATION) {
+    try {
+      
+      if (migrated?.ok) console.log("✅ Migrated from Supabase:", migrated);
+      else console.log("ℹ️ Supabase migration:", migrated?.reason || "skipped");
+    } catch (migrateErr) {
+      console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
+    }
+  } else {
+    console.log("ℹ️ Supabase migration disabled");
   }
 
   app.listen(PORT, () => {
     console.log("✅ Backend running on port:", PORT);
     console.log("✅ Solana RPC:", SOLANA_RPC);
     console.log("✅ DB MODE: neon-postgres");
+    console.log("✅ ENABLE_SUPABASE_MIGRATION:", ENABLE_SUPABASE_MIGRATION);
     console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
     console.log("✅ JSON_LIMIT:", JSON_LIMIT);
     console.log("✅ Fee:", FEE_PCT + "%");
