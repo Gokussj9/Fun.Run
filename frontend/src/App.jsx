@@ -6,7 +6,8 @@ import { createChart, ColorType, CandlestickSeries, CrosshairMode } from "lightw
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
-const API_BASE = (import.meta.env?.VITE_API_BASE || "https://zooming-solace-production-c360.up.railway.app").trim();
+const API_BASE = (import.meta.env?.VITE_API_BASE || "").trim();
+const APP_BASE = (import.meta.env?.VITE_APP_URL || (typeof window !== "undefined" ? window.location.origin : "https://fun-run-lovat.vercel.app")).replace(/\/$/, "");
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
@@ -1360,31 +1361,45 @@ function getCoinAgeLabel(c) {
 
 function getReferralLink(addr) {
   if (!addr) return "";
-  const base = "https://fun-run-seven.vercel.app"; // 🔥 apna real domain yahan likhna
+  const base = APP_BASE || "https://fun-run-lovat.vercel.app"
   return `${base}/?ref=${encodeURIComponent(addr)}`;
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  const base = String(API_BASE || "").replace(/\/$/, "");
+  const url = base ? `${base}${path}` : path;
 
-  let json = null;
   try {
-    json = await res.json();
-  } catch {
-    json = null;
-  }
+    const res = await fetch(url, {
+      cache: "no-store",
+      ...options,
+      signal: options.signal || controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
 
-  if (!res.ok) {
-    throw new Error(json?.error || `Request failed (${res.status})`);
-  }
+    let json = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
 
-  return json || {};
+    if (!res.ok) {
+      throw new Error(json?.error || `Request failed (${res.status})`);
+    }
+
+    return json || {};
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("Request timeout");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function SearchIcon() {
@@ -1854,7 +1869,8 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
       try {
         json = await api(`/api/coin/list?page=${page}&limit=50`);
       } catch {
-        const res = await fetch(`${API_BASE}/api/coin/list?page=${page}&limit=50`);
+        const base = String(API_BASE || "").replace(/\/$/, "");
+        const res = await fetch(`${base ? base : ""}/api/coin/list?page=${page}&limit=50`, { cache: "no-store" });
         json = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
@@ -1921,7 +1937,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
       });
 
       setCoinsPage(page);
-      setCoinsHasMore(incoming.length >= 50);
+      setCoinsHasMore(Boolean(json?.hasMore ?? (incoming.length >= 50)));
 
       if (page === 0) {
         try {
