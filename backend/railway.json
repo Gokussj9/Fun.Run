@@ -5,6 +5,6 @@
     "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": node server.js
+    "startCommand": "node server.js"
   }
 }
