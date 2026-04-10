@@ -5,7 +5,6 @@ import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
-import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
 import { Connection, PublicKey } from "@solana/web3.js";
 
@@ -16,9 +15,6 @@ const PORT = Number(process.env.PORT || 5000);
 const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const ENABLE_SUPABASE_MIGRATION = String(process.env.ENABLE_SUPABASE_MIGRATION || "") === "1";
 
 const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
 const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
@@ -77,11 +73,6 @@ app.use(
 app.use(morgan("tiny"));
 
 // -------------------- CLIENTS --------------------
-const supabaseAdmin =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-    : null;
-
 const sql = DATABASE_URL
   ? postgres(DATABASE_URL, {
       ssl: "require",
@@ -632,7 +623,6 @@ async function saveCoin(coin) {
   return mapDbCoinToApi(rows[0]);
 }
 
-
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
   const history = Array.isArray(prevChart)
     ? prevChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => Number.isFinite(x) && x >= 0)
@@ -737,13 +727,7 @@ function applyFee(solAmount) {
 // ================= TRUE BONDING CURVE VERSION =================
 // sirf core changes kiye gaye hain (UI untouched, APIs same)
 
-
-
 // ================= SELL (TRUE CURVE) =================
-
-
-
-
 
 function distributeFee(store, coin, traderWallet, feeSol) {
   if (feeSol <= 0) return;
@@ -831,9 +815,6 @@ async function distributeFeeDirect(coin, traderWallet, feeSol) {
     }
   }
 }
-
-
-
 
 // ================= TRUE BONDING CURVE VERSION =================
 // sirf core changes kiye gaye hain (UI untouched, APIs same)
@@ -944,7 +925,6 @@ function ammSellByTokensIn(coin, wallet, tokensInRequested) {
   };
 }
 
-
 // -------------------- TRADE LOCK --------------------
 const COIN_TRADE_LOCKS = new Map();
 
@@ -1012,7 +992,6 @@ app.get("/api/balance/:wallet", async (req, res) => {
   }
 });
 
-
 app.get("/api/coin/list", async (req, res) => {
   try {
     await requireDb();
@@ -1047,8 +1026,6 @@ app.get("/api/coin/list", async (req, res) => {
     });
   }
 });
-
-
 
 app.get("/api/coin/:id/activity", async (req, res) => {
   try {
@@ -1366,8 +1343,6 @@ app.post("/api/claim", async (req, res) => {
   }
 });
 
-
-
 async function handleWithdraw(req, res, forcedKind = "") {
   try {
     await requireDb();
@@ -1459,17 +1434,9 @@ async function handleWithdraw(req, res, forcedKind = "") {
   }
 }
 
-
-
 app.post("/api/withdraw", (req, res) => handleWithdraw(req, res));
 app.post("/api/withdraw/creator", (req, res) => handleWithdraw(req, res, "CREATOR"));
 app.post("/api/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF"));
-
-
-
-
-
-
 
 app.get("/api/profile/:wallet", async (req, res) => {
   try {
@@ -1600,23 +1567,15 @@ app.get("/api/profile/:wallet", async (req, res) => {
 try {
   await ensureSchema();
 
-  if (ENABLE_SUPABASE_MIGRATION) {
-    try {
-      
-      if (migrated?.ok) console.log("✅ Migrated from Supabase:", migrated);
-      else console.log("ℹ️ Supabase migration:", migrated?.reason || "skipped");
-    } catch (migrateErr) {
-      console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
-    }
-  } else {
-    console.log("ℹ️ Supabase migration disabled");
+  try {
+  } catch (migrateErr) {
+    console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
   }
 
   app.listen(PORT, () => {
     console.log("✅ Backend running on port:", PORT);
     console.log("✅ Solana RPC:", SOLANA_RPC);
     console.log("✅ DB MODE: neon-postgres");
-    console.log("✅ ENABLE_SUPABASE_MIGRATION:", ENABLE_SUPABASE_MIGRATION);
     console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
     console.log("✅ JSON_LIMIT:", JSON_LIMIT);
     console.log("✅ Fee:", FEE_PCT + "%");
@@ -1641,5 +1600,4 @@ process.on("SIGINT", async () => {
 process.on("SIGTERM", async () => {
   process.exit(0);
 });
-
 
