@@ -709,6 +709,10 @@ function recalcCoin(coin, opts = {}) {
   return fixed;
 }
 
+async function upsertCandlesForTrade(coinId, price, volumeSol) {
+  return true;
+}
+
 function applyFee(solAmount) {
   const gross = Math.max(0, safeNum(solAmount, 0));
   const fee = gross * (FEE_PCT / 100);
