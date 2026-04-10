@@ -45,19 +45,11 @@ const PROFILE_HOLDING_TX_SCAN = 500;
 // -------------------- APP SETUP --------------------
 if (TRUST_PROXY) app.set("trust proxy", 1);
 
-app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(compression());
-app.use(express.json({ limit: JSON_LIMIT }));
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (CORS_ORIGINS.includes(origin)) return cb(null, true);
-      return cb(new Error("CORS blocked: " + origin));
-    },
-    credentials: true,
-  })
-);
+
+app.use(cors({
+  origin: "*"
+}));
+
 app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
