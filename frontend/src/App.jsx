@@ -6,7 +6,7 @@ import { createChart, ColorType, CandlestickSeries, CrosshairMode } from "lightw
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
-const API_BASE = (import.meta.env?.VITE_API_BASE || "").trim();
+const API_BASE = (import.meta.env?.VITE_API_BASE || "https://zooming-solace-production-c360.up.railway.app").trim();
 const APP_BASE = (import.meta.env?.VITE_APP_URL || (typeof window !== "undefined" ? window.location.origin : "https://fun-run-lovat.vercel.app")).replace(/\/$/, "");
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
@@ -2953,7 +2953,7 @@ return () => {
             marginLeft: "auto",
             maxWidth: "100%",
             width: "100%",
-marginLeft: 0,
+
           }}
         >
           <button
