@@ -11,7 +11,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 const app = express();
 
 // -------------------- ENV --------------------
-const PORT = Number(process.env.PORT || 5000);
+const PORT = process.env.PORT || 5000;
 const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
