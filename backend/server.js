@@ -643,34 +643,31 @@ async function saveCoin(coin) {
 
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
   const history = Array.isArray(prevChart)
-    ? prevChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => Number.isFinite(x) && x >= 0)
+    ? prevChart
+        .map((x) => Math.max(0, safeNum(x, 0)))
+        .filter((x) => Number.isFinite(x) && x > 0)
     : [];
 
   const point = Math.max(0, safeNum(nextPoint, 0));
-  if (!history.length) return [point, point, point, point, point];
+  if (!point) return history.length ? history.slice(-MAX_CHART_POINTS) : [0];
 
-  const last = Math.max(0, safeNum(history[history.length - 1], point));
-  if (last <= 0 || point <= 0) {
-    return history.slice(-(MAX_CHART_POINTS - 1)).concat([point]);
+  if (!history.length) {
+    return [point, point, point, point, point];
   }
 
-  const direction = String(sideHint || "").toLowerCase() === "sell" ? -1 : point < last ? -1 : 1;
-  const rawDeltaPct = Math.abs(((point - last) / Math.max(last, 1e-9)) * 100);
-  const visibleDeltaPct = Math.max(direction > 0 ? 0.95 : 0.8, Math.min(9, rawDeltaPct * 1.9));
+  const last = Math.max(1e-9, safeNum(history[history.length - 1], point));
+  const isSell = String(sideHint || "").toLowerCase() === "sell";
 
-  const visualTarget = direction > 0
-    ? last * (1 + visibleDeltaPct / 100)
-    : Math.max(1e-9, last * (1 - visibleDeltaPct / 100));
+  let finalPoint = point;
 
-  const settle = direction > 0
-    ? Math.max(point, last + (visualTarget - last) * 0.76)
-    : Math.min(point, last - (last - visualTarget) * 0.76);
+  if (!isSell && finalPoint < last) {
+    finalPoint = point;
+  }
+  if (isSell && finalPoint > last) {
+    finalPoint = point;
+  }
 
-  const overshoot = direction > 0
-    ? Math.max(settle, last + (visualTarget - last) * 1.03)
-    : Math.min(settle, last - (last - visualTarget) * 1.03);
-
-  return history.slice(-(MAX_CHART_POINTS - 4)).concat([last, settle, overshoot, point]);
+  return history.slice(-(MAX_CHART_POINTS - 1)).concat([finalPoint]);
 }
 
 function recalcCoin(coin, opts = {}) {
