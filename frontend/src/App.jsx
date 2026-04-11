@@ -2197,6 +2197,8 @@ async function handleLogoPick(file) {
     try {
       setCreating(true);
 
+      console.log("creatorWallet:", solAddr);
+
       const payload = {
         name: n,
         symbol: s,

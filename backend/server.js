@@ -10,6 +10,8 @@ import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
 
+app.use(express.json({ limit: "15mb" }));
+
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
