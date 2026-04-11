@@ -1595,7 +1595,7 @@ try {
     console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
   }
 
-  app.listen(PORT, () => {
+  const PORT = process.env.PORT || 5000;
     console.log("✅ Backend running on port:", PORT);
     console.log("✅ Solana RPC:", SOLANA_RPC);
     console.log("✅ DB MODE: neon-postgres");
@@ -1610,7 +1610,7 @@ try {
     );
     console.log("✅ AMM virtual:", "vSOL", VIRTUAL_SOL, "vTOK%", VIRTUAL_TOKEN_PCT);
     console.log("✅ SOL_USD:", SOL_USD);
-  });
+
 } catch (e) {
   console.error("❌ Startup failed:", e?.message || e);
   process.exit(1);
