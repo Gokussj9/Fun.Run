@@ -990,6 +990,8 @@ app.get("/api/balance/:wallet", async (req, res) => {
 
 app.get("/api/coin/list", async (req, res) => {
   try {
+    console.log("🔥 /api/coin/list hit");
+console.log("👉 query params:", req.query);
     await requireDb();
 
     const page = Math.max(0, Number(req.query.page || 0));
@@ -1555,6 +1557,7 @@ app.get("/api/profile/:wallet", async (req, res) => {
     });
   } catch (e) {
     console.log("profile error:", e?.message || e);
+    console.error("❌ coin list error:", e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
