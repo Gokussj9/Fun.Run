@@ -1152,15 +1152,16 @@ app.post("/api/coin/create", async (req, res) => {
         latestCoin = await saveCoin(latestCoin);
 
         await insertTransaction({
-          id: uid(),
-          type: "BUY",
-          side: "BUY",
-          coinId: latestCoin.id,
-          wallet: creatorWallet,
-          sol: initialSol,
-          tokens: Math.max(0, safeNum(buyRes.tokensOut, 0)),
-          fee: Math.max(0, safeNum(buyRes.feeSol, 0)),
-        });
+  id: uid(),
+  type: "BUY",
+  side: "BUY",
+  coinId: latestCoin.id,
+  wallet: creatorWallet,
+  sol: initialSol,
+  tokens: Math.max(0, safeNum(buyRes.tokensOut, 0)),
+  fee: Math.max(0, safeNum(buyRes.feeSol, 0)),
+  priceUsd: latestCoin.priceUsd,   // ✅ ye line add karo
+});
 
         return { ok: true, coin: latestCoin };
       });
@@ -1276,6 +1277,7 @@ async function doTrade(req, res, side) {
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
             : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
+        priceUsd: latestCoin.priceUsd,
       });
 
             await upsertHolding(
