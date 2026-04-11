@@ -55,6 +55,7 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: "*"
 }));
+app.options("*", cors());
 
 app.use((req, res, next) => {
   console.log("🌍 incoming:", req.method, req.url);
