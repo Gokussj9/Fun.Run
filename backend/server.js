@@ -72,7 +72,7 @@ const sql = DATABASE_URL
       idle_timeout: 20,
       connect_timeout: 15,
       prepare: false,
-      transform: postgres.camel,
+    
     })
   : null;
 
