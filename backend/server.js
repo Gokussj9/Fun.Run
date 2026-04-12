@@ -1277,7 +1277,7 @@ async function doTrade(req, res, side) {
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
             : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
-        priceUsd: latestCoin.priceUsd,
+        priceUsd: coin.priceUsd,
       });
 
             await upsertHolding(
