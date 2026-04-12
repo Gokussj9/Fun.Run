@@ -1160,7 +1160,7 @@ app.post("/api/coin/create", async (req, res) => {
   sol: initialSol,
   tokens: Math.max(0, safeNum(buyRes.tokensOut, 0)),
   fee: Math.max(0, safeNum(buyRes.feeSol, 0)),
-  priceUsd: latestCoin.priceUsd,   // ✅ ye line add karo
+  priceUsd: coin.priceUsd,
 });
 
         return { ok: true, coin: latestCoin };
