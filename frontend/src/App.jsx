@@ -1086,7 +1086,11 @@ function normalizeCoin(c = {}) {
 
 function getCoinPriceUsd(c) {
   const direct = safeNum(c?.priceUsd, 0);
-  if (direct > 0) return direct;
+  if (direct > 0) {
+  return direct;
+}
+
+return Math.max(0.00000001, safeNum(coin?.priceUsd, fallback));
 
   const mc = safeNum(c?.mc, 0);
   const total = Math.max(1, safeNum(c?.totalSupply, 1_000_000_000));
@@ -1248,15 +1252,34 @@ function getApproxSolUsd(coin) {
 function getTradePriceUsd(trade, coin, fallback) {
   const direct = safeNum(trade?.priceUsd, 0);
   if (direct > 0) return direct;
+
   const sol = Math.max(0, safeNum(trade?.sol, 0));
   const tokens = Math.max(0, safeNum(trade?.tokens, 0));
   const solUsd = getApproxSolUsd(coin);
+
   if (sol > 0 && tokens > 0) {
     const pxSol = sol / Math.max(tokens, 1e-12);
     const pxUsd = pxSol * solUsd;
-    if (Number.isFinite(pxUsd) && pxUsd > 0) return pxUsd;
+
+    if (Number.isFinite(pxUsd) && pxUsd > 0) {
+      const ref = Math.max(
+        0.00000001,
+        safeNum(fallback, 0) || safeNum(coin?.priceUsd, 0) || safeNum(coin?.lastPriceUsd, 0) || 0.000001
+      );
+
+      const minAllowed = ref * 0.2;
+      const maxAllowed = ref * 5;
+
+      if (pxUsd >= minAllowed && pxUsd <= maxAllowed) {
+        return pxUsd;
+      }
+    }
   }
-  return Math.max(0.00000001, safeNum(fallback, safeNum(coin?.priceUsd, 0.000001)));
+
+  return Math.max(
+  0.00000001,
+  safeNum(fallback, 0.000001)
+);
 }
 
 function buildCandlesFromActivity(activity, coin, chartRange) {
@@ -1303,7 +1326,20 @@ function buildCandlesFromActivity(activity, coin, chartRange) {
 
   for (const trade of trades) {
     const tradeBucket = bucketStartMs(trade.ts, bucketMs);
-    const tradePrice = getTradePriceUsd(trade, coin, lastClose);
+    const rawTradePrice = getTradePriceUsd(trade, coin, lastClose);
+
+if (!Number.isFinite(rawTradePrice) || rawTradePrice <= 0) {
+  continue;
+}
+
+const minAllowed = Math.max(0.00000001, lastClose * 0.2);
+const maxAllowed = Math.max(minAllowed, lastClose * 5);
+
+if (rawTradePrice < minAllowed || rawTradePrice > maxAllowed) {
+  continue;
+}
+
+const tradePrice = rawTradePrice;
 
     while (cursor < tradeBucket) {
       pushFlat(Math.floor(cursor / 1000), lastClose);
