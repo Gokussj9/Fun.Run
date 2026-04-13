@@ -2560,7 +2560,7 @@ const tradePreview = useMemo(() => {
 
 function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
   const chartRef = useRef(null);
-  const [activity, setActivity] = useState([]);
+  const [candles, setCandles] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
 
   const [chartLook, setChartLook] = useState(() => {
@@ -2652,7 +2652,22 @@ async function loadActivity(force = false) {
       }
     }
 
-    const json = await api(`/api/coin/${coin.id}/activity?limit=60`);
+    
+const tfMap = {
+  "5M": "5m",
+  "15M": "15m",
+  "1H": "1h",
+  "4H": "4h",
+  "1D": "1d",
+  "1W": "1w",
+  "1M": "1m",
+};
+
+const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
+const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
+
+
+
     if (!mounted) return;
 
     const rows = Array.isArray(json?.activity)
@@ -2661,13 +2676,13 @@ async function loadActivity(force = false) {
       ? json.items
       : [];
 
-    setActivity(rows);
+    setCandles(rows);
     localStorage.setItem(
       cacheKey,
       JSON.stringify({ ts: Date.now(), rows })
     );
   } catch {
-    if (mounted) setActivity([]);
+    if (mounted) setCandles([]);
   } finally {
     if (mounted) setActivityLoading(false);
   }
@@ -2683,136 +2698,19 @@ return () => {
 }, [coin?.id]);
 
 
-  const candleData = useMemo(() => {
-    const cfg = getTimeframeCfg(chartRange);
-    const bucketMs = cfg.ms;
-    const maxBars = 120;
-    const now = Date.now();
 
-    const fallbackPrice = Math.max(
-      0.00000001,
-      safeNum(coin?.priceUsd, 0) ||
-        safeNum(coin?.lastPriceUsd, 0) ||
-        safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
-        0.000001
-    );
 
-    const createdAt = safeNum(coin?.createdAt || coin?.created_at, now);
-    const startWindow = Math.max(createdAt, now - bucketMs * maxBars);
-    const startBucket = bucketStartMs(startWindow, bucketMs);
-    const currentBucket = bucketStartMs(now, bucketMs);
 
-    const trades = (Array.isArray(activity) ? activity : [])
-      .map((t) => ({
-        ...t,
-        ts: safeNum(t?.ts || t?.t, 0),
-      }))
-      .filter((t) => t.ts > 0)
-      .sort((a, b) => a.ts - b.ts);
 
-    const candles = [];
-    let cursor = startBucket;
-    let lastClose = fallbackPrice;
 
-    const pushFlat = (timeSec, closeVal) => {
-      const tiny = Math.max(closeVal * 0.0008, 0.00000001);
-      candles.push({
-        time: timeSec,
-        open: closeVal,
-        high: closeVal + tiny,
-        low: Math.max(0.00000001, closeVal - tiny),
-        close: closeVal,
-      });
-    };
 
-  if (!trades.length) {
-  const candles = [];
-  let cursor = startBucket;
 
-  while (cursor <= currentBucket) {
-    candles.push({
-      time: Math.floor(cursor / 1000),
-      open: fallbackPrice,
-      high: fallbackPrice * 1.0003,
-      low: fallbackPrice * 0.9997,
-      close: fallbackPrice,
-    });
-    cursor += bucketMs;
-  }
+const candleData = candles;
 
-  return candles.slice(-maxBars);
-}
 
-    for (const trade of trades) {
-      const tradeBucket = bucketStartMs(trade.ts, bucketMs);
-      const tradePrice = getTradePriceUsd(trade, coin, lastClose);
 
-      while (cursor < tradeBucket) {
-        pushFlat(Math.floor(cursor / 1000), lastClose);
-        cursor += bucketMs;
-      }
 
-      const existing = candles[candles.length - 1];
-      const bucketSec = Math.floor(tradeBucket / 1000);
 
-      if (existing && existing.time === bucketSec) {
-        existing.high = Math.max(existing.high, tradePrice);
-        existing.low = Math.min(existing.low, tradePrice);
-        existing.close =
-  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
-    ? Math.max(existing.open, tradePrice)
-    : Math.min(existing.open, tradePrice);
-      } else {
-        candles.push({
-          time: bucketSec,
-          open: lastClose,
-          high: Math.max(lastClose, tradePrice),
-          low: Math.min(lastClose, tradePrice),
-          close: String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
-  ? Math.max(lastClose, tradePrice)
-  : Math.min(lastClose, tradePrice),
-        });
-      }
-
-      lastClose = tradePrice;
-      cursor = tradeBucket + bucketMs;
-    }
-
-    while (cursor <= currentBucket) {
-      pushFlat(Math.floor(cursor / 1000), lastClose);
-      cursor += bucketMs;
-    }
-
-    return candles.slice(-maxBars).map((c) => {
-      const bodyTop = Math.max(c.open, c.close);
-      const bodyBottom = Math.min(c.open, c.close);
-      const body = Math.max(bodyTop - bodyBottom, 0);
-      const minBody = Math.max(c.close * 0.00008, 0.000000003);
-    const wickPad = Math.max(c.close * 0.000002, minBody * 0.08, 0.0000000005);
-
-      let open = c.open;
-      let close = c.close;
-
-      if (body < minBody) {
-        if (close >= open) {
-          close = open + minBody;
-        } else {
-          open = close + minBody;
-        }
-      }
-
-      const hiBase = Math.max(open, close, c.high);
-      const loBase = Math.min(open, close, c.low);
-
-      return {
-        time: c.time,
-        open,
-        high: hiBase + wickPad,
-        low: Math.max(0.00000001, loBase - wickPad),
-        close,
-      };
-    });
-  }, [activity, coin, chartRange]);
 
   const pct = useMemo(() => {
   const price = safeNum(coin?.priceUsd, 0);

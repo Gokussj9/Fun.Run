@@ -1115,6 +1115,71 @@ app.get("/api/coin/:id/activity", async (req, res) => {
   }
 });
 
+
+app.get("/api/coin/:id/candles", async (req, res) => {
+  try {
+    await requireDb();
+
+    const coinId = String(req.params.id || "").trim();
+    const tfRaw = String(req.query.tf || "5m").trim().toLowerCase();
+    const limit = Math.max(10, Math.min(300, safeNum(req.query.limit, 120)));
+
+    const tfMap = {
+      "5m": "5m",
+      "15m": "15m",
+      "1h": "1h",
+      "4h": "4h",
+      "1d": "1d",
+      "1w": "1w",
+      "1m": "1m",
+      "5M": "5m",
+      "15M": "15m",
+      "1H": "1h",
+      "4H": "4h",
+      "1D": "1d",
+      "1W": "1w",
+      "1M": "1m",
+    };
+
+    const tf = tfMap[tfRaw] || "5m";
+
+    const rows = await sql`
+      select
+        coin_id,
+        timeframe,
+        bucket_time,
+        open,
+        high,
+        low,
+        close,
+        volume_sol,
+        trades_count
+      from candles
+      where coin_id = ${coinId}
+        and timeframe = ${tf}
+      order by bucket_time asc
+      limit ${limit}
+    `;
+
+    const candles = Array.isArray(rows)
+      ? rows.map((r) => ({
+          time: safeNum(r.bucket_time, 0),
+          open: safeNum(r.open, 0),
+          high: safeNum(r.high, 0),
+          low: safeNum(r.low, 0),
+          close: safeNum(r.close, 0),
+          volumeSol: safeNum(r.volume_sol, 0),
+          tradesCount: safeNum(r.trades_count, 0),
+        }))
+      : [];
+
+    return res.json({ ok: true, candles, tf });
+  } catch (e) {
+    console.log("coin/candles error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.post("/api/coin/create", async (req, res) => {
   try {
     await requireDb();
