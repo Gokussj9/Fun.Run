@@ -1087,10 +1087,8 @@ function normalizeCoin(c = {}) {
 function getCoinPriceUsd(c) {
   const direct = safeNum(c?.priceUsd, 0);
   if (direct > 0) {
-  return direct;
-}
-
-return Math.max(0.00000001, safeNum(coin?.priceUsd, fallback));
+    return direct;
+  }
 
   const mc = safeNum(c?.mc, 0);
   const total = Math.max(1, safeNum(c?.totalSupply, 1_000_000_000));
@@ -1285,7 +1283,7 @@ function getTradePriceUsd(trade, coin, fallback) {
 function buildCandlesFromActivity(activity, coin, chartRange) {
   const cfg = getTimeframeCfg(chartRange);
   const bucketMs = cfg.ms;
-  const maxBars = cfg.bars;
+  const maxBars = 120;
   const now = Date.now();
 
   const fallbackPrice =
@@ -1312,7 +1310,9 @@ function buildCandlesFromActivity(activity, coin, chartRange) {
 
   const candles = [];
   let cursor = startBucket;
-  let lastClose = fallbackPrice;
+  let lastClose = trades.length
+  ? getTradePriceUsd(trades[0], coin, fallbackPrice)
+  : fallbackPrice;
 
   const pushFlat = (timeSec, closeVal) => {
     candles.push({
@@ -1351,14 +1351,20 @@ const tradePrice = rawTradePrice;
     if (existing && existing.time === Math.floor(tradeBucket / 1000)) {
       existing.high = Math.max(existing.high, tradePrice);
       existing.low = Math.min(existing.low, tradePrice);
-      existing.close = tradePrice;
+      existing.close =
+  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
+    ? Math.max(existing.open, tradePrice)
+    : Math.min(existing.open, tradePrice);
     } else {
       candles.push({
         time: Math.floor(tradeBucket / 1000),
         open: lastClose,
         high: Math.max(lastClose, tradePrice),
         low: Math.min(lastClose, tradePrice),
-        close: tradePrice,
+   close:
+  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
+    ? Math.max(lastClose, tradePrice)
+    : Math.min(lastClose, tradePrice),
       });
     }
 
@@ -2680,7 +2686,7 @@ return () => {
   const candleData = useMemo(() => {
     const cfg = getTimeframeCfg(chartRange);
     const bucketMs = cfg.ms;
-    const maxBars = cfg.bars;
+    const maxBars = 120;
     const now = Date.now();
 
     const fallbackPrice = Math.max(
@@ -2752,14 +2758,19 @@ return () => {
       if (existing && existing.time === bucketSec) {
         existing.high = Math.max(existing.high, tradePrice);
         existing.low = Math.min(existing.low, tradePrice);
-        existing.close = tradePrice;
+        existing.close =
+  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
+    ? Math.max(existing.open, tradePrice)
+    : Math.min(existing.open, tradePrice);
       } else {
         candles.push({
           time: bucketSec,
           open: lastClose,
           high: Math.max(lastClose, tradePrice),
           low: Math.min(lastClose, tradePrice),
-          close: tradePrice,
+          close: String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
+  ? Math.max(lastClose, tradePrice)
+  : Math.min(lastClose, tradePrice),
         });
       }
 
@@ -2777,7 +2788,7 @@ return () => {
       const bodyBottom = Math.min(c.open, c.close);
       const body = Math.max(bodyTop - bodyBottom, 0);
       const minBody = Math.max(c.close * 0.00008, 0.000000003);
-    const wickPad = Math.max(c.close * 0.00002, minBody * 0.15, 0.000000001);
+    const wickPad = Math.max(c.close * 0.000002, minBody * 0.08, 0.0000000005);
 
       let open = c.open;
       let close = c.close;
@@ -2804,12 +2815,17 @@ return () => {
   }, [activity, coin, chartRange]);
 
   const pct = useMemo(() => {
-    if (!candleData.length) return 0;
-    const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.00000001));
-    const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
-    const rawPct = ((last - first) / first) * 100;
-    return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
-  }, [candleData]);
+  const price = safeNum(coin?.priceUsd, 0);
+  const chartArr = Array.isArray(coin?.chart) ? coin.chart : [];
+
+  if (chartArr.length < 2 || price <= 0) return 0;
+
+  const first = Math.max(0.00000001, safeNum(chartArr[0], price));
+  const last = Math.max(0.00000001, price);
+
+  const rawPct = ((last - first) / first) * 100;
+  return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
+}, [coin]);
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,
@@ -2852,9 +2868,11 @@ return () => {
         secondsVisible: false,
         rightOffset: 2,
         barSpacing: Math.max(2.2, Math.min(candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2, width / Math.max(100, candleData.length))),
-        minBarSpacing: 6,
-        fixLeftEdge: true,
-        fixRightEdge: true,
+        minBarSpacing: 1,
+        rightBarStaysOnScroll: true,
+lockVisibleTimeRangeOnResize: false,
+       fixLeftEdge: false,
+fixRightEdge: false,
       },
       crosshair: {
         mode: 0,
@@ -2880,6 +2898,8 @@ return () => {
 },
     });
 
+    
+
     const series = chart.addSeries(CandlestickSeries, {
       upColor: themeCfg.up,
       downColor: themeCfg.down,
@@ -2898,7 +2918,7 @@ return () => {
     });
 
     series.setData(candleData);
-    chart.timeScale().fitContent();
+    
 
     const handleResize = () => {
       if (!chartRef.current) return;
@@ -2906,7 +2926,7 @@ return () => {
         width: Math.max(280, chartRef.current.clientWidth || 280),
         height,
       });
-      chart.timeScale().fitContent();
+      
     };
 
     let ro = null;

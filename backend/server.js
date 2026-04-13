@@ -733,7 +733,63 @@ function recalcCoin(coin, opts = {}) {
 }
 
 async function upsertCandlesForTrade(coinId, price, volumeSol) {
-  return true;
+  await requireDb();
+
+  const timeframes = [
+    { tf: "5m", sec: 300 },
+    { tf: "15m", sec: 900 },
+    { tf: "1h", sec: 3600 },
+    { tf: "4h", sec: 14400 },
+    { tf: "1d", sec: 86400 },
+    { tf: "1w", sec: 604800 },
+    { tf: "1m", sec: 2592000 },
+  ];
+
+  const now = Math.floor(Date.now() / 1000);
+  const p = Math.max(0, safeNum(price, 0));
+  const vol = Math.max(0, safeNum(volumeSol, 0));
+
+  for (const t of timeframes) {
+    const bucket = Math.floor(now / t.sec) * t.sec;
+
+    const existing = await sql`
+      select * from candles
+      where coin_id = ${coinId}
+      and timeframe = ${t.tf}
+      and bucket_time = ${bucket}
+      limit 1
+    `;
+
+    if (existing[0]) {
+      const c = existing[0];
+
+      await sql`
+        update candles set
+          high = greatest(${p}, high),
+          low = least(${p}, low),
+          close = ${p},
+          volume_sol = volume_sol + ${vol},
+          trades_count = trades_count + 1,
+          updated_at = now()
+        where coin_id = ${coinId}
+        and timeframe = ${t.tf}
+        and bucket_time = ${bucket}
+      `;
+    } else {
+      await sql`
+        insert into candles (
+          coin_id, timeframe, bucket_time,
+          open, high, low, close,
+          volume_sol, trades_count, updated_at
+        )
+        values (
+          ${coinId}, ${t.tf}, ${bucket},
+          ${p}, ${p}, ${p}, ${p},
+          ${vol}, 1, now()
+        )
+      `;
+    }
+  }
 }
 
 function applyFee(solAmount) {
