@@ -2627,10 +2627,17 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
     let mounted = true;
     let timer = null;
 
+
+
+
+
+
+
 async function loadActivity(force = false) {
   if (!coin?.id) return;
 
-  const cacheKey = `coin_activity_${coin.id}`;
+  const tfKey = String(chartRange || "1D").toUpperCase();
+const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
   const cacheTTL = 30000; // 30 sec
 
   try {
@@ -2645,7 +2652,7 @@ async function loadActivity(force = false) {
           Array.isArray(cached.rows) &&
           Date.now() - Number(cached.ts || 0) < cacheTTL
         ) {
-          if (mounted) setActivity(cached.rows);
+          if (mounted) setCandles(cached.rows);
           setActivityLoading(false);
           return;
         }
@@ -2670,17 +2677,23 @@ const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
 
     if (!mounted) return;
 
-    const rows = Array.isArray(json?.candles)
-  ? json.candles
-  : [];
+    
+const rows = Array.isArray(json?.candles) ? json.candles : [];
 
-    setCandles(rows);
-    localStorage.setItem(
-      cacheKey,
-      JSON.stringify({ ts: Date.now(), rows })
-    );
+if (rows.length > 0) {
+  setCandles(rows);
+  localStorage.setItem(
+    cacheKey,
+    JSON.stringify({ ts: Date.now(), rows })
+  );
+} else {
+  console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
+}
+
+
+
   } catch {
-    if (mounted) setCandles([]);
+ 
   } finally {
     if (mounted) setActivityLoading(false);
   }
@@ -2693,7 +2706,7 @@ return () => {
   mounted = false;
   if (timer) clearInterval(timer);
 };
-}, [coin?.id]);
+}, [coin?.id, chartRange]);
 
 
 
@@ -2703,7 +2716,66 @@ return () => {
 
 
 
-const candleData = candles;
+const candleData = useMemo(() => {
+  const list = Array.isArray(candles) ? candles : [];
+  if (!list.length) return [];
+
+  const cfg = getTimeframeCfg(chartRange);
+  const bucketMs = cfg.ms;
+  const maxBars = 120;
+
+  const sorted = [...list]
+    .map((c) => ({
+      time: safeNum(c.time, 0),
+      open: safeNum(c.open, 0),
+      high: safeNum(c.high, 0),
+      low: safeNum(c.low, 0),
+      close: safeNum(c.close, 0),
+    }))
+    .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
+    .sort((a, b) => a.time - b.time);
+
+  if (!sorted.length) return [];
+
+  const normalized = [];
+  const firstTime = sorted[0].time;
+  const lastKnown = sorted[sorted.length - 1];
+  const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
+
+  let cursor = firstTime;
+  let i = 0;
+  let prevClose = sorted[0].close;
+
+  while (cursor <= nowBucket && normalized.length < maxBars * 3) {
+    const row = sorted[i];
+
+    if (row && row.time === cursor) {
+      normalized.push(row);
+      prevClose = row.close;
+      i += 1;
+    } else {
+
+const wiggle = Math.max(prevClose * 0.0015, 0.00000001);
+
+normalized.push({
+  time: cursor,
+  open: prevClose,
+  high: prevClose + wiggle,
+  low: Math.max(0.00000001, prevClose - wiggle),
+  close: prevClose,
+});
+      
+    }
+
+    cursor += bucketMs;
+  }
+
+  if (normalized.length > maxBars) {
+    return normalized.slice(-maxBars);
+  }
+
+  return normalized;
+}, [candles, chartRange]);
 
 
 

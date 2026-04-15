@@ -1280,25 +1280,41 @@ app.get("/api/coin/:id/candles", async (req, res) => {
         };
         candles = [seed];
       }
+const first = candles[0];
+const currentBucket = Math.floor(now / bucketMs) * bucketMs;
 
-      const last = candles[candles.length - 1];
-      const currentBucket = Math.floor(now / bucketMs) * bucketMs;
+if (first) {
+  const filled = [];
+  let cursor = first.time;
+  let prevClose = first.close;
 
-      if (last.time < currentBucket) {
-        candles.push({
-          time: currentBucket,
-          open: last.close,
-          high: last.close,
-          low: last.close,
-          close: last.close,
-          volumeSol: 0,
-          tradesCount: 0,
-        });
-      }
+  while (cursor <= currentBucket) {
+    const existing = candles.find((c) => c.time === cursor);
 
-      if (candles.length > limit) {
-        candles = candles.slice(-limit);
-      }
+    if (existing) {
+      filled.push(existing);
+      prevClose = existing.close;
+    } else {
+      filled.push({
+        time: cursor,
+        open: prevClose,
+        high: prevClose,
+        low: prevClose,
+        close: prevClose,
+        volumeSol: 0,
+        tradesCount: 0,
+      });
+    }
+
+    cursor += bucketMs;
+  }
+
+  candles = filled;
+}
+
+if (candles.length > limit) {
+  candles = candles.slice(-limit);
+}
     }
 
     return res.json({ ok: true, candles, tf });
