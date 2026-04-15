@@ -745,12 +745,12 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
     { tf: "1m", sec: 2592000 },
   ];
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Date.now();
   const p = Math.max(0, safeNum(price, 0));
   const vol = Math.max(0, safeNum(volumeSol, 0));
 
   for (const t of timeframes) {
-    const bucket = Math.floor(now / t.sec) * t.sec;
+    const bucket = Math.floor(now / (t.sec * 1000)) * (t.sec * 1000);
 
     const existing = await sql`
       select * from candles
