@@ -1285,7 +1285,11 @@ const currentBucket = Math.floor(now / bucketMs) * bucketMs;
 
 if (first) {
   const filled = [];
-  let cursor = first.time;
+  const fillStart = Math.floor(
+  Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
+) * bucketMs;
+
+let cursor = fillStart;
   let prevClose = first.close;
 
   while (cursor <= currentBucket) {
