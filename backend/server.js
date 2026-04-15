@@ -1124,6 +1124,16 @@ app.get("/api/coin/:id/candles", async (req, res) => {
     const tfRaw = String(req.query.tf || "5m").trim().toLowerCase();
     const limit = Math.max(10, Math.min(300, safeNum(req.query.limit, 120)));
 
+    const TF_MS = {
+      "5m": 5 * 60 * 1000,
+      "15m": 15 * 60 * 1000,
+      "1h": 60 * 60 * 1000,
+      "4h": 4 * 60 * 60 * 1000,
+      "1d": 24 * 60 * 60 * 1000,
+      "1w": 7 * 24 * 60 * 60 * 1000,
+      "1m": 30 * 24 * 60 * 60 * 1000,
+    };
+
     const tfMap = {
       "5m": "5m",
       "15m": "15m",
@@ -1142,8 +1152,26 @@ app.get("/api/coin/:id/candles", async (req, res) => {
     };
 
     const tf = tfMap[tfRaw] || "5m";
+    const bucketMs = TF_MS[tf] || TF_MS["5m"];
 
-    const rows = await sql`
+    const coinRows = await sql`
+      select
+        id,
+        created_at,
+        market_cap,
+        last_price,
+        chart
+      from coins
+      where id = ${coinId}
+      limit 1
+    `;
+
+    const coin = Array.isArray(coinRows) && coinRows[0] ? coinRows[0] : null;
+    if (!coin) {
+      return res.status(404).json({ ok: false, error: "Coin not found" });
+    }
+
+    let rows = await sql`
       select
         coin_id,
         timeframe,
@@ -1157,21 +1185,121 @@ app.get("/api/coin/:id/candles", async (req, res) => {
       from candles
       where coin_id = ${coinId}
         and timeframe = ${tf}
-      order by bucket_time asc
+      order by bucket_time desc
       limit ${limit}
     `;
 
-    const candles = Array.isArray(rows)
-      ? rows.map((r) => ({
-          time: safeNum(r.bucket_time, 0),
-          open: safeNum(r.open, 0),
-          high: safeNum(r.high, 0),
-          low: safeNum(r.low, 0),
-          close: safeNum(r.close, 0),
-          volumeSol: safeNum(r.volume_sol, 0),
-          tradesCount: safeNum(r.trades_count, 0),
-        }))
+    let candles = Array.isArray(rows)
+      ? rows
+          .slice()
+          .reverse()
+          .map((r) => ({
+            time: safeNum(r.bucket_time, 0),
+            open: safeNum(r.open, 0),
+            high: safeNum(r.high, 0),
+            low: safeNum(r.low, 0),
+            close: safeNum(r.close, 0),
+            volumeSol: safeNum(r.volume_sol, 0),
+            tradesCount: safeNum(r.trades_count, 0),
+          }))
+          .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
       : [];
+
+    if (!candles.length) {
+      const txRows = await sql`
+        select
+          created_at,
+          sol,
+          tokens,
+          type
+        from transactions
+        where coin_id = ${coinId}
+        order by created_at desc
+        limit ${Math.max(400, limit * 8)}
+      `;
+
+      const list = Array.isArray(txRows) ? txRows.slice().reverse() : [];
+      const map = new Map();
+
+      const fallbackPrice =
+        Math.max(
+          0.00000001,
+          safeNum(coin.last_price, 0),
+          safeNum(coin.market_cap, 0) > 0 ? safeNum(coin.market_cap, 0) / 1000000000 : 0,
+          Array.isArray(coin.chart) && coin.chart.length
+            ? safeNum(coin.chart[coin.chart.length - 1], 0)
+            : 0.000001
+        ) || 0.000001;
+
+      const createdAtMs = coin?.created_at ? new Date(coin.created_at).getTime() : Date.now();
+      const now = Date.now();
+
+      for (const tx of list) {
+        const ts = new Date(tx.created_at).getTime();
+        if (!Number.isFinite(ts) || ts <= 0) continue;
+
+        const sol = Math.max(0, safeNum(tx.sol, 0));
+        const tokens = Math.max(0, safeNum(tx.tokens, 0));
+        const price = tokens > 0 ? sol / tokens : 0;
+        const px = Math.max(0.00000001, price || fallbackPrice);
+
+        const bucket = Math.floor(ts / bucketMs) * bucketMs;
+        const prev = map.get(bucket);
+
+        if (!prev) {
+          map.set(bucket, {
+            time: bucket,
+            open: px,
+            high: px,
+            low: px,
+            close: px,
+            volumeSol: sol,
+            tradesCount: 1,
+          });
+        } else {
+          prev.high = Math.max(prev.high, px);
+          prev.low = Math.min(prev.low, px);
+          prev.close = px;
+          prev.volumeSol += sol;
+          prev.tradesCount += 1;
+        }
+      }
+
+      candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
+
+      if (!candles.length) {
+        const start = Math.floor(Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs) * bucketMs;
+        const seed = {
+          time: start,
+          open: fallbackPrice,
+          high: fallbackPrice,
+          low: fallbackPrice,
+          close: fallbackPrice,
+          volumeSol: 0,
+          tradesCount: 0,
+        };
+        candles = [seed];
+      }
+
+      const last = candles[candles.length - 1];
+      const currentBucket = Math.floor(now / bucketMs) * bucketMs;
+
+      if (last.time < currentBucket) {
+        candles.push({
+          time: currentBucket,
+          open: last.close,
+          high: last.close,
+          low: last.close,
+          close: last.close,
+          volumeSol: 0,
+          tradesCount: 0,
+        });
+      }
+
+      if (candles.length > limit) {
+        candles = candles.slice(-limit);
+      }
+    }
 
     return res.json({ ok: true, candles, tf });
   } catch (e) {

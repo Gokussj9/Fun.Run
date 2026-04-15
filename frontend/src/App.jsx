@@ -2670,11 +2670,9 @@ const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
 
     if (!mounted) return;
 
-    const rows = Array.isArray(json?.activity)
-      ? json.activity
-      : Array.isArray(json?.items)
-      ? json.items
-      : [];
+    const rows = Array.isArray(json?.candles)
+  ? json.candles
+  : [];
 
     setCandles(rows);
     localStorage.setItem(
