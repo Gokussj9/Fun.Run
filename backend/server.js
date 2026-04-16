@@ -1281,44 +1281,7 @@ app.get("/api/coin/:id/candles", async (req, res) => {
         candles = [seed];
       }
 
-const fillStart = Math.floor(
-  Math.max(createdAtMs || now, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
-) * bucketMs;
 
-const filled = [];
-let cursor = fillStart;
-let prevClose =
-  candles[0]?.close ||
-  Math.max(
-    0.00000001,
-    safeNum(coin.last_price, 0),
-    Array.isArray(coin.chart) && coin.chart.length
-      ? safeNum(coin.chart[coin.chart.length - 1], 0)
-      : 0.000001
-  );
-
-while (cursor <= currentBucket) {
-  const existing = candles.find((c) => c.time === cursor);
-
-  if (existing) {
-    filled.push(existing);
-    prevClose = existing.close;
-  } else {
-    filled.push({
-      time: cursor,
-      open: prevClose,
-      high: prevClose,
-      low: prevClose,
-      close: prevClose,
-      volumeSol: 0,
-      tradesCount: 0,
-    });
-  }
-
-  cursor += bucketMs;
-}
-
-candles = filled;
 
 
 
@@ -1345,10 +1308,10 @@ let cursor = fillStart;
     } else {
       filled.push({
         time: cursor,
-        open: prevClose,
-        high: prevClose,
-        low: prevClose,
-        close: prevClose,
+       open: prevClose,
+high: prevClose + Math.max(prevClose * 0.0015, 0.00000001),
+low: Math.max(0.00000001, prevClose - Math.max(prevClose * 0.0015, 0.00000001)),
+close: prevClose,
         volumeSol: 0,
         tradesCount: 0,
       });
