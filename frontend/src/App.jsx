@@ -2726,7 +2726,7 @@ const candleData = useMemo(() => {
 
   const sorted = [...list]
     .map((c) => ({
-      time: safeNum(c.time, 0),
+      time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
       open: safeNum(c.open, 0),
       high: safeNum(c.high, 0),
       low: safeNum(c.low, 0),
@@ -2737,44 +2737,55 @@ const candleData = useMemo(() => {
 
   if (!sorted.length) return [];
 
-  const normalized = [];
-  const firstTime = sorted[0].time;
-  const lastKnown = sorted[sorted.length - 1];
+  const merged = [];
+  for (const row of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.time === row.time) {
+      last.high = Math.max(last.high, row.high);
+      last.low = Math.min(last.low, row.low);
+      last.close = row.close;
+    } else {
+      merged.push({ ...row });
+    }
+  }
+
   const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
+  const start = Math.max(
+    merged[0].time,
+    nowBucket - (maxBars - 1) * bucketMs
+  );
 
-  let cursor = firstTime;
+  const normalized = [];
+  let cursor = start;
   let i = 0;
-  let prevClose = sorted[0].close;
+  let prevClose = merged[0].close;
 
-  while (cursor <= nowBucket && normalized.length < maxBars * 3) {
-    const row = sorted[i];
+  while (i < merged.length && merged[i].time < start) {
+    prevClose = merged[i].close;
+    i += 1;
+  }
+
+  while (cursor <= nowBucket) {
+    const row = merged[i];
 
     if (row && row.time === cursor) {
       normalized.push(row);
       prevClose = row.close;
       i += 1;
     } else {
-
-const wiggle = Math.max(prevClose * 0.0015, 0.00000001);
-
-normalized.push({
-  time: cursor,
-  open: prevClose,
-  high: prevClose + wiggle,
-  low: Math.max(0.00000001, prevClose - wiggle),
-  close: prevClose,
-});
-      
+      normalized.push({
+        time: cursor,
+        open: prevClose,
+        high: prevClose,
+        low: prevClose,
+        close: prevClose,
+      });
     }
 
     cursor += bucketMs;
   }
 
-  if (normalized.length > maxBars) {
-    return normalized.slice(-maxBars);
-  }
-
-  return normalized;
+  return normalized.slice(-maxBars);
 }, [candles, chartRange]);
 
 
@@ -2885,7 +2896,14 @@ fixRightEdge: false,
       },
     });
 
-    series.setData(candleData);
+
+
+    series.setData(
+  candleData.map((c) => ({
+    ...c,
+    time: Math.floor(c.time / 1000),
+  }))
+);
     
 
     const handleResize = () => {

@@ -1171,6 +1171,9 @@ app.get("/api/coin/:id/candles", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Coin not found" });
     }
 
+    const createdAtMs = coin?.created_at ? new Date(coin.created_at).getTime() : Date.now();
+    const now = Date.now();
+
     let rows = await sql`
       select
         coin_id,
@@ -1231,9 +1234,6 @@ app.get("/api/coin/:id/candles", async (req, res) => {
             : 0.000001
         ) || 0.000001;
 
-      const createdAtMs = coin?.created_at ? new Date(coin.created_at).getTime() : Date.now();
-      const now = Date.now();
-
       for (const tx of list) {
         const ts = new Date(tx.created_at).getTime();
         if (!Number.isFinite(ts) || ts <= 0) continue;
@@ -1268,64 +1268,65 @@ app.get("/api/coin/:id/candles", async (req, res) => {
       candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
 
       if (!candles.length) {
-        const start = Math.floor(Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs) * bucketMs;
-        const seed = {
-          time: start,
-          open: fallbackPrice,
-          high: fallbackPrice,
-          low: fallbackPrice,
-          close: fallbackPrice,
-          volumeSol: 0,
-          tradesCount: 0,
-        };
-        candles = [seed];
+        const start =
+          Math.floor(
+            Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
+          ) * bucketMs;
+
+        candles = [
+          {
+            time: start,
+            open: fallbackPrice,
+            high: fallbackPrice,
+            low: fallbackPrice,
+            close: fallbackPrice,
+            volumeSol: 0,
+            tradesCount: 0,
+          },
+        ];
       }
 
+      const first = candles[0];
+      const currentBucket = Math.floor(now / bucketMs) * bucketMs;
 
+      if (first) {
+        const filled = [];
+        const byTime = new Map(candles.map((c) => [c.time, c]));
+        const fillStart =
+          Math.floor(
+            Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
+          ) * bucketMs;
 
+        let cursor = fillStart;
+        let prevClose = first.close;
 
+        while (cursor <= currentBucket) {
+          const existing = byTime.get(cursor);
 
+          if (existing) {
+            filled.push(existing);
+            prevClose = existing.close;
+          } else {
+            filled.push({
+              time: cursor,
+              open: prevClose,
+              high: prevClose,
+              low: prevClose,
+              close: prevClose,
+              volumeSol: 0,
+              tradesCount: 0,
+            });
+          }
 
+          cursor += bucketMs;
+        }
 
-const first = candles[0];
-const currentBucket = Math.floor(now / bucketMs) * bucketMs;
-
-if (first) {
-  const filled = [];
-  const fillStart = Math.floor(
-  Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
-) * bucketMs;
-
-let cursor = fillStart;
-  let prevClose = first.close;
-
-  while (cursor <= currentBucket) {
-    const existing = candles.find((c) => c.time === cursor);
-
-    if (existing) {
-      filled.push(existing);
-      prevClose = existing.close;
-    } else {
-      filled.push({
-        time: cursor,
-       open: prevClose,
-high: prevClose + Math.max(prevClose * 0.0015, 0.00000001),
-low: Math.max(0.00000001, prevClose - Math.max(prevClose * 0.0015, 0.00000001)),
-close: prevClose,
-        volumeSol: 0,
-        tradesCount: 0,
-      });
+        candles = filled;
+      }
     }
 
-    cursor += bucketMs;
-  }
-
-  candles = filled;
-}
-
-if (candles.length > limit) {
-  candles = candles.slice(-limit);
-}
+    if (candles.length > limit) {
+      candles = candles.slice(-limit);
     }
 
     return res.json({ ok: true, candles, tf });
