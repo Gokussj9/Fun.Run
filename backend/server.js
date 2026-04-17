@@ -1540,6 +1540,8 @@ async function doTrade(req, res, side) {
       coin = await saveCoin(coin);
 
       await insertTransaction({
+
+
         id: uid(),
         type: sideLower.toUpperCase(),
         side: sideLower.toUpperCase(),
@@ -1590,6 +1592,12 @@ async function doTrade(req, res, side) {
             : Math.max(0, safeNum(tradeResult.solOutGross, 0)),
       };
     });
+
+    await upsertCandlesForTrade(
+  coin.id,
+  Math.max(0, safeNum(coin.priceUsd || coin.price || 0)),
+  Math.max(0, safeNum(sideLower === "buy" ? sol : tradeResult.solOutGross || 0))
+);
 
     return res.json(result);
   } catch (e) {
