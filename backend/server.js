@@ -776,19 +776,32 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
         and bucket_time = ${bucket}
       `;
     } else {
-      await sql`
-        insert into candles (
-          coin_id, timeframe, bucket_time,
-          open, high, low, close,
-          volume_sol, trades_count, updated_at
-        )
-        values (
-          ${coinId}, ${t.tf}, ${bucket},
-          ${p}, ${p}, ${p}, ${p},
-          ${vol}, 1, now()
-        )
-      `;
-    }
+  const prevRow = await sql`
+    select close
+    from candles
+    where coin_id = ${coinId}
+      and timeframe = ${t.tf}
+    order by bucket_time desc
+    limit 1
+  `;
+
+  const prevClose = prevRow?.[0]?.close != null
+    ? Number(prevRow[0].close)
+    : p;
+
+  await sql`
+    insert into candles (
+      coin_id, timeframe, bucket_time,
+      open, high, low, close,
+      volume_sol, trades_count, updated_at
+    )
+    values (
+      ${coinId}, ${t.tf}, ${bucket},
+      ${prevClose}, ${Math.max(prevClose, p)}, ${Math.min(prevClose, p)}, ${p},
+      ${vol}, 1, now()
+    )
+  `;
+}
   }
 }
 
