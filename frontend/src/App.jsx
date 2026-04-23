@@ -2,7 +2,7 @@ import IntroSplash from "./IntroSplash";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
-import { createChart, ColorType, CandlestickSeries, CrosshairMode } from "lightweight-charts";
+import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
@@ -1177,69 +1177,6 @@ function bucketStartMs(ts, bucketMs) {
   return Math.floor(n / bucketMs) * bucketMs;
 }
 
-const CANDLE_TIMEFRAMES = {
-  "5M": 5 * 60 * 1000,
-  "15M": 15 * 60 * 1000,
-  "1H": 60 * 60 * 1000,
-  "4H": 4 * 60 * 60 * 1000,
-  "1D": 24 * 60 * 60 * 1000,
-  "1W": 7 * 24 * 60 * 60 * 1000,
-  "1M": 30 * 24 * 60 * 60 * 1000,
-};
-
-async function upsertCandlesForTrade(coinId, priceUsd, solAmount = 0) {
-  const id = String(coinId || "").trim();
-  const close = Math.max(0, safeNum(priceUsd, 0));
-  const vol = Math.max(0, safeNum(solAmount, 0));
-  if (!id || close <= 0) return;
-
-  const now = Date.now();
-
-  for (const [timeframe, bucketMs] of Object.entries(CANDLE_TIMEFRAMES)) {
-    const bucket = bucketStartMs(now, bucketMs);
-
-    const rows = await sql`
-      select open, high, low, close, volume_sol, trades_count
-      from candles
-      where coin_id = ${id}
-        and timeframe = ${timeframe}
-        and bucket_time = ${bucket}
-      limit 1
-    `;
-
-    const prev = rows?.[0] || null;
-
-    if (!prev) {
-      await sql`
-        insert into candles (
-          coin_id, timeframe, bucket_time,
-          open, high, low, close,
-          volume_sol, trades_count, updated_at
-        )
-        values (
-          ${id}, ${timeframe}, ${bucket},
-          ${close}, ${close}, ${close}, ${close},
-          ${vol}, 1, now()
-        )
-      `;
-    } else {
-      await sql`
-        update candles
-        set
-          high = greatest(high, ${close}),
-          low = least(low, ${close}),
-          close = ${close},
-          volume_sol = coalesce(volume_sol, 0) + ${vol},
-          trades_count = coalesce(trades_count, 0) + 1,
-          updated_at = now()
-        where coin_id = ${id}
-          and timeframe = ${timeframe}
-          and bucket_time = ${bucket}
-      `;
-    }
-  }
-}
-
 function getApproxSolUsd(coin) {
   const priceUsd = safeNum(coin?.priceUsd, 0);
   const priceSol = safeNum(coin?.priceSol, 0);
@@ -1278,113 +1215,6 @@ function getTradePriceUsd(trade, coin, fallback) {
   0.00000001,
   safeNum(fallback, 0.000001)
 );
-}
-
-function buildCandlesFromActivity(activity, coin, chartRange) {
-  const cfg = getTimeframeCfg(chartRange);
-  const bucketMs = cfg.ms;
-  const maxBars = 120;
-  const now = Date.now();
-
-  const fallbackPrice =
-    Math.max(
-      0.00000001,
-      safeNum(coin?.priceUsd, 0) ||
-        safeNum(coin?.lastPriceUsd, 0) ||
-        safeNum(Array.isArray(coin?.chart) ? coin.chart[coin.chart.length - 1] : 0, 0) ||
-        0.000001
-    );
-
-  const createdAt = safeNum(coin?.createdAt || coin?.created_at, now);
-  const startWindow = Math.max(createdAt, now - bucketMs * maxBars);
-  const startBucket = bucketStartMs(startWindow, bucketMs);
-  const currentBucket = bucketStartMs(now, bucketMs);
-
-  const trades = (Array.isArray(activity) ? activity : [])
-    .map((t) => ({
-      ...t,
-      ts: safeNum(t?.ts || t?.t, 0),
-    }))
-    .filter((t) => t.ts > 0)
-    .sort((a, b) => a.ts - b.ts);
-
-  const candles = [];
-  let cursor = startBucket;
-  let lastClose = trades.length
-  ? getTradePriceUsd(trades[0], coin, fallbackPrice)
-  : fallbackPrice;
-
-  const pushFlat = (timeSec, closeVal) => {
-    candles.push({
-      time: timeSec,
-      open: closeVal,
-      high: closeVal,
-      low: closeVal,
-      close: closeVal,
-    });
-  };
-
-  for (const trade of trades) {
-    const tradeBucket = bucketStartMs(trade.ts, bucketMs);
-    const rawTradePrice = getTradePriceUsd(trade, coin, lastClose);
-
-if (!Number.isFinite(rawTradePrice) || rawTradePrice <= 0) {
-  continue;
-}
-
-const minAllowed = Math.max(0.00000001, lastClose * 0.2);
-const maxAllowed = Math.max(minAllowed, lastClose * 5);
-
-if (rawTradePrice < minAllowed || rawTradePrice > maxAllowed) {
-  continue;
-}
-
-const tradePrice = rawTradePrice;
-
-    while (cursor < tradeBucket) {
-      pushFlat(Math.floor(cursor / 1000), lastClose);
-      cursor += bucketMs;
-    }
-
-    const existing = candles[candles.length - 1];
-
-    if (existing && existing.time === Math.floor(tradeBucket / 1000)) {
-      existing.high = Math.max(existing.high, tradePrice);
-      existing.low = Math.min(existing.low, tradePrice);
-      existing.close =
-  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
-    ? Math.max(existing.open, tradePrice)
-    : Math.min(existing.open, tradePrice);
-    } else {
-      candles.push({
-        time: Math.floor(tradeBucket / 1000),
-        open: lastClose,
-        high: Math.max(lastClose, tradePrice),
-        low: Math.min(lastClose, tradePrice),
-   close:
-  String(trade?.side || trade?.type || "").toUpperCase() === "BUY"
-    ? Math.max(lastClose, tradePrice)
-    : Math.min(lastClose, tradePrice),
-      });
-    }
-
-    lastClose = tradePrice;
-    cursor = tradeBucket + bucketMs;
-  }
-
-  // 🔥 FIX: agar price same ho to thoda variation add karo (real look)
-  const adjusted = candles.map((c, i) => {
-    const base = c.close || fallbackPrice;
-    const wiggle = base * 0.002; // 0.2% variation
-
-    return {
-      ...c,
-      high: c.high === c.low ? base + wiggle : c.high,
-      low: c.high === c.low ? base - wiggle : c.low,
-    };
-  });
-
-  return adjusted.slice(-maxBars);
 }
 
 function getCoin24hMovePct(c) {
@@ -1753,7 +1583,6 @@ export default function App() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 const [withdrawAddr, setWithdrawAddr] = useState("");
 const [withdrawAmt, setWithdrawAmt] = useState("");
-  const [showIntroFlow, setShowIntroFlow] = useState(true);
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem(LS_THEME) || "calm";
@@ -2794,17 +2623,12 @@ const candleData = useMemo(() => {
 
 
   const pct = useMemo(() => {
-  const price = safeNum(coin?.priceUsd, 0);
-  const chartArr = Array.isArray(coin?.chart) ? coin.chart : [];
-
-  if (chartArr.length < 2 || price <= 0) return 0;
-
-  const first = Math.max(0.00000001, safeNum(chartArr[0], price));
-  const last = Math.max(0.00000001, price);
-
+  if (!candleData.length) return 0;
+  const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.000001));
+  const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
   const rawPct = ((last - first) / first) * 100;
   return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
-}, [coin]);
+}, [candleData]);
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,

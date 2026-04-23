@@ -761,8 +761,6 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
     `;
 
     if (existing[0]) {
-      const c = existing[0];
-
       await sql`
         update candles set
           high = greatest(${p}, high),
@@ -776,14 +774,15 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
         and bucket_time = ${bucket}
       `;
     } else {
-  const prevRow = await sql`
-    select close
-    from candles
-    where coin_id = ${coinId}
-      and timeframe = ${t.tf}
-    order by bucket_time desc
-    limit 1
-  `;
+      const prevRow = await sql`
+        select close
+        from candles
+        where coin_id = ${coinId}
+          and timeframe = ${t.tf}
+          and bucket_time < ${bucket}
+        order by bucket_time desc
+        limit 1
+      `;
 
   const prevClose = prevRow?.[0]?.close != null
     ? Number(prevRow[0].close)
@@ -1453,6 +1452,12 @@ app.post("/api/coin/create", async (req, res) => {
   priceUsd: coin.priceUsd,
 });
 
+        await upsertCandlesForTrade(
+          latestCoin.id,
+          Math.max(0, safeNum(latestCoin?.priceUsd || latestCoin?.price || 0)),
+          Math.max(0, safeNum(initialSol, 0))
+        );
+
         return { ok: true, coin: latestCoin };
       });
 
@@ -1605,12 +1610,6 @@ async function doTrade(req, res, side) {
             : Math.max(0, safeNum(tradeResult.solOutGross, 0)),
       };
     });
-
-    await upsertCandlesForTrade(
-  coin.id,
-  Math.max(0, safeNum(coin.priceUsd || coin.price || 0)),
-  Math.max(0, safeNum(sideLower === "buy" ? sol : tradeResult.solOutGross || 0))
-);
 
     return res.json(result);
   } catch (e) {
