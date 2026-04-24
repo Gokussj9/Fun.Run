@@ -1542,6 +1542,529 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
 
 
 
+function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = false, reloadKey = 0 }) {
+  const chartRef = useRef(null);
+  const [candles, setCandles] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  const [chartLook, setChartLook] = useState(() => {
+    try {
+      return localStorage.getItem("chart_look_v1") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  const themeCfg = useMemo(() => {
+    const isLight = chartLook === "light";
+
+    return isLight
+      ? {
+          wrapBg: "#FFFFFF",
+          chartBg: "#FFFFFF",
+          topText: "#0F172A",
+          subText: "#475569",
+          faintText: "#64748B",
+          grid: "rgba(15,23,42,.06)",
+          axis: "rgba(15,23,42,.10)",
+          up: "#10B981",
+          down: "#F43F5E",
+          wickUp: "#10B981",
+          wickDown: "#F43F5E",
+          btnBg: "#F8FAFC",
+          btnBorder: "rgba(15,23,42,.08)",
+          btnText: "#111827",
+          activeBg: "#E6FFFB",
+          activeText: "#0F172A",
+          activeBorder: "rgba(34,211,238,.45)",
+          pctBg: "rgba(16,185,129,.08)",
+        }
+      : {
+          wrapBg: "#091018",
+          chartBg: "#091018",
+          topText: "#F8FAFC",
+          subText: "#94A3B8",
+          faintText: "#64748B",
+          grid: "rgba(148,163,184,.10)",
+          axis: "rgba(148,163,184,.14)",
+          up: "#23D7A0",
+          down: "#F43F5E",
+          wickUp: "#23D7A0",
+          wickDown: "#F43F5E",
+          btnBg: "rgba(255,255,255,.04)",
+          btnBorder: "rgba(255,255,255,.08)",
+          btnText: "rgba(255,255,255,.90)",
+          activeBg: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
+          activeText: "#03131A",
+          activeBorder: "rgba(36,224,255,.45)",
+          pctBg: "rgba(35,215,160,.10)",
+        };
+  }, [chartLook]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("chart_look_v1", chartLook);
+    } catch {}
+  }, [chartLook]);
+
+  useEffect(() => {
+    let mounted = true;
+    let timer = null;
+
+
+
+
+
+
+
+async function loadActivity(force = false) {
+  if (!coin?.id) return;
+
+  const tfKey = String(chartRange || "1D").toUpperCase();
+const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
+  const cacheTTL = 30000; // 30 sec
+
+  try {
+    setActivityLoading(true);
+
+    if (!force) {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        if (
+          cached &&
+          Array.isArray(cached.rows) &&
+          Date.now() - Number(cached.ts || 0) < cacheTTL
+        ) {
+          if (mounted) setCandles(cached.rows);
+          setActivityLoading(false);
+          return;
+        }
+      }
+    }
+
+    
+const tfMap = {
+  "5M": "5m",
+  "15M": "15m",
+  "1H": "1h",
+  "4H": "4h",
+  "1D": "1d",
+  "1W": "1w",
+  "1M": "1m",
+};
+
+const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
+const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
+
+
+
+    if (!mounted) return;
+
+    
+const rows = Array.isArray(json?.candles) ? json.candles : [];
+
+if (rows.length > 0) {
+  setCandles(rows);
+  localStorage.setItem(
+    cacheKey,
+    JSON.stringify({ ts: Date.now(), rows })
+  );
+} else {
+  console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
+}
+
+
+
+  } catch {
+ 
+  } finally {
+    if (mounted) setActivityLoading(false);
+  }
+}
+
+loadActivity(Boolean(reloadKey));
+timer = setInterval(() => loadActivity(true), 30000);
+
+return () => {
+  mounted = false;
+  if (timer) clearInterval(timer);
+};
+}, [coin?.id, chartRange, reloadKey]);
+
+
+
+
+
+
+
+
+
+const candleData = useMemo(() => {
+  const list = Array.isArray(candles) ? candles : [];
+  if (!list.length) return [];
+
+  const cfg = getTimeframeCfg(chartRange);
+  const bucketMs = cfg.ms;
+  const maxBars = 120;
+
+  const sorted = [...list]
+    .map((c) => ({
+      time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
+      open: safeNum(c.open, 0),
+      high: safeNum(c.high, 0),
+      low: safeNum(c.low, 0),
+      close: safeNum(c.close, 0),
+    }))
+    .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
+    .sort((a, b) => a.time - b.time);
+
+  if (!sorted.length) return [];
+
+  const merged = [];
+  for (const row of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.time === row.time) {
+      last.high = Math.max(last.high, row.high);
+      last.low = Math.min(last.low, row.low);
+      last.close = row.close;
+    } else {
+      merged.push({ ...row });
+    }
+  }
+
+  const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
+  const start = Math.max(
+    merged[0].time,
+    nowBucket - (maxBars - 1) * bucketMs
+  );
+
+  const normalized = [];
+  let cursor = start;
+  let i = 0;
+  let prevClose = merged[0].close;
+
+  while (i < merged.length && merged[i].time < start) {
+    prevClose = merged[i].close;
+    i += 1;
+  }
+
+  while (cursor <= nowBucket) {
+    const row = merged[i];
+
+    if (row && row.time === cursor) {
+      normalized.push(row);
+      prevClose = row.close;
+      i += 1;
+    } else {
+      normalized.push({
+        time: cursor,
+        open: prevClose,
+        high: prevClose,
+        low: prevClose,
+        close: prevClose,
+      });
+    }
+
+    cursor += bucketMs;
+  }
+
+  return normalized.slice(-maxBars);
+}, [candles, chartRange]);
+
+
+
+
+
+
+  const pct = useMemo(() => {
+  if (!candleData.length) return 0;
+  const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.000001));
+  const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
+  const rawPct = ((last - first) / first) * 100;
+  return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
+}, [candleData]);
+
+  const livePrice = safeNum(
+    candleData[candleData.length - 1]?.close,
+    Math.max(0.00000001, safeNum(coin?.priceUsd, 0.000001))
+  );
+
+  const up = pct >= 0;
+  const createdAgo = timeAgo(coin?.createdAt || coin?.created_at);
+  const isLight = chartLook === "light";
+
+  useEffect(() => {
+    const host = chartRef.current;
+    if (!host) return;
+
+    host.innerHTML = "";
+    const width = Math.max(280, host.clientWidth || 280);
+
+    const chart = createChart(host, {
+      width,
+      height,
+      layout: {
+        background: { type: ColorType.Solid, color: themeCfg.chartBg },
+        textColor: themeCfg.faintText,
+        attributionLogo: false,
+        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      },
+      grid: {
+        vertLines: { color: themeCfg.grid, visible: true },
+        horzLines: { color: themeCfg.grid, visible: true },
+      },
+      rightPriceScale: {
+        borderColor: themeCfg.axis,
+        scaleMargins: { top: 0.10, bottom: 0.08 },
+        entireTextOnly: true,
+      },
+      leftPriceScale: { visible: false },
+      timeScale: {
+        borderColor: themeCfg.axis,
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 2,
+        barSpacing: Math.max(2.2, Math.min(candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2, width / Math.max(100, candleData.length))),
+        minBarSpacing: 1,
+        rightBarStaysOnScroll: true,
+lockVisibleTimeRangeOnResize: false,
+       fixLeftEdge: false,
+fixRightEdge: false,
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: {
+          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
+          labelBackgroundColor: isLight ? "#E2E8F0" : "#1E293B",
+        },
+        horzLine: {
+          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
+          labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
+        },
+      },
+  handleScroll: {
+  mouseWheel: true,
+  pressedMouseMove: true,
+  horzTouchDrag: true,
+  vertTouchDrag: true,
+},
+  handleScale: {
+  axisPressedMouseMove: true,
+  mouseWheel: true,
+  pinch: true,
+},
+    });
+
+    
+
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: themeCfg.up,
+      downColor: themeCfg.down,
+      borderUpColor: themeCfg.up,
+      borderDownColor: themeCfg.down,
+      wickUpColor: themeCfg.wickUp,
+      wickDownColor: themeCfg.wickDown,
+      priceLineVisible: true,
+      lastValueVisible: true,
+      priceLineColor: up ? themeCfg.up : themeCfg.down,
+      priceFormat: {
+        type: "price",
+        precision: livePrice > 1 ? 4 : livePrice > 0.01 ? 6 : 8,
+        minMove: livePrice > 1 ? 0.0001 : livePrice > 0.01 ? 0.000001 : 0.00000001,
+      },
+    });
+
+
+
+    series.setData(
+  candleData.map((c) => ({
+    ...c,
+    time: Math.floor(c.time / 1000),
+  }))
+);
+    
+
+    const handleResize = () => {
+      if (!chartRef.current) return;
+      chart.applyOptions({
+        width: Math.max(280, chartRef.current.clientWidth || 280),
+        height,
+      });
+      
+    };
+
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(handleResize);
+      ro.observe(host);
+    } else {
+      window.addEventListener("resize", handleResize);
+    }
+
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", handleResize);
+      chart.remove();
+    };
+  }, [candleData, chartLook, height, themeCfg, isLight]);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        borderRadius: 20,
+        overflow: "hidden",
+        background: themeCfg.wrapBg,
+        border: isLight ? "1px solid rgba(15,23,42,.06)" : "1px solid rgba(255,255,255,.06)",
+        padding: 0,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: isMobile ? "flex-start" : "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 10,
+          flexWrap: isMobile ? "wrap" : "nowrap",
+          padding: "12px 14px 0 14px",
+        }}
+      >
+        <div style={{ minWidth: 0, paddingTop: 2 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: isLight ? "#334155" : themeCfg.subText,
+              lineHeight: 1.2,
+            }}
+          >
+            Live Price
+          </div>
+
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 1000,
+              color: isLight ? "#020617" : themeCfg.topText,
+              lineHeight: 1.15,
+              marginTop: 4,
+            }}
+          >
+            {fmtUsd(livePrice)}
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: isLight ? "#475569" : themeCfg.subText,
+              marginTop: 6,
+              lineHeight: 1.2,
+            }}
+          >
+            Created {createdAgo}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: isMobile ? "flex-start" : "flex-end",
+            gap: 8,
+            flexWrap: "wrap",
+            marginLeft: "auto",
+            maxWidth: "100%",
+            width: "100%",
+
+          }}
+        >
+          <button
+            onClick={() => setChartLook(chartLook === "dark" ? "light" : "dark")}
+            style={{
+              height: 30,
+              minWidth: 72,
+              padding: "0 14px",
+              borderRadius: 11,
+              border: "1px solid rgba(0,0,0,.08)",
+              background: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
+              color: "#03131A",
+              fontSize: 11,
+              fontWeight: 1000,
+              cursor: "pointer",
+            }}
+          >
+            {chartLook === "dark" ? "Light" : "Dark"}
+          </button>
+
+          {["5M", "15M", "1H", "4H", "1D", "1W"].map((value) => {
+            const active = chartRange === value;
+
+            return (
+              <button
+                key={value}
+                onClick={() => setChartRange(value)}
+                style={{
+                  height: 30,
+                  minWidth: value === "15M" ? 50 : value === "1W" ? 58 : 42,
+                  padding: "0 12px",
+                  borderRadius: 11,
+                  border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
+                  background: active ? themeCfg.activeBg : themeCfg.btnBg,
+                  color: active ? themeCfg.activeText : themeCfg.btnText,
+                  fontSize: 11,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                {value === "5M"
+                  ? "5m"
+                  : value === "15M"
+                  ? "15m"
+                  : value === "1H"
+                  ? "1h"
+                  : value === "4H"
+                  ? "4h"
+                  : value === "1D"
+                  ? "1D"
+                  : "Week"}
+              </button>
+            );
+          })}
+
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 1000,
+              color: up ? themeCfg.up : themeCfg.down,
+              padding: "8px 10px",
+              borderRadius: 999,
+              border: `1px solid ${isLight ? "rgba(15,23,42,.08)" : "rgba(255,255,255,.08)"}`,
+              background: up ? themeCfg.pctBg : "rgba(244,63,94,.08)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {up ? "+" : ""}
+            {pct.toFixed(2)}%
+          </div>
+        </div>
+      </div>
+
+      <div
+        ref={chartRef}
+        style={{
+          width: "100%",
+          height,
+          borderRadius: 20,
+          overflow: "hidden",
+          marginTop: 8,
+        }}
+      />
+    </div>
+  );
+}
+
+
 export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
@@ -1630,6 +2153,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
 
   const [tradeMode, setTradeMode] = useState("BUY");
   const [chartRange, setChartRange] = useState("1D");
+  const [chartReloadKey, setChartReloadKey] = useState(0);
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
 
@@ -2212,6 +2736,7 @@ async function handleTrade() {
 
     setTradeAmount("");
     setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
+    setChartReloadKey((x) => x + 1);
 
     setTimeout(() => {
       loadProfile(solAddr);
@@ -2387,527 +2912,7 @@ const tradePreview = useMemo(() => {
  
 
 
-function PriceChart({ coin, height = 280, chartRange, setChartRange }) {
-  const chartRef = useRef(null);
-  const [candles, setCandles] = useState([]);
-  const [activityLoading, setActivityLoading] = useState(false);
 
-  const [chartLook, setChartLook] = useState(() => {
-    try {
-      return localStorage.getItem("chart_look_v1") || "dark";
-    } catch {
-      return "dark";
-    }
-  });
-
-  const themeCfg = useMemo(() => {
-    const isLight = chartLook === "light";
-
-    return isLight
-      ? {
-          wrapBg: "#FFFFFF",
-          chartBg: "#FFFFFF",
-          topText: "#0F172A",
-          subText: "#475569",
-          faintText: "#64748B",
-          grid: "rgba(15,23,42,.06)",
-          axis: "rgba(15,23,42,.10)",
-          up: "#10B981",
-          down: "#F43F5E",
-          wickUp: "#10B981",
-          wickDown: "#F43F5E",
-          btnBg: "#F8FAFC",
-          btnBorder: "rgba(15,23,42,.08)",
-          btnText: "#111827",
-          activeBg: "#E6FFFB",
-          activeText: "#0F172A",
-          activeBorder: "rgba(34,211,238,.45)",
-          pctBg: "rgba(16,185,129,.08)",
-        }
-      : {
-          wrapBg: "#091018",
-          chartBg: "#091018",
-          topText: "#F8FAFC",
-          subText: "#94A3B8",
-          faintText: "#64748B",
-          grid: "rgba(148,163,184,.10)",
-          axis: "rgba(148,163,184,.14)",
-          up: "#23D7A0",
-          down: "#F43F5E",
-          wickUp: "#23D7A0",
-          wickDown: "#F43F5E",
-          btnBg: "rgba(255,255,255,.04)",
-          btnBorder: "rgba(255,255,255,.08)",
-          btnText: "rgba(255,255,255,.90)",
-          activeBg: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
-          activeText: "#03131A",
-          activeBorder: "rgba(36,224,255,.45)",
-          pctBg: "rgba(35,215,160,.10)",
-        };
-  }, [chartLook]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("chart_look_v1", chartLook);
-    } catch {}
-  }, [chartLook]);
-
-  useEffect(() => {
-    let mounted = true;
-    let timer = null;
-
-
-
-
-
-
-
-async function loadActivity(force = false) {
-  if (!coin?.id) return;
-
-  const tfKey = String(chartRange || "1D").toUpperCase();
-const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
-  const cacheTTL = 30000; // 30 sec
-
-  try {
-    setActivityLoading(true);
-
-    if (!force) {
-      const cachedRaw = localStorage.getItem(cacheKey);
-      if (cachedRaw) {
-        const cached = JSON.parse(cachedRaw);
-        if (
-          cached &&
-          Array.isArray(cached.rows) &&
-          Date.now() - Number(cached.ts || 0) < cacheTTL
-        ) {
-          if (mounted) setCandles(cached.rows);
-          setActivityLoading(false);
-          return;
-        }
-      }
-    }
-
-    
-const tfMap = {
-  "5M": "5m",
-  "15M": "15m",
-  "1H": "1h",
-  "4H": "4h",
-  "1D": "1d",
-  "1W": "1w",
-  "1M": "1m",
-};
-
-const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
-const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
-
-
-
-    if (!mounted) return;
-
-    
-const rows = Array.isArray(json?.candles) ? json.candles : [];
-
-if (rows.length > 0) {
-  setCandles(rows);
-  localStorage.setItem(
-    cacheKey,
-    JSON.stringify({ ts: Date.now(), rows })
-  );
-} else {
-  console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
-}
-
-
-
-  } catch {
- 
-  } finally {
-    if (mounted) setActivityLoading(false);
-  }
-}
-
-loadActivity();
-timer = setInterval(() => loadActivity(true), 30000);
-
-return () => {
-  mounted = false;
-  if (timer) clearInterval(timer);
-};
-}, [coin?.id, chartRange]);
-
-
-
-
-
-
-
-
-
-const candleData = useMemo(() => {
-  const list = Array.isArray(candles) ? candles : [];
-  if (!list.length) return [];
-
-  const cfg = getTimeframeCfg(chartRange);
-  const bucketMs = cfg.ms;
-  const maxBars = 120;
-
-  const sorted = [...list]
-    .map((c) => ({
-      time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
-      open: safeNum(c.open, 0),
-      high: safeNum(c.high, 0),
-      low: safeNum(c.low, 0),
-      close: safeNum(c.close, 0),
-    }))
-    .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
-    .sort((a, b) => a.time - b.time);
-
-  if (!sorted.length) return [];
-
-  const merged = [];
-  for (const row of sorted) {
-    const last = merged[merged.length - 1];
-    if (last && last.time === row.time) {
-      last.high = Math.max(last.high, row.high);
-      last.low = Math.min(last.low, row.low);
-      last.close = row.close;
-    } else {
-      merged.push({ ...row });
-    }
-  }
-
-  const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
-  const start = Math.max(
-    merged[0].time,
-    nowBucket - (maxBars - 1) * bucketMs
-  );
-
-  const normalized = [];
-  let cursor = start;
-  let i = 0;
-  let prevClose = merged[0].close;
-
-  while (i < merged.length && merged[i].time < start) {
-    prevClose = merged[i].close;
-    i += 1;
-  }
-
-  while (cursor <= nowBucket) {
-    const row = merged[i];
-
-    if (row && row.time === cursor) {
-      normalized.push(row);
-      prevClose = row.close;
-      i += 1;
-    } else {
-      normalized.push({
-        time: cursor,
-        open: prevClose,
-        high: prevClose,
-        low: prevClose,
-        close: prevClose,
-      });
-    }
-
-    cursor += bucketMs;
-  }
-
-  return normalized.slice(-maxBars);
-}, [candles, chartRange]);
-
-
-
-
-
-
-  const pct = useMemo(() => {
-  if (!candleData.length) return 0;
-  const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.000001));
-  const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
-  const rawPct = ((last - first) / first) * 100;
-  return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
-}, [candleData]);
-
-  const livePrice = safeNum(
-    candleData[candleData.length - 1]?.close,
-    Math.max(0.00000001, safeNum(coin?.priceUsd, 0.000001))
-  );
-
-  const up = pct >= 0;
-  const createdAgo = timeAgo(coin?.createdAt || coin?.created_at);
-  const isLight = chartLook === "light";
-
-  useEffect(() => {
-    const host = chartRef.current;
-    if (!host) return;
-
-    host.innerHTML = "";
-    const width = Math.max(280, host.clientWidth || 280);
-
-    const chart = createChart(host, {
-      width,
-      height,
-      layout: {
-        background: { type: ColorType.Solid, color: themeCfg.chartBg },
-        textColor: themeCfg.faintText,
-        attributionLogo: false,
-        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
-      },
-      grid: {
-        vertLines: { color: themeCfg.grid, visible: true },
-        horzLines: { color: themeCfg.grid, visible: true },
-      },
-      rightPriceScale: {
-        borderColor: themeCfg.axis,
-        scaleMargins: { top: 0.10, bottom: 0.08 },
-        entireTextOnly: true,
-      },
-      leftPriceScale: { visible: false },
-      timeScale: {
-        borderColor: themeCfg.axis,
-        timeVisible: true,
-        secondsVisible: false,
-        rightOffset: 2,
-        barSpacing: Math.max(2.2, Math.min(candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2, width / Math.max(100, candleData.length))),
-        minBarSpacing: 1,
-        rightBarStaysOnScroll: true,
-lockVisibleTimeRangeOnResize: false,
-       fixLeftEdge: false,
-fixRightEdge: false,
-      },
-      crosshair: {
-        mode: 0,
-        vertLine: {
-          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
-          labelBackgroundColor: isLight ? "#E2E8F0" : "#1E293B",
-        },
-        horzLine: {
-          color: isLight ? "rgba(15,23,42,.12)" : "rgba(148,163,184,.14)",
-          labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
-        },
-      },
-  handleScroll: {
-  mouseWheel: true,
-  pressedMouseMove: true,
-  horzTouchDrag: true,
-  vertTouchDrag: true,
-},
-  handleScale: {
-  axisPressedMouseMove: true,
-  mouseWheel: true,
-  pinch: true,
-},
-    });
-
-    
-
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: themeCfg.up,
-      downColor: themeCfg.down,
-      borderUpColor: themeCfg.up,
-      borderDownColor: themeCfg.down,
-      wickUpColor: themeCfg.wickUp,
-      wickDownColor: themeCfg.wickDown,
-      priceLineVisible: true,
-      lastValueVisible: true,
-      priceLineColor: up ? themeCfg.up : themeCfg.down,
-      priceFormat: {
-        type: "price",
-        precision: livePrice > 1 ? 4 : livePrice > 0.01 ? 6 : 8,
-        minMove: livePrice > 1 ? 0.0001 : livePrice > 0.01 ? 0.000001 : 0.00000001,
-      },
-    });
-
-
-
-    series.setData(
-  candleData.map((c) => ({
-    ...c,
-    time: Math.floor(c.time / 1000),
-  }))
-);
-    
-
-    const handleResize = () => {
-      if (!chartRef.current) return;
-      chart.applyOptions({
-        width: Math.max(280, chartRef.current.clientWidth || 280),
-        height,
-      });
-      
-    };
-
-    let ro = null;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(handleResize);
-      ro.observe(host);
-    } else {
-      window.addEventListener("resize", handleResize);
-    }
-
-    return () => {
-      if (ro) ro.disconnect();
-      else window.removeEventListener("resize", handleResize);
-      chart.remove();
-    };
-  }, [candleData, chartLook, height, themeCfg, isLight]);
-
-  return (
-    <div
-      style={{
-        width: "100%",
-        borderRadius: 20,
-        overflow: "hidden",
-        background: themeCfg.wrapBg,
-        border: isLight ? "1px solid rgba(15,23,42,.06)" : "1px solid rgba(255,255,255,.06)",
-        padding: 0,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: isMobile ? "flex-start" : "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 10,
-          flexWrap: isMobile ? "wrap" : "nowrap",
-          padding: "12px 14px 0 14px",
-        }}
-      >
-        <div style={{ minWidth: 0, paddingTop: 2 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: isLight ? "#334155" : themeCfg.subText,
-              lineHeight: 1.2,
-            }}
-          >
-            Live Price
-          </div>
-
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 1000,
-              color: isLight ? "#020617" : themeCfg.topText,
-              lineHeight: 1.15,
-              marginTop: 4,
-            }}
-          >
-            {fmtUsd(livePrice)}
-          </div>
-
-          <div
-            style={{
-              fontSize: 11,
-              color: isLight ? "#475569" : themeCfg.subText,
-              marginTop: 6,
-              lineHeight: 1.2,
-            }}
-          >
-            Created {createdAgo}
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: isMobile ? "flex-start" : "flex-end",
-            gap: 8,
-            flexWrap: "wrap",
-            marginLeft: "auto",
-            maxWidth: "100%",
-            width: "100%",
-
-          }}
-        >
-          <button
-            onClick={() => setChartLook(chartLook === "dark" ? "light" : "dark")}
-            style={{
-              height: 30,
-              minWidth: 72,
-              padding: "0 14px",
-              borderRadius: 11,
-              border: "1px solid rgba(0,0,0,.08)",
-              background: "linear-gradient(180deg, rgba(36,224,255,.98), rgba(32,210,250,.92))",
-              color: "#03131A",
-              fontSize: 11,
-              fontWeight: 1000,
-              cursor: "pointer",
-            }}
-          >
-            {chartLook === "dark" ? "Light" : "Dark"}
-          </button>
-
-          {["5M", "15M", "1H", "4H", "1D", "1W"].map((value) => {
-            const active = chartRange === value;
-
-            return (
-              <button
-                key={value}
-                onClick={() => setChartRange(value)}
-                style={{
-                  height: 30,
-                  minWidth: value === "15M" ? 50 : value === "1W" ? 58 : 42,
-                  padding: "0 12px",
-                  borderRadius: 11,
-                  border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
-                  background: active ? themeCfg.activeBg : themeCfg.btnBg,
-                  color: active ? themeCfg.activeText : themeCfg.btnText,
-                  fontSize: 11,
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                }}
-              >
-                {value === "5M"
-                  ? "5m"
-                  : value === "15M"
-                  ? "15m"
-                  : value === "1H"
-                  ? "1h"
-                  : value === "4H"
-                  ? "4h"
-                  : value === "1D"
-                  ? "1D"
-                  : "Week"}
-              </button>
-            );
-          })}
-
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 1000,
-              color: up ? themeCfg.up : themeCfg.down,
-              padding: "8px 10px",
-              borderRadius: 999,
-              border: `1px solid ${isLight ? "rgba(15,23,42,.08)" : "rgba(255,255,255,.08)"}`,
-              background: up ? themeCfg.pctBg : "rgba(244,63,94,.08)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {up ? "+" : ""}
-            {pct.toFixed(2)}%
-          </div>
-        </div>
-      </div>
-
-      <div
-        ref={chartRef}
-        style={{
-          width: "100%",
-          height,
-          borderRadius: 20,
-          overflow: "hidden",
-          marginTop: 8,
-        }}
-      />
-    </div>
-  );
-}
 
 
 
@@ -3332,6 +3337,8 @@ fixRightEdge: false,
   height={isMobile ? 300 : 420}
   chartRange={chartRange}
   setChartRange={setChartRange}
+  isMobile={isMobile}
+  reloadKey={chartReloadKey}
 />
         </Card>
 
