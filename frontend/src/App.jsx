@@ -2217,7 +2217,7 @@ async function handleTrade() {
       loadProfile(solAddr);
       loadBalance(solAddr);
       loadCoins(0, false);
-    }, 450);
+    }, 80);
   } catch (e) {
     setToast(e?.message || "Trade failed");
   } finally {
@@ -2752,7 +2752,7 @@ fixRightEdge: false,
       else window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [candleData, chartLook, height, themeCfg, up, livePrice, isLight]);
+  }, [candleData, chartLook, height, themeCfg, isLight]);
 
   return (
     <div
