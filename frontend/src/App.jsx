@@ -3081,6 +3081,44 @@ const tradePreview = useMemo(() => {
 
             <Card>
               <SectionHeader
+                title="Why Fun.Run"
+                sub="Creator-first growth engine"
+                right={<Pill>50% affiliate</Pill>}
+              />
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                  gap: 10,
+                }}
+              >
+                {[
+                  { title: "Launch", text: "Create a coin in seconds", icon: "🚀" },
+                  { title: "Earn", text: "Creator fees on every trade", icon: "💎" },
+                  { title: "Affiliate", text: "Share link and earn 50%", icon: "⚡" },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    style={{
+                      padding: 13,
+                      borderRadius: 18,
+                      border: "1px solid rgba(255,255,255,.08)",
+                      background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+                    }}
+                  >
+                    <div style={{ fontSize: 20 }}>{item.icon}</div>
+                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000 }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)", lineHeight: 1.4 }}>
+                      {item.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader
                 title="Feed"
                 right={
                   <div className="tabs">
@@ -3667,90 +3705,39 @@ const tradePreview = useMemo(() => {
       gap: 8,
       flexWrap: "wrap",
       justifyContent: "flex-end",
+      flex: 1,
     }}
   >
     <div
       style={{
-        padding: "10px 12px",
-        borderRadius: 14,
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.10)",
+        padding: "9px 12px",
+        borderRadius: 999,
+        background: "linear-gradient(135deg, rgba(99,245,200,.16), rgba(124,203,255,.10))",
+        border: "1px solid rgba(99,245,200,.22)",
         color: "var(--text)",
         fontSize: 12,
-        fontWeight: 700,
+        fontWeight: 1000,
         lineHeight: 1,
       }}
     >
-      Referrals: {profile?.referralCount || 0}
+      Affiliates: {profile?.referralCount || 0}
     </div>
 
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 10px",
-        borderRadius: 14,
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        minWidth: 180,
-        maxWidth: 240,
+    <MiniBtn
+      tone="good"
+      onClick={async () => {
+        const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
+        setToast(ok ? "Affiliate link copied" : "Copy failed");
       }}
+      style={{ padding: "9px 12px", borderRadius: 999 }}
     >
-      <span
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--text)",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-  <span style={{ fontSize: 10, opacity: 0.65, marginBottom: 4 }}>
-    Affiliate Link
-  </span>
-  <span
-    style={{
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      fontSize: 12,
-      fontWeight: 700,
-      color: "var(--text)",
-    }}
-  >
-    {solAddr ? getReferralLink(solAddr) : "No link"}
-  </span>
-</div>
-      </span>
-
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(solAddr ? getReferralLink(solAddr) : "");
-          setToast("Affiliate link copied");
-        }}
-        style={{
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(255,255,255,0.06)",
-          color: "var(--text)",
-          borderRadius: 10,
-          padding: "6px 10px",
-          cursor: "pointer",
-          fontSize: 12,
-          fontWeight: 800,
-        }}
-      >
-        Copy
-      </button>
-    </div>
+      Copy Affiliate Link
+    </MiniBtn>
   </div>
 </div>
 
     <Card>
-  <Title sub="Wallet, rewards, creations and positions">Profile</Title>
+  <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
 
   <div className="statsGrid">
   <div className="stat" style={{ gridColumn: "span 2", minHeight: 210 }}>
@@ -3821,13 +3808,54 @@ const tradePreview = useMemo(() => {
     </div>
   </div>
 
-  <div className="stat" style={{ minHeight: 150 }}>
-    <div className="statLabel">Affiliate Reward</div>
-    <div className="statValue">{fmtSol(profile?.referralRewardsSol || 0)} SOL</div>
-    <div style={{ marginTop: 8 }}>
-     <MiniBtn onClick={() => handleClaim("REF")}>
-  Claim
-</MiniBtn>
+  <div
+    className="stat"
+    style={{
+      minHeight: 132,
+      padding: 12,
+      textAlign: "left",
+      background: "linear-gradient(135deg, rgba(99,245,200,.16), rgba(124,203,255,.08), rgba(167,139,250,.08))",
+      border: "1px solid rgba(99,245,200,.22)",
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div>
+        <div className="statLabel">Affiliate Reward</div>
+        <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted2)", fontWeight: 900 }}>
+          Earn 50% from your link
+        </div>
+      </div>
+      <span
+        style={{
+          padding: "5px 8px",
+          borderRadius: 999,
+          fontSize: 10,
+          fontWeight: 1000,
+          color: "#03110D",
+          background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+        }}
+      >
+        50%
+      </span>
+    </div>
+
+    <div className="statValue" style={{ fontSize: 16 }}>
+      {fmtSol(profile?.referralRewardsSol || 0)} SOL
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
+      <MiniBtn onClick={() => handleClaim("REF")} style={{ padding: "7px 8px", borderRadius: 12 }}>
+        Claim
+      </MiniBtn>
+      <MiniBtn
+        onClick={async () => {
+          const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
+          setToast(ok ? "Affiliate link copied" : "Copy failed");
+        }}
+        style={{ padding: "7px 8px", borderRadius: 12 }}
+      >
+        Share
+      </MiniBtn>
     </div>
   </div>
 
