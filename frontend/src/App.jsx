@@ -3094,22 +3094,58 @@ const tradePreview = useMemo(() => {
                 }}
               >
                 {[
-                  { title: "Launch", text: "Create a coin in seconds", icon: "🚀" },
-                  { title: "Earn", text: "Creator fees on every trade", icon: "💎" },
-                  { title: "Affiliate", text: "Share link and earn 50%", icon: "⚡" },
+                  {
+                    title: "Launch",
+                    text: "Create a coin in seconds",
+                    icon: "🚀",
+                    glow: "linear-gradient(135deg, rgba(34,211,238,.28), rgba(59,130,246,.18))",
+                    ring: "rgba(34,211,238,.35)",
+                  },
+                  {
+                    title: "Earn",
+                    text: "Creator fees on every trade",
+                    icon: "💎",
+                    glow: "linear-gradient(135deg, rgba(168,85,247,.30), rgba(236,72,153,.18))",
+                    ring: "rgba(236,72,153,.35)",
+                  },
+                  {
+                    title: "Affiliate",
+                    text: "Share link and earn 50%",
+                    icon: "⚡",
+                    glow: "linear-gradient(135deg, rgba(16,185,129,.30), rgba(34,197,94,.18))",
+                    ring: "rgba(16,185,129,.35)",
+                  },
                 ].map((item) => (
                   <div
                     key={item.title}
                     style={{
-                      padding: 13,
-                      borderRadius: 18,
-                      border: "1px solid rgba(255,255,255,.08)",
-                      background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+                      position: "relative",
+                      overflow: "hidden",
+                      padding: 14,
+                      borderRadius: 20,
+                      border: `1px solid ${item.ring}`,
+                      background: item.glow,
+                      boxShadow: "0 14px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.12)",
+                      backdropFilter: "blur(14px)",
+                      WebkitBackdropFilter: "blur(14px)",
                     }}
                   >
-                    <div style={{ fontSize: 20 }}>{item.icon}</div>
-                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000 }}>{item.title}</div>
-                    <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)", lineHeight: 1.4 }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: -28,
+                        right: -26,
+                        width: 94,
+                        height: 94,
+                        borderRadius: "50%",
+                        background: "rgba(255,255,255,.18)",
+                        filter: "blur(28px)",
+                        pointerEvents: "none",
+                      }}
+                    />
+                    <div style={{ fontSize: 22, position: "relative", zIndex: 1 }}>{item.icon}</div>
+                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000, position: "relative", zIndex: 1 }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: "rgba(238,248,255,.78)", lineHeight: 1.4, position: "relative", zIndex: 1 }}>
                       {item.text}
                     </div>
                   </div>
@@ -3267,20 +3303,33 @@ const tradePreview = useMemo(() => {
           <ScreenShell>
             {renderBackButton()}
 
-            <Card>
+            <Card
+              style={{
+                background: `
+                  radial-gradient(circle at 18% 12%, rgba(99,245,200,.22), transparent 34%),
+                  radial-gradient(circle at 86% 24%, rgba(124,203,255,.18), transparent 38%),
+                  radial-gradient(circle at 50% 100%, rgba(167,139,250,.16), transparent 42%),
+                  linear-gradient(145deg, rgba(8,32,42,.82), rgba(14,20,42,.72))
+                `,
+                border: "1px solid rgba(99,245,200,.22)",
+                boxShadow: "0 24px 80px rgba(0,0,0,.34), 0 0 46px rgba(99,245,200,.12), inset 0 1px 0 rgba(255,255,255,.10)",
+              }}
+            >
               <Title sub="Launch your coin with optional first buy">Create Coin</Title>
 
-              <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gap: 13 }}>
                 <Input
                   value={tokenName}
                   onChange={(e) => setTokenName(e.target.value)}
                   placeholder="Token name"
+                  style={{ background: "rgba(255,255,255,.055)", border: "1px solid rgba(99,245,200,.18)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }}
                 />
 
                 <Input
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                   placeholder="Symbol"
+                  style={{ background: "rgba(255,255,255,.055)", border: "1px solid rgba(124,203,255,.18)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }}
                 />
 
                 <Input
@@ -3289,6 +3338,7 @@ const tradePreview = useMemo(() => {
                   placeholder="Story / description"
                   textarea
                   rows={5}
+                  style={{ background: "rgba(255,255,255,.055)", border: "1px solid rgba(167,139,250,.20)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }}
                 />
 
                 <Input
@@ -3296,10 +3346,19 @@ const tradePreview = useMemo(() => {
                   onChange={(e) => setInitialSol(e.target.value)}
                   placeholder="Initial buy (SOL)"
                   type="number"
+                  style={{ background: "rgba(255,255,255,.055)", border: "1px solid rgba(99,245,200,.18)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }}
                 />
 
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 18,
+                    border: "1px solid rgba(255,255,255,.10)",
+                    background: "linear-gradient(135deg, rgba(99,245,200,.10), rgba(124,203,255,.08))",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "rgba(238,248,255,.78)", marginBottom: 8, fontWeight: 900 }}>
                     Logo
                   </div>
 
@@ -3307,6 +3366,7 @@ const tradePreview = useMemo(() => {
                     type="file"
                     accept="image/*"
                     onChange={(e) => handleLogoPick(e.target.files?.[0])}
+                    style={{ width: "100%", color: "var(--text)", fontSize: 12 }}
                   />
 
                   {logoPreview ? (
@@ -3316,7 +3376,14 @@ const tradePreview = useMemo(() => {
                   ) : null}
                 </div>
 
-                <PrimaryButton disabled={creating} onClick={handleCreateCoin}>
+                <PrimaryButton
+                  disabled={creating}
+                  onClick={handleCreateCoin}
+                  style={{
+                    background: "linear-gradient(135deg, #63F5C8 0%, #7CCBFF 55%, #A78BFA 100%)",
+                    boxShadow: "0 18px 46px rgba(99,245,200,.28), 0 0 34px rgba(124,203,255,.16), inset 0 1px 0 rgba(255,255,255,.35)",
+                  }}
+                >
                   {creating ? "Creating..." : "Create Coin"}
                 </PrimaryButton>
               </div>
@@ -3736,27 +3803,7 @@ const tradePreview = useMemo(() => {
   </div>
 </div>
 
-    <Card
-  style={{
-    position: "relative",
-    overflow: "hidden",
-    background:
-      "radial-gradient(circle at 10% 8%, rgba(99,245,200,.22), transparent 34%), radial-gradient(circle at 95% 18%, rgba(124,203,255,.18), transparent 36%), radial-gradient(circle at 22% 92%, rgba(99,245,200,.12), transparent 38%), radial-gradient(circle at 92% 88%, rgba(255,143,177,.14), transparent 40%), linear-gradient(135deg, rgba(8,29,35,.96), rgba(7,16,34,.94))",
-    border: "1px solid rgba(99,245,200,.22)",
-    boxShadow:
-      "0 24px 80px rgba(0,0,0,.34), 0 0 44px rgba(99,245,200,.16), 0 0 70px rgba(124,203,255,.09), inset 0 1px 0 rgba(255,255,255,.10)",
-  }}
->
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      pointerEvents: "none",
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,.045), transparent 28%), linear-gradient(120deg, transparent 0%, rgba(255,255,255,.035) 45%, transparent 62%)",
-      opacity: .9,
-    }}
-  />
+    <Card>
   <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
 
   <div className="statsGrid">
