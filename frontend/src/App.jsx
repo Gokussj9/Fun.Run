@@ -1233,7 +1233,17 @@ function getCoinAgeLabel(c) {
 
 function getReferralLink(addr) {
   if (!addr) return "";
-  const base = APP_BASE || "https://fun-run-lovat.vercel.app"
+
+  let base = "";
+
+  try {
+    base =
+      (import.meta.env?.VITE_APP_URL || window.location.origin || "")
+        .replace(/\/$/, "");
+  } catch {
+    base = window.location.origin || "";
+  }
+
   return `${base}/?ref=${encodeURIComponent(addr)}`;
 }
 
@@ -3712,14 +3722,14 @@ const tradePreview = useMemo(() => {
       color: "var(--text)",
     }}
   >
-    {(profile && profile.referralCode) ? profile.referralCode : "No link"}
+    {solAddr ? getReferralLink(solAddr) : "No link"}
   </span>
 </div>
       </span>
 
       <button
         onClick={() => {
-          navigator.clipboard.writeText(profile?.referralCode || "");
+          navigator.clipboard.writeText(solAddr ? getReferralLink(solAddr) : "");
           setToast("Affiliate link copied");
         }}
         style={{
