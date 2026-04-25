@@ -3736,11 +3736,46 @@ const tradePreview = useMemo(() => {
   </div>
 </div>
 
-    <Card>
+    <Card
+  style={{
+    position: "relative",
+    overflow: "hidden",
+    background:
+      "radial-gradient(circle at 10% 8%, rgba(99,245,200,.22), transparent 34%), radial-gradient(circle at 95% 18%, rgba(124,203,255,.18), transparent 36%), radial-gradient(circle at 22% 92%, rgba(99,245,200,.12), transparent 38%), radial-gradient(circle at 92% 88%, rgba(255,143,177,.14), transparent 40%), linear-gradient(135deg, rgba(8,29,35,.96), rgba(7,16,34,.94))",
+    border: "1px solid rgba(99,245,200,.22)",
+    boxShadow:
+      "0 24px 80px rgba(0,0,0,.34), 0 0 44px rgba(99,245,200,.16), 0 0 70px rgba(124,203,255,.09), inset 0 1px 0 rgba(255,255,255,.10)",
+  }}
+>
+  <div
+    style={{
+      position: "absolute",
+      inset: 0,
+      pointerEvents: "none",
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,.045), transparent 28%), linear-gradient(120deg, transparent 0%, rgba(255,255,255,.035) 45%, transparent 62%)",
+      opacity: .9,
+    }}
+  />
   <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
 
   <div className="statsGrid">
-  <div className="stat" style={{ gridColumn: "span 2", minHeight: 210 }}>
+  <div
+    className="stat"
+    style={{
+      gridColumn: "span 2",
+      minHeight: 210,
+      padding: 16,
+      position: "relative",
+      overflow: "hidden",
+      textAlign: "center",
+      background:
+        "radial-gradient(circle at 12% 0%, rgba(99,245,200,.40), transparent 35%), radial-gradient(circle at 96% 18%, rgba(124,203,255,.36), transparent 38%), linear-gradient(135deg, rgba(10,55,55,.96), rgba(10,25,62,.92))",
+      border: "1px solid rgba(99,245,200,.30)",
+      boxShadow:
+        "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(99,245,200,.16), inset 0 1px 0 rgba(255,255,255,.12)",
+    }}
+  >
     <div className="statLabel">Main Wallet</div>
     <div className="statValue">{fmtSol(walletSolBalance)} SOL</div>
     <div className="miniMuted" style={{ marginTop: 6 }}>
@@ -3776,7 +3811,14 @@ const tradePreview = useMemo(() => {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Deposit address copied");
           }}
-          style={{ padding: "6px 10px", width: "auto" }}
+          style={{
+            padding: "7px 12px",
+            width: "auto",
+            background: "linear-gradient(135deg, rgba(99,245,200,.95), rgba(124,203,255,.92))",
+            color: "#03131A",
+            border: "1px solid rgba(255,255,255,.20)",
+            boxShadow: "0 8px 18px rgba(99,245,200,.20)",
+          }}
         >
           Deposit
         </MiniBtn>
@@ -3786,7 +3828,13 @@ const tradePreview = useMemo(() => {
             navigator.clipboard.writeText(solAddr || "");
             setToast("Wallet copied");
           }}
-          style={{ padding: "6px 10px", width: "auto" }}
+          style={{
+            padding: "7px 12px",
+            width: "auto",
+            background: "linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.06))",
+            border: "1px solid rgba(255,255,255,.18)",
+            boxShadow: "0 8px 18px rgba(124,203,255,.12)",
+          }}
         >
           Copy
         </MiniBtn>
@@ -3794,13 +3842,36 @@ const tradePreview = useMemo(() => {
     </div>
 
     <div style={{ marginTop: 8 }}>
-      <MiniBtn onClick={() => setWithdrawOpen(true)} style={{ width: "100%" }}>
-  Withdraw
-</MiniBtn>
+      <MiniBtn
+        onClick={() => setWithdrawOpen(true)}
+        style={{
+          width: "100%",
+          background: "linear-gradient(135deg, rgba(99,245,200,.22), rgba(124,203,255,.18))",
+          border: "1px solid rgba(99,245,200,.28)",
+          boxShadow: "0 12px 24px rgba(99,245,200,.14)",
+        }}
+      >
+        Withdraw
+      </MiniBtn>
     </div>
   </div>
 
-  <div className="stat" style={{ gridColumn: "span 2", minHeight: 170 }}>
+  <div
+    className="stat"
+    style={{
+      gridColumn: "span 2",
+      minHeight: 170,
+      padding: 16,
+      position: "relative",
+      overflow: "hidden",
+      textAlign: "center",
+      background:
+        "radial-gradient(circle at 15% 0%, rgba(255,143,177,.36), transparent 36%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.40), transparent 44%), linear-gradient(135deg, rgba(63,22,72,.95), rgba(20,27,78,.92))",
+      border: "1px solid rgba(255,143,177,.28)",
+      boxShadow:
+        "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(167,139,250,.16), inset 0 1px 0 rgba(255,255,255,.12)",
+    }}
+  >
     <div className="statLabel">Coming Soon</div>
     <div className="statValue" style={{ fontSize: 18 }}>BNB • Polygon</div>
     <div className="miniMuted" style={{ marginTop: 6 }}>
@@ -3811,40 +3882,71 @@ const tradePreview = useMemo(() => {
   <div
     className="stat"
     style={{
-      minHeight: 132,
-      padding: 12,
+      minHeight: 158,
+      padding: 14,
       textAlign: "left",
-      background: "linear-gradient(135deg, rgba(99,245,200,.16), rgba(124,203,255,.08), rgba(167,139,250,.08))",
-      border: "1px solid rgba(99,245,200,.22)",
+      position: "relative",
+      overflow: "hidden",
+      background:
+        "radial-gradient(circle at 18% 0%, rgba(99,245,200,.38), transparent 38%), radial-gradient(circle at 100% 100%, rgba(124,203,255,.28), transparent 42%), linear-gradient(135deg, rgba(12,52,50,.92), rgba(6,30,47,.88))",
+      border: "1px solid rgba(99,245,200,.42)",
+      boxShadow:
+        "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(99,245,200,.18), inset 0 1px 0 rgba(255,255,255,.14)",
     }}
   >
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div
+      style={{
+        position: "absolute",
+        right: -34,
+        top: -34,
+        width: 108,
+        height: 108,
+        borderRadius: 999,
+        background: "rgba(99,245,200,.16)",
+        filter: "blur(2px)",
+      }}
+    />
+
+    <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div>
-        <div className="statLabel">Affiliate Reward</div>
-        <div style={{ marginTop: 5, fontSize: 10, color: "var(--muted2)", fontWeight: 900 }}>
+        <div className="statLabel" style={{ color: "rgba(228,255,248,.78)", fontWeight: 1000 }}>
+          Affiliate Reward
+        </div>
+        <div style={{ marginTop: 5, fontSize: 10, color: "rgba(228,255,248,.72)", fontWeight: 1000 }}>
           Earn 50% from your link
         </div>
       </div>
       <span
         style={{
-          padding: "5px 8px",
+          padding: "6px 10px",
           borderRadius: 999,
           fontSize: 10,
           fontWeight: 1000,
-          color: "#03110D",
-          background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+          color: "#022018",
+          background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
+          boxShadow: "0 0 18px rgba(99,245,200,.45)",
         }}
       >
         50%
       </span>
     </div>
 
-    <div className="statValue" style={{ fontSize: 16 }}>
+    <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(99,245,200,.35)" }}>
       {fmtSol(profile?.referralRewardsSol || 0)} SOL
     </div>
 
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
-      <MiniBtn onClick={() => handleClaim("REF")} style={{ padding: "7px 8px", borderRadius: 12 }}>
+    <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 11 }}>
+      <MiniBtn
+        onClick={() => handleClaim("REF")}
+        style={{
+          padding: "8px 8px",
+          borderRadius: 13,
+          color: "#03110D",
+          background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
+          border: "1px solid rgba(255,255,255,.20)",
+          boxShadow: "0 10px 22px rgba(99,245,200,.24)",
+        }}
+      >
         Claim
       </MiniBtn>
       <MiniBtn
@@ -3852,18 +3954,64 @@ const tradePreview = useMemo(() => {
           const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
           setToast(ok ? "Affiliate link copied" : "Copy failed");
         }}
-        style={{ padding: "7px 8px", borderRadius: 12 }}
+        style={{
+          padding: "8px 8px",
+          borderRadius: 13,
+          color: "#FFFFFF",
+          background: "linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06))",
+          border: "1px solid rgba(255,255,255,.18)",
+          boxShadow: "0 10px 22px rgba(0,0,0,.18)",
+        }}
       >
         Share
       </MiniBtn>
     </div>
   </div>
 
-  <div className="stat" style={{ minHeight: 150 }}>
-    <div className="statLabel">Creator Reward</div>
-    <div className="statValue">{fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL</div>
-    <div style={{ marginTop: 8 }}>
-     <MiniBtn onClick={() => handleClaim("CREATOR")}>
+  <div
+    className="stat"
+    style={{
+      minHeight: 158,
+      padding: 14,
+      position: "relative",
+      overflow: "hidden",
+      background:
+        "radial-gradient(circle at 20% 0%, rgba(255,143,177,.34), transparent 38%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.32), transparent 42%), linear-gradient(135deg, rgba(51,20,57,.92), rgba(22,22,58,.88))",
+      border: "1px solid rgba(255,143,177,.36)",
+      boxShadow:
+        "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(167,139,250,.18), inset 0 1px 0 rgba(255,255,255,.14)",
+    }}
+  >
+    <div
+      style={{
+        position: "absolute",
+        left: -34,
+        bottom: -34,
+        width: 112,
+        height: 112,
+        borderRadius: 999,
+        background: "rgba(167,139,250,.15)",
+        filter: "blur(2px)",
+      }}
+    />
+    <div className="statLabel" style={{ position: "relative", zIndex: 1, color: "rgba(255,236,247,.76)", fontWeight: 1000 }}>
+      Creator Reward
+    </div>
+    <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(255,143,177,.32)" }}>
+      {fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL
+    </div>
+    <div style={{ position: "relative", zIndex: 1, marginTop: 11, display: "flex", justifyContent: "center" }}>
+     <MiniBtn
+       onClick={() => handleClaim("CREATOR")}
+       style={{
+         padding: "8px 18px",
+         borderRadius: 13,
+         color: "#FFFFFF",
+         background: "linear-gradient(135deg, #FF8FB1, #A78BFA)",
+         border: "1px solid rgba(255,255,255,.20)",
+         boxShadow: "0 10px 22px rgba(167,139,250,.25)",
+       }}
+     >
   Claim
 </MiniBtn>
     </div>
