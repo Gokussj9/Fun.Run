@@ -14,6 +14,43 @@ const STARTING_MC_USD = 6500;
 const LS_THEME = "theme";
 const LS_PROFILE_AVATAR = "profile_avatar_v1";
 
+const APP_OWNER_WALLET = "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji";
+const ADMIN_WALLETS = [
+  "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji",
+  "3Jujernac7seLXE9d7JDWpK8zphcYbphHjEMLtZn9WEf",
+];
+
+const FUNRUN_NATIVE_ADS = [
+  "Fun.Run — Start your crypto journey today",
+  "Fun.Run — Create. Launch. Grow.",
+  "Fun.Run — Turn your meme into a movement",
+  "Fun.Run — Discover the next viral coin",
+  "Fun.Run — Launch your coin in seconds",
+  "Fun.Run — Trade fast. Earn rewards.",
+  "Fun.Run — Built for creators, powered by community",
+  "Fun.Run — Your meme. Your coin. Your run.",
+  "Fun.Run — Invite friends and earn 50% rewards",
+  "Fun.Run — Where new coins begin",
+];
+
+const REFERRAL_AD_TEXT = "Fun.Run — Invite friends and earn 50% rewards";
+const FUNRUN_AD_SEQUENCE = [
+  REFERRAL_AD_TEXT,
+  FUNRUN_NATIVE_ADS[0],
+  REFERRAL_AD_TEXT,
+  FUNRUN_NATIVE_ADS[1],
+  REFERRAL_AD_TEXT,
+  FUNRUN_NATIVE_ADS[2],
+  REFERRAL_AD_TEXT,
+  FUNRUN_NATIVE_ADS[3],
+  REFERRAL_AD_TEXT,
+  FUNRUN_NATIVE_ADS[4],
+  FUNRUN_NATIVE_ADS[5],
+  FUNRUN_NATIVE_ADS[6],
+  FUNRUN_NATIVE_ADS[7],
+  FUNRUN_NATIVE_ADS[9],
+];
+
 const PROFILE_PRESET_LOGOS = [
   "/logo.png",
   "https://api.dicebear.com/7.x/shapes/svg?seed=funrun",
@@ -630,6 +667,185 @@ body {
         min-width:0;
       }
 
+
+
+      .nativeAd{
+        position:relative;
+        isolation:isolate;
+        overflow:hidden;
+        min-height:96px;
+        border-radius:30px;
+        border:1px solid color-mix(in srgb, var(--primary) 48%, rgba(255,255,255,.16));
+        background:
+          radial-gradient(520px 220px at 0% 0%, rgba(99,245,200,.44), transparent 58%),
+          radial-gradient(440px 220px at 100% 0%, rgba(124,203,255,.35), transparent 62%),
+          radial-gradient(420px 230px at 42% 110%, rgba(167,139,250,.32), transparent 64%),
+          linear-gradient(135deg, rgba(8,22,34,.98) 0%, rgba(11,38,54,.94) 34%, rgba(35,23,70,.92) 72%, rgba(7,18,32,.98) 100%);
+        box-shadow:
+          0 22px 60px rgba(0,0,0,.38),
+          0 0 0 1px rgba(255,255,255,.045),
+          0 0 38px color-mix(in srgb, var(--primary) 22%, transparent),
+          0 0 70px rgba(167,139,250,.16),
+          inset 0 1px 0 rgba(255,255,255,.26),
+          inset 0 -1px 0 rgba(255,255,255,.08);
+        padding:19px 18px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:14px;
+        backdrop-filter:blur(22px) saturate(175%);
+        -webkit-backdrop-filter:blur(22px) saturate(175%);
+        transform:translateZ(0);
+      }
+
+      .nativeAd::before{
+        content:"";
+        position:absolute;
+        inset:-95% -35%;
+        background:
+          linear-gradient(112deg, transparent 34%, rgba(255,255,255,.28) 45%, rgba(255,255,255,.08) 53%, transparent 66%);
+        transform:translateX(-55%) rotate(2deg);
+        animation:funAdShine 6.2s ease-in-out infinite;
+        pointer-events:none;
+        z-index:0;
+      }
+
+      .nativeAd::after{
+        content:"";
+        position:absolute;
+        inset:1px;
+        border-radius:inherit;
+        background:
+          radial-gradient(16px 16px at 18% 26%, rgba(255,255,255,.36), transparent 58%),
+          radial-gradient(11px 11px at 80% 22%, rgba(99,245,200,.36), transparent 60%),
+          radial-gradient(13px 13px at 91% 72%, rgba(167,139,250,.36), transparent 60%),
+          linear-gradient(180deg, rgba(255,255,255,.12), transparent 34%, rgba(255,255,255,.055));
+        opacity:.82;
+        pointer-events:none;
+        z-index:0;
+      }
+
+      .nativeAdOrb{
+        position:absolute;
+        right:58px;
+        top:50%;
+        width:92px;
+        height:92px;
+        transform:translateY(-50%);
+        border-radius:28px;
+        background:
+          radial-gradient(circle at 35% 30%, rgba(255,255,255,.88), rgba(99,245,200,.52) 18%, rgba(124,203,255,.26) 42%, rgba(167,139,250,.12) 65%, transparent 72%),
+          linear-gradient(135deg, rgba(99,245,200,.22), rgba(167,139,250,.18));
+        box-shadow:
+          0 0 34px rgba(99,245,200,.24),
+          0 0 54px rgba(167,139,250,.16),
+          inset 0 1px 0 rgba(255,255,255,.32);
+        opacity:.76;
+        z-index:0;
+      }
+
+      .nativeAdCrystal{
+        position:absolute;
+        right:114px;
+        top:13px;
+        width:18px;
+        height:18px;
+        transform:rotate(45deg);
+        border-radius:5px;
+        background:linear-gradient(135deg, rgba(255,255,255,.92), rgba(99,245,200,.48), rgba(167,139,250,.45));
+        box-shadow:0 0 22px rgba(99,245,200,.35);
+        opacity:.75;
+        z-index:0;
+      }
+
+      .nativeAdContent{
+        position:relative;
+        z-index:2;
+        min-width:0;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+      }
+
+      .nativeAdKicker{
+        display:flex;
+        align-items:center;
+        gap:7px;
+        color:rgba(231,241,255,.70);
+        font-size:10px;
+        font-weight:1000;
+        letter-spacing:.72px;
+        text-transform:uppercase;
+      }
+
+      .nativeAdText{
+        position:relative;
+        z-index:2;
+        font-size:16px;
+        font-weight:1000;
+        letter-spacing:.05px;
+        line-height:1.22;
+        color:#F9FCFF;
+        text-shadow:0 2px 20px rgba(0,0,0,.38), 0 0 20px rgba(99,245,200,.14);
+      }
+
+      .nativeAdText strong{
+        color:#FFE889;
+        font-size:1.16em;
+        letter-spacing:.2px;
+        text-shadow:0 0 24px rgba(255,220,100,.28);
+      }
+
+      .nativeAdSub{
+        font-size:11px;
+        line-height:1.35;
+        color:rgba(231,241,255,.72);
+      }
+
+      .nativeAdTag{
+        position:relative;
+        z-index:2;
+        flex:0 0 auto;
+        font-size:11px;
+        font-weight:1000;
+        color:#03110D;
+        padding:10px 12px;
+        border-radius:999px;
+        background:linear-gradient(135deg, #63F5C8 0%, #7CCBFF 55%, #F0E7FF 100%);
+        border:1px solid rgba(255,255,255,.35);
+        box-shadow:
+          0 14px 34px rgba(99,245,200,.28),
+          0 0 32px rgba(124,203,255,.20),
+          inset 0 1px 0 rgba(255,255,255,.55);
+        white-space:nowrap;
+      }
+
+      .nativeAdDots{
+        display:flex;
+        gap:4px;
+        margin-top:2px;
+      }
+
+      .nativeAdDot{
+        width:5px;
+        height:5px;
+        border-radius:999px;
+        background:rgba(255,255,255,.24);
+        box-shadow:0 0 10px rgba(99,245,200,.16);
+      }
+
+      .nativeAdDot.active{
+        width:16px;
+        background:linear-gradient(90deg, var(--primary), var(--primary2));
+      }
+
+      @keyframes funAdShine{
+        0%, 48%{ transform:translateX(-58%) rotate(2deg); opacity:0; }
+        58%{ opacity:.95; }
+        78%{ transform:translateX(58%) rotate(2deg); opacity:.20; }
+        100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
+      }
+
       @media (max-width: 640px){
         .topbar{ padding:8px 8px 0; }
 
@@ -697,6 +913,42 @@ body {
           border-radius:14px;
           font-size:10px;
           padding:8px 4px;
+        }
+
+        .nativeAd{
+          min-height:84px;
+          border-radius:24px;
+          padding:14px 13px;
+          gap:10px;
+        }
+
+        .nativeAdText{
+          font-size:14px;
+          line-height:1.22;
+        }
+
+        .nativeAdSub{
+          font-size:10px;
+        }
+
+        .nativeAdKicker{
+          font-size:9px;
+        }
+
+        .nativeAdTag{
+          font-size:10px;
+          padding:9px 10px;
+        }
+
+        .nativeAdOrb{
+          width:72px;
+          height:72px;
+          right:40px;
+          opacity:.58;
+        }
+
+        .nativeAdCrystal{
+          right:86px;
         }
 
         .modalCard{
@@ -970,6 +1222,47 @@ function Toast({ text, onClose }) {
       }}
     >
       {text}
+    </div>
+  );
+}
+
+function NativeFunRunAd({ compact = false }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setIdx((v) => (v + 1) % FUNRUN_AD_SEQUENCE.length);
+    }, 5200);
+    return () => clearInterval(t);
+  }, []);
+
+  const text = FUNRUN_AD_SEQUENCE[idx % FUNRUN_AD_SEQUENCE.length] || REFERRAL_AD_TEXT;
+  const isReferral = text === REFERRAL_AD_TEXT;
+  const displayText = isReferral ? "Fun.Run — Invite friends and earn " : text;
+
+  return (
+    <div className="nativeAd" style={compact ? { minHeight: 82, borderRadius: 26, padding: "15px 15px" } : null}>
+      <div className="nativeAdOrb" />
+      <div className="nativeAdCrystal" />
+      <div className="nativeAdContent">
+        <div className="nativeAdKicker">✦ Native Fun.Run Ad</div>
+        <div className="nativeAdText">
+          {isReferral ? (
+            <>{displayText}<strong>50% rewards</strong></>
+          ) : (
+            text
+          )}
+        </div>
+        <div className="nativeAdSub">
+          {isReferral ? "Share your link, grow the community, and earn on referrals." : "Fast launch. Clean trading. Creator-first growth engine."}
+        </div>
+        <div className="nativeAdDots">
+          {[0, 1, 2, 3].map((n) => (
+            <span key={n} className={`nativeAdDot ${n === idx % 4 ? "active" : ""}`} />
+          ))}
+        </div>
+      </div>
+      <div className="nativeAdTag">{isReferral ? "50% Rewards" : "Fun.Run"}</div>
     </div>
   );
 }
@@ -2152,6 +2445,9 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [walletSolBalance, setWalletSolBalance] = useState(0);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adminStats, setAdminStats] = useState(null);
+  const [adminCoins, setAdminCoins] = useState([]);
+  const [loadingAdmin, setLoadingAdmin] = useState(false);
 
   const [tokenName, setTokenName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -2197,6 +2493,11 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
 
   return String(anyLinked).trim();
 }, [user]);
+
+  const isAdmin = useMemo(() => {
+    const w = String(solAddr || "").trim();
+    return Boolean(w && ADMIN_WALLETS.includes(w));
+  }, [solAddr]);
 
   const selectedCoin = useMemo(() => {
     return (coins || []).find((c) => String(c.id) === String(selectedCoinId)) || null;
@@ -2353,6 +2654,50 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
       setToast(e?.message || "Failed to load coins");
     } finally {
       setLoadingCoins(false);
+    }
+  }
+
+  async function loadAdminData() {
+    if (!isAdmin || !solAddr) return;
+    try {
+      setLoadingAdmin(true);
+      const [statsJson, coinsJson] = await Promise.all([
+        api(`/api/admin/stats?wallet=${encodeURIComponent(solAddr)}`),
+        api(`/api/admin/coins?wallet=${encodeURIComponent(solAddr)}&limit=100`),
+      ]);
+      setAdminStats(statsJson?.stats || null);
+      setAdminCoins((coinsJson?.coins || []).map(normalizeCoin));
+    } catch (e) {
+      setToast(e?.message || "Admin load failed");
+    } finally {
+      setLoadingAdmin(false);
+    }
+  }
+
+  async function updateAdminCoin(coin, patch) {
+    if (!isAdmin || !coin?.id) return;
+    try {
+      const nextPatch = {
+        adminFeatured: Boolean(patch.adminFeatured ?? coin.adminFeatured),
+        adminHidden: Boolean(patch.adminHidden ?? coin.adminHidden),
+        adminTrendBlocked: Boolean(patch.adminTrendBlocked ?? coin.adminTrendBlocked),
+        adminPriority: safeNum(patch.adminPriority ?? coin.adminPriority, 0),
+        adminNote: String(patch.adminNote ?? coin.adminNote ?? ""),
+      };
+      const json = await api(`/api/admin/coin/${encodeURIComponent(coin.id)}/update`, {
+        method: "POST",
+        body: JSON.stringify({ wallet: solAddr, patch: nextPatch }),
+      });
+      const updated = normalizeCoin(json?.coin || { ...coin, ...nextPatch });
+      setAdminCoins((prev) => (prev || []).map((c) => String(c.id) === String(updated.id) ? updated : c));
+      setCoins((prev) => {
+        const list = (prev || []).map((c) => String(c.id) === String(updated.id) ? updated : c);
+        return updated.adminHidden ? list.filter((c) => String(c.id) !== String(updated.id)) : list;
+      });
+      setToast("Admin change saved");
+      loadAdminData();
+    } catch (e) {
+      setToast(e?.message || "Admin update failed");
     }
   }
 
@@ -2538,6 +2883,10 @@ async function handleLogoPick(file) {
   }
 }
 
+
+  useEffect(() => {
+    if (screen === "ADMIN" && isAdmin) loadAdminData();
+  }, [screen, isAdmin, solAddr]);
 
   function goScreen(next) {
     setScreenHistory((prev) => {
@@ -3079,6 +3428,8 @@ const tradePreview = useMemo(() => {
               </div>
             </Card>
 
+            <NativeFunRunAd />
+
             <Card>
               <SectionHeader
                 title="Why Fun.Run"
@@ -3090,7 +3441,7 @@ const tradePreview = useMemo(() => {
                 style={{
                   display: "grid",
                   gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-                  gap: 10,
+                  gap: 0,
                 }}
               >
                 {[
@@ -3152,6 +3503,8 @@ const tradePreview = useMemo(() => {
                 ))}
               </div>
             </Card>
+
+            <NativeFunRunAd compact />
 
             <Card>
               <SectionHeader
@@ -3237,6 +3590,8 @@ const tradePreview = useMemo(() => {
           <ScreenShell>
             {renderBackButton()}
 
+            <NativeFunRunAd compact />
+
             <Card>
               <Title sub="Find by name, symbol, or creator wallet">Search</Title>
 
@@ -3302,6 +3657,8 @@ const tradePreview = useMemo(() => {
         {screen === "CREATE" && (
           <ScreenShell>
             {renderBackButton()}
+
+            <NativeFunRunAd compact />
 
             <Card
               style={{
@@ -3621,6 +3978,8 @@ const tradePreview = useMemo(() => {
   <ScreenShell>
     {renderBackButton()}
 
+    <NativeFunRunAd compact />
+
     <Card>
       <Title sub="Creator profile, rewards and holdings">
         Creator Profile
@@ -3802,6 +4161,8 @@ const tradePreview = useMemo(() => {
     </MiniBtn>
   </div>
 </div>
+
+    <NativeFunRunAd compact />
 
     <Card>
   <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
@@ -4166,6 +4527,80 @@ const tradePreview = useMemo(() => {
   </ScreenShell>
 )}
 
+
+
+{screen === "ADMIN" && isAdmin && (
+  <ScreenShell>
+    <Title sub="Owner-only controls for safety, ranking, and launch operations">Admin Panel</Title>
+
+    <NativeFunRunAd compact />
+
+    <Card>
+      <SectionHeader
+        title="Platform Overview"
+        sub="Live admin stats"
+        right={<MiniBtn onClick={loadAdminData} disabled={loadingAdmin}>{loadingAdmin ? "Loading" : "Refresh"}</MiniBtn>}
+      />
+      <div className="statsGrid">
+        {[
+          ["Coins", adminStats?.total_coins],
+          ["Users", adminStats?.total_users],
+          ["Volume", `${fmtSol(adminStats?.total_volume_sol)} SOL`],
+          ["Fees", `${fmtSol(adminStats?.total_fees_sol)} SOL`],
+          ["Featured", adminStats?.featured_coins],
+          ["Hidden", adminStats?.hidden_coins],
+        ].map(([label, value]) => (
+          <div className="stat" key={label}>
+            <div className="statLabel">{label}</div>
+            <div className="statValue">{value ?? "—"}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+
+    <Card>
+      <SectionHeader title="Coin Controls" sub="Feature, hide, cooldown, or prioritize coins" right={<Pill>{adminCoins.length}</Pill>} />
+      <div className="coinList">
+        {(adminCoins || []).length ? adminCoins.map((c) => (
+          <div key={c.id} className="coinBtn" style={{ cursor: "default" }}>
+            <div className="coinRow">
+              <CoinLogo c={c} size={44} radius={14} />
+              <div className="coinText">
+                <div className="coinName">{c.name || "Untitled"}</div>
+                <div className="coinMeta">{c.symbol} • MC {fmtUsd(c.mc)} • Vol {fmtSol(c.volumeSol)} SOL</div>
+              </div>
+              <div className="rightNum">
+                <div className="rightNumMain">Priority {safeNum(c.adminPriority, 0)}</div>
+                <div className="rightNumSub">{c.adminHidden ? "Hidden" : c.adminFeatured ? "Featured" : "Live"}</div>
+              </div>
+            </div>
+
+            <div className="pillRow" style={{ marginTop: 12 }}>
+              <MiniBtn tone={c.adminFeatured ? "good" : "default"} onClick={() => updateAdminCoin(c, { ...c, adminFeatured: !c.adminFeatured, adminPriority: !c.adminFeatured ? Math.max(100, safeNum(c.adminPriority, 0)) : 0 })}>
+                {c.adminFeatured ? "Unfeature" : "Front / Featured"}
+              </MiniBtn>
+              <MiniBtn tone={c.adminHidden ? "danger" : "default"} onClick={() => updateAdminCoin(c, { ...c, adminHidden: !c.adminHidden })}>
+                {c.adminHidden ? "Restore" : "Hide / Delist"}
+              </MiniBtn>
+              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminTrendBlocked: !c.adminTrendBlocked })}>
+                {c.adminTrendBlocked ? "Allow Trend" : "Trend Cooldown"}
+              </MiniBtn>
+              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminPriority: safeNum(c.adminPriority, 0) + 25, adminFeatured: true })}>
+                + Priority
+              </MiniBtn>
+              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminPriority: 0, adminFeatured: false, adminTrendBlocked: false })}>
+                Reset Rank
+              </MiniBtn>
+            </div>
+          </div>
+        )) : (
+          <div className="miniMuted">No admin coins loaded yet.</div>
+        )}
+      </div>
+    </Card>
+  </ScreenShell>
+)}
+
 {screen === "SETTINGS" && (
   <ScreenShell>
     {renderBackButton()}
@@ -4351,7 +4786,7 @@ const tradePreview = useMemo(() => {
 )}
 </div>
 
-<div className="footerNav">
+<div className="footerNav" style={{ gridTemplateColumns: isAdmin ? "repeat(6, 1fr)" : "repeat(5, 1fr)" }}>
   <button
     className={`footerBtn ${screen === "HOME" ? "active" : ""}`}
     onClick={() => goScreen("HOME")}
@@ -4391,6 +4826,18 @@ const tradePreview = useMemo(() => {
       <span>Profile</span>
     </div>
   </button>
+
+  {isAdmin ? (
+    <button
+      className={`footerBtn ${screen === "ADMIN" ? "active" : ""}`}
+      onClick={() => goScreen("ADMIN")}
+    >
+      <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 16 }}>🛡️</span>
+        <span>Admin</span>
+      </div>
+    </button>
+  ) : null}
 
   <button
     className={`footerBtn ${screen === "SETTINGS" ? "active" : ""}`}

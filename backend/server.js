@@ -43,7 +43,14 @@ const OWNER_PCT_OF_FEE = clampNum(Number(process.env.OWNER_PCT_OF_FEE || 40), 0,
 const CREATOR_PCT_OF_FEE = clampNum(Number(process.env.CREATOR_PCT_OF_FEE || 40), 0, 100);
 const REFERRAL_PCT_OF_FEE = clampNum(Number(process.env.REFERRAL_PCT_OF_FEE || 20), 0, 100);
 
-const APP_OWNER_WALLET = String(process.env.APP_OWNER_WALLET || "").trim();
+const APP_OWNER_WALLET = String(process.env.APP_OWNER_WALLET || "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji").trim();
+const ADMIN_WALLETS = String(
+  process.env.ADMIN_WALLETS ||
+    "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji,3Jujernac7seLXE9d7JDWpK8zphcYbphHjEMLtZn9WEf"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const SOL_USD = clampNum(Number(process.env.SOL_USD || 80), 1, 100000);
 
@@ -118,6 +125,31 @@ function clampNum(n, min, max) {
 function safeNum(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
+}
+
+function isAdminWallet(wallet) {
+  const w = String(wallet || "").trim();
+  if (!w) return false;
+  return ADMIN_WALLETS.some((a) => String(a).trim() === w);
+}
+
+function getAdminWalletFromReq(req) {
+  return String(
+    req?.headers?.["x-admin-wallet"] ||
+      req?.query?.wallet ||
+      req?.body?.wallet ||
+      req?.body?.adminWallet ||
+      ""
+  ).trim();
+}
+
+function requireAdmin(req, res) {
+  const wallet = getAdminWalletFromReq(req);
+  if (!isAdminWallet(wallet)) {
+    res.status(403).json({ ok: false, error: "Admin wallet required" });
+    return null;
+  }
+  return wallet;
 }
 
 function uid() {
@@ -241,6 +273,12 @@ if (!safeId) return null;
     chart,
 
     creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
+
+    adminFeatured: Boolean(row.admin_featured),
+    adminHidden: Boolean(row.admin_hidden),
+    adminTrendBlocked: Boolean(row.admin_trend_blocked),
+    adminPriority: safeNum(row.admin_priority, 0),
+    adminNote: String(row.admin_note || ""),
   };
 }
 
@@ -430,7 +468,27 @@ async function ensureSchema() {
       primary key (coin_id, timeframe, bucket_time)
     )`;
 
+
+  await sql`alter table coins add column if not exists admin_featured boolean default false`;
+  await sql`alter table coins add column if not exists admin_hidden boolean default false`;
+  await sql`alter table coins add column if not exists admin_trend_blocked boolean default false`;
+  await sql`alter table coins add column if not exists admin_priority integer default 0`;
+  await sql`alter table coins add column if not exists admin_note text default ''`;
+  await sql`alter table coins add column if not exists admin_updated_at timestamptz`;
+  await sql`alter table coins add column if not exists admin_updated_by text`;
+
+  await sql`
+    create table if not exists admin_actions (
+      id text primary key,
+      admin_wallet text,
+      action text,
+      coin_id text,
+      payload jsonb default '{}'::jsonb,
+      created_at timestamptz default now()
+    )`;
+
   await sql`create index if not exists coins_created_at_idx on coins (created_at desc)`;
+  await sql`create index if not exists coins_admin_rank_idx on coins (admin_hidden, admin_featured desc, admin_priority desc, created_at desc)`;
   await sql`create index if not exists coins_creator_wallet_idx on coins (creator_wallet)`;
   await sql`create index if not exists tx_coin_id_created_at_idx on transactions (coin_id, created_at desc)`;
   await sql`create index if not exists tx_wallet_created_at_idx on transactions (wallet, created_at desc)`;
@@ -1092,7 +1150,8 @@ console.log("👉 query params:", req.query);
     const rows = await sql`
       select *
       from coins
-      order by created_at desc
+      where coalesce(admin_hidden, false) = false
+      order by coalesce(admin_featured, false) desc, coalesce(admin_priority, 0) desc, created_at desc
       limit ${limit} offset ${offset}
     `;
 
@@ -1113,6 +1172,117 @@ console.log("👉 query params:", req.query);
       ok: false,
       error: e?.message || "coin list failed",
     });
+  }
+});
+
+
+app.get("/api/admin/stats", async (req, res) => {
+  try {
+    const adminWallet = requireAdmin(req, res);
+    if (!adminWallet) return;
+    await requireDb();
+
+    const coinStats = await sql`
+      select
+        count(*)::int as total_coins,
+        coalesce(sum(volume_sol), 0)::float as total_volume_sol,
+        coalesce(sum(creator_rewards), 0)::float as total_creator_rewards,
+        count(*) filter (where coalesce(admin_hidden, false) = true)::int as hidden_coins,
+        count(*) filter (where coalesce(admin_featured, false) = true)::int as featured_coins,
+        count(*) filter (where coalesce(admin_trend_blocked, false) = true)::int as trend_blocked_coins
+      from coins
+    `;
+    const profileStats = await sql`
+      select
+        count(*)::int as total_users,
+        coalesce(sum(referral_rewards), 0)::float as total_referral_rewards,
+        coalesce(sum(owner_rewards), 0)::float as total_owner_rewards
+      from profiles
+    `;
+    const txStats = await sql`
+      select
+        count(*)::int as total_transactions,
+        coalesce(sum(fee), 0)::float as total_fees_sol
+      from transactions
+    `;
+
+    return res.json({
+      ok: true,
+      adminWallet,
+      stats: {
+        ...(coinStats?.[0] || {}),
+        ...(profileStats?.[0] || {}),
+        ...(txStats?.[0] || {}),
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || "admin stats failed" });
+  }
+});
+
+app.get("/api/admin/coins", async (req, res) => {
+  try {
+    const adminWallet = requireAdmin(req, res);
+    if (!adminWallet) return;
+    await requireDb();
+
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 100)));
+    const rows = await sql`
+      select *
+      from coins
+      order by coalesce(admin_featured, false) desc, coalesce(admin_priority, 0) desc, created_at desc
+      limit ${limit}
+    `;
+
+    return res.json({
+      ok: true,
+      coins: Array.isArray(rows) ? rows.map(mapDbCoinToApi).filter(Boolean) : [],
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || "admin coins failed" });
+  }
+});
+
+app.post("/api/admin/coin/:id/update", async (req, res) => {
+  try {
+    const adminWallet = requireAdmin(req, res);
+    if (!adminWallet) return;
+    await requireDb();
+
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "coin id required" });
+
+    const patch = req.body?.patch && typeof req.body.patch === "object" ? req.body.patch : req.body || {};
+    const adminFeatured = Boolean(patch.adminFeatured ?? patch.admin_featured ?? false);
+    const adminHidden = Boolean(patch.adminHidden ?? patch.admin_hidden ?? false);
+    const adminTrendBlocked = Boolean(patch.adminTrendBlocked ?? patch.admin_trend_blocked ?? false);
+    const adminPriority = Math.max(0, Math.min(9999, Math.floor(safeNum(patch.adminPriority ?? patch.admin_priority, 0))));
+    const adminNote = String(patch.adminNote ?? patch.admin_note ?? "").slice(0, 300);
+
+    const rows = await sql`
+      update coins
+      set
+        admin_featured = ${adminFeatured},
+        admin_hidden = ${adminHidden},
+        admin_trend_blocked = ${adminTrendBlocked},
+        admin_priority = ${adminPriority},
+        admin_note = ${adminNote},
+        admin_updated_at = now(),
+        admin_updated_by = ${adminWallet}
+      where id = ${id}
+      returning *
+    `;
+
+    if (!rows?.[0]) return res.status(404).json({ ok: false, error: "coin not found" });
+
+    await sql`
+      insert into admin_actions (id, admin_wallet, action, coin_id, payload, created_at)
+      values (${uid()}, ${adminWallet}, ${"COIN_UPDATE"}, ${id}, ${sql.json({ adminFeatured, adminHidden, adminTrendBlocked, adminPriority, adminNote })}, now())
+    `;
+
+    return res.json({ ok: true, coin: mapDbCoinToApi(rows[0]) });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || "admin coin update failed" });
   }
 });
 
