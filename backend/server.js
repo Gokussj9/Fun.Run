@@ -1260,7 +1260,7 @@ app.get("/api/coin/:id/candles", async (req, res) => {
 
         const sol = Math.max(0, safeNum(tx.sol, 0));
         const tokens = Math.max(0, safeNum(tx.tokens, 0));
-        const price = tokens > 0 ? sol / tokens : 0;
+        const price = tokens > 0 ? (sol / tokens) * SOL_USD : 0;
         const px = Math.max(0.00000001, price || fallbackPrice);
 
         const bucket = Math.floor(ts / bucketMs) * bucketMs;
@@ -1599,18 +1599,16 @@ async function doTrade(req, res, side) {
       await upsertHolding(wallet, coin.id, "set", nextWalletTokens);
       await insertTransaction(txPayload);
 
+      await upsertCandlesForTrade(
+        coin.id,
+        Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
+        candleVolumeSol
+      );
+
       const sideCoin = { ...coin };
       setImmediate(() => {
-        Promise.allSettled([
-          distributeFeeDirect(sideCoin, wallet, tradeFeeSol),
-          upsertCandlesForTrade(
-            coin.id,
-            Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
-            candleVolumeSol
-          ),
-        ]).then((items) => {
-          const failed = items.find((x) => x.status === "rejected");
-          if (failed) console.log("trade side-effect error:", failed.reason?.message || failed.reason);
+        distributeFeeDirect(sideCoin, wallet, tradeFeeSol).catch((err) => {
+          console.log("trade reward side-effect error:", err?.message || err);
         });
       });
 

@@ -1888,6 +1888,26 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
 
 
 
+function normalizeChartCandleForDisplay(c) {
+  const open = Math.max(0.00000001, safeNum(c?.open, 0));
+  const close = Math.max(0.00000001, safeNum(c?.close, open));
+  const bodyHigh = Math.max(open, close);
+  const bodyLow = Math.max(0.00000001, Math.min(open, close));
+  let high = Math.max(bodyHigh, safeNum(c?.high, bodyHigh));
+  let low = Math.max(0.00000001, Math.min(bodyLow, safeNum(c?.low, bodyLow)));
+
+  if (high > bodyHigh * 6) high = bodyHigh * 1.28;
+  if (low < bodyLow / 6) low = bodyLow * 0.72;
+
+  return {
+    time: c.time,
+    open,
+    high: Math.max(high, bodyHigh),
+    low: Math.min(low, bodyLow),
+    close,
+  };
+}
+
 function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = false, reloadKey = 0 }) {
   const chartRef = useRef(null);
   const [candles, setCandles] = useState([]);
@@ -1967,27 +1987,6 @@ async function loadActivity(force = false) {
   if (!coin?.id) return;
 
   const tfKey = String(chartRange || "1D").toUpperCase();
-const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
-  const cacheTTL = 30000; // 30 sec
-
-  try {
-    setActivityLoading(true);
-
-    if (!force) {
-      const cachedRaw = localStorage.getItem(cacheKey);
-      if (cachedRaw) {
-        const cached = JSON.parse(cachedRaw);
-        if (
-          cached &&
-          Array.isArray(cached.rows) &&
-          Date.now() - Number(cached.ts || 0) < cacheTTL
-        ) {
-          if (mounted) setCandles(cached.rows);
-          setActivityLoading(false);
-          return;
-        }
-      }
-    }
 
     
 const tfMap = {
@@ -2001,7 +2000,7 @@ const tfMap = {
 };
 
 const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
-const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
+const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120&_=${Date.now()}`);
 
 
 
@@ -2012,10 +2011,6 @@ const rows = Array.isArray(json?.candles) ? json.candles : [];
 
 if (rows.length > 0) {
   setCandles(rows);
-  localStorage.setItem(
-    cacheKey,
-    JSON.stringify({ ts: Date.now(), rows })
-  );
 } else {
   console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
 }
@@ -2030,7 +2025,7 @@ if (rows.length > 0) {
 }
 
 loadActivity(Boolean(reloadKey));
-timer = setInterval(() => loadActivity(true), 30000);
+timer = setInterval(() => loadActivity(true), 8000);
 
 return () => {
   mounted = false;
@@ -2115,7 +2110,7 @@ const candleData = useMemo(() => {
     cursor += bucketMs;
   }
 
-  return normalized.slice(-maxBars);
+  return normalized.slice(-maxBars).map(normalizeChartCandleForDisplay);
 }, [candles, chartRange]);
 
 
@@ -3081,44 +3076,19 @@ async function handleTrade() {
     setTrading(true);
 
     const current = { ...selectedCoin };
-    const oldMc = Math.max(1, safeNum(current.mc, 0) || 1);
-    const oldVolume = Math.max(0, safeNum(current.volumeSol, 0));
-    const oldChart = Array.isArray(current.chart) && current.chart.length
-      ? current.chart.map((x) => Math.max(0, safeNum(x, 0)))
-      : [oldMc];
-
-    // 🔥 front-end instant chart move
-    // buy = chart up
-    // sell = chart down
-    const movePct =
-      tradeMode === "BUY"
-        ? Math.max(0.55, Math.min(12, amount * 1.65))
-        : Math.max(0.45, Math.min(10, amount * 1.35));
-
-    const newMc =
-      tradeMode === "BUY"
-        ? oldMc * (1 + movePct / 100)
-        : Math.max(1, oldMc * (1 - movePct / 100));
-
-    const midMc =
-      tradeMode === "BUY"
-        ? oldMc * (1 + movePct / 170)
-        : Math.max(1, oldMc * (1 - movePct / 185));
-    const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
-
     const holders = { ...(current.holders || {}) };
     const currentTokens = Math.max(0, safeNum(holders?.[solAddr], 0));
     const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
-    const optimisticTokens = tradeMode === "BUY" ? currentTokens + previewTokens : Math.max(0, currentTokens - amount);
+    const optimisticTokens =
+      tradeMode === "BUY"
+        ? currentTokens + previewTokens
+        : Math.max(0, currentTokens - amount);
+
     if (optimisticTokens > 0) holders[solAddr] = optimisticTokens;
     else delete holders[solAddr];
 
     const optimisticCoin = {
       ...current,
-      mc: newMc,
-      ath: Math.max(safeNum(current.ath, 0), newMc),
-      volumeSol: oldVolume + amount,
-      chart: nextChart,
       holders,
       lastTradeAt: Date.now(),
     };
@@ -3162,26 +3132,38 @@ async function handleTrade() {
     const updated = normalizeCoin(json?.coin || {});
 
     if (updated?.id) {
-      const backendChart = Array.isArray(updated.chart) && updated.chart.length
-        ? updated.chart.map((x) => Math.max(0, safeNum(x, 0)))
-        : [];
+      const exactHolding = Math.max(0, safeNum(json?.holdingTokens, updated?.holders?.[solAddr] || 0));
+      const fixedHolders = { ...(updated.holders || {}) };
+      if (exactHolding > 0) fixedHolders[solAddr] = exactHolding;
+      else delete fixedHolders[solAddr];
+
+      const finalCoin = { ...updated, holders: fixedHolders };
 
       setCoins((prev) =>
         (prev || []).map((c) =>
-          String(c.id) === String(updated.id)
-            ? {
-                ...updated,
-                holders: Object.keys(updated?.holders || {}).length ? updated.holders : holders,
-                chart:
-                  backendChart.length >= 2
-                    ? backendChart
-                    : [...nextChart.slice(-29), Math.max(1, safeNum(updated.mc, newMc))],
-              }
-            : c
+          String(c.id) === String(finalCoin.id) ? finalCoin : c
         )
       );
 
-      setSelectedCoinId(updated.id);
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const oldHoldings = Array.isArray(prev.holdings) ? prev.holdings : [];
+        const without = oldHoldings.filter((h) => String(h.coinId) !== String(finalCoin.id));
+        const nextHolding = {
+          coinId: finalCoin.id,
+          symbol: finalCoin.symbol,
+          name: finalCoin.name,
+          logo: finalCoin.logo,
+          amount: exactHolding,
+          totalSupply: Math.max(1, safeNum(finalCoin.totalSupply, 1_000_000_000)),
+          pct: (exactHolding / Math.max(1, safeNum(finalCoin.totalSupply, 1_000_000_000))) * 100,
+          lastAt: Date.now(),
+        };
+        return { ...prev, holdings: exactHolding > 0 ? [nextHolding, ...without] : without };
+      });
+
+      setSelectedCoinId(finalCoin.id);
+      setTimeout(() => setChartReloadKey((x) => x + 1), 250);
     }
 
     setTradeAmount("");
@@ -3951,7 +3933,7 @@ const tradePreview = useMemo(() => {
               onRightLabelClick={() => {
                 if (tradeMode === "SELL" && selectedCoin && solAddr) {
                   const allTokens = Math.max(0, safeNum(selectedCoin?.holders?.[solAddr], 0));
-                  setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
+                  setTradeAmount(allTokens > 0 ? String(allTokens) : "");
                 }
               }}
             />
