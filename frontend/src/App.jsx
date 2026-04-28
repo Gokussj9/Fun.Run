@@ -15,11 +15,8 @@ const LS_THEME = "theme";
 const LS_PROFILE_AVATAR = "profile_avatar_v1";
 
 const APP_OWNER_WALLET = "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji";
-const ADMIN_WALLETS = [
-  "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji",
-  "3Jujernac7seLXE9d7JDWpK8zphcYbphHjEMLtZn9WEf",
-];
-
+const DEX_LAUNCH_MC_USD = 2_000_000;
+const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 const FUNRUN_NATIVE_ADS = [
   "Fun.Run — Start your crypto journey today",
   "Fun.Run — Create. Launch. Grow.",
@@ -846,6 +843,23 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
+
+      .dexLaunchBox{
+        position:relative;
+        overflow:hidden;
+        border-radius:26px;
+        border:1px solid color-mix(in srgb, var(--primary) 36%, rgba(255,255,255,.12));
+        background:
+          radial-gradient(420px 190px at 0% 0%, color-mix(in srgb, var(--primary) 26%, transparent), transparent 62%),
+          radial-gradient(340px 190px at 100% 105%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 64%),
+          linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
+        box-shadow:0 18px 48px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14);
+        padding:14px;
+      }
+      .dexOptionGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;}
+      .dexOptionBtn{border:1px solid rgba(255,255,255,.10);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025));color:var(--text);cursor:pointer;padding:12px 8px;font-size:12px;font-weight:1000;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
+      .dexOptionBtn:hover{border-color:color-mix(in srgb, var(--primary) 45%, rgba(255,255,255,.12));transform:translateY(-1px);}
+
       @media (max-width: 640px){
         .topbar{ padding:8px 8px 0; }
 
@@ -1263,6 +1277,35 @@ function NativeFunRunAd({ compact = false }) {
         </div>
       </div>
       <div className="nativeAdTag">{isReferral ? "50% Rewards" : "Fun.Run"}</div>
+    </div>
+  );
+}
+
+function LaunchToDexBox({ coin, solAddr, onToast }) {
+  const mc = Math.max(0, safeNum(coin?.mc, 0));
+  const creator = String(coin?.creatorWallet || coin?.owner || "").trim();
+  const wallet = String(solAddr || "").trim();
+  const isCreator = Boolean(wallet && creator && wallet === creator);
+  const unlocked = isCreator && mc >= DEX_LAUNCH_MC_USD;
+  if (!coin?.id || !isCreator) return null;
+  return (
+    <div className="dexLaunchBox">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 1000 }}>Launch to DEX</div>
+          <div style={{ marginTop: 5, fontSize: 12, color: "var(--muted)" }}>
+            {unlocked ? "MC unlocked. Choose a DEX when Phase 2 migration is activated." : "Unlocks at " + fmtUsd(DEX_LAUNCH_MC_USD) + " MC. Current: " + fmtUsd(mc)}
+          </div>
+        </div>
+        <Pill style={{ color: unlocked ? "var(--good)" : "var(--muted)" }}>{unlocked ? "Ready" : "Locked"}</Pill>
+      </div>
+      <div className="dexOptionGrid">
+        {DEX_OPTIONS.map((dex) => (
+          <button key={dex} className="dexOptionBtn" disabled={!unlocked} style={{ opacity: unlocked ? 1 : 0.48, cursor: unlocked ? "pointer" : "not-allowed" }} onClick={() => onToast?.(dex + " DEX launch is prepared for Phase 2. Real liquidity transaction is disabled for safe mainnet launch.")}>
+            {dex}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2403,6 +2446,28 @@ export default function App() {
     } catch {}
   }, []);
 
+ 
+
+const connectPhantom = async () => {
+  try {
+    if (!window.solana || !window.solana.isPhantom) {
+      alert("Phantom wallet not found. Install Phantom.");
+      window.open("https://phantom.app/", "_blank");
+      return;
+    }
+
+    const resp = await window.solana.connect();
+    const address = resp.publicKey.toString();
+
+    setPhantomWallet(address);
+
+    console.log("Connected:", address);
+
+  } catch (err) {
+    console.error(err);
+  }
+};
+
   const isMobile = typeof window !== "undefined" && window.innerWidth < 520;
 
   const [toast, setToast] = useState("");
@@ -2445,9 +2510,8 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [walletSolBalance, setWalletSolBalance] = useState(0);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [adminStats, setAdminStats] = useState(null);
-  const [adminCoins, setAdminCoins] = useState([]);
-  const [loadingAdmin, setLoadingAdmin] = useState(false);
+  const [phantomWallet, setPhantomWallet] = useState("");
+  const [connectingPhantom, setConnectingPhantom] = useState(false);
 
   const [tokenName, setTokenName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -2467,17 +2531,11 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const didBootRef = useRef(false);
 
  const solAddr = useMemo(() => {
-  const primary =
-    String(user?.wallet?.address || "").trim();
+  const phantom = String(phantomWallet || "").trim();
+  if (phantom) return phantom;
 
-
-
-
-
-
-
-
-      if (primary) return primary;
+  const primary = String(user?.wallet?.address || "").trim();
+  if (primary) return primary;
 
   const solLinked =
     user?.linkedAccounts?.find(
@@ -2492,12 +2550,68 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     )?.address || "";
 
   return String(anyLinked).trim();
-}, [user]);
+}, [user, phantomWallet]);
 
-  const isAdmin = useMemo(() => {
-    const w = String(solAddr || "").trim();
-    return Boolean(w && ADMIN_WALLETS.includes(w));
-  }, [solAddr]);
+  const isWalletConnected = useMemo(() => Boolean(solAddr), [solAddr]);
+
+  function getPhantomProvider() {
+    try {
+      if (typeof window === "undefined") return null;
+
+      const phantomProvider = window?.phantom?.solana;
+      if (phantomProvider?.isPhantom) return phantomProvider;
+
+      const injectedProvider = window?.solana;
+      if (injectedProvider?.isPhantom) return injectedProvider;
+
+      if (Array.isArray(injectedProvider?.providers)) {
+        return injectedProvider.providers.find((p) => p?.isPhantom) || null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  
+   
+
+  async function disconnectPhantom() {
+    try {
+      const provider = getPhantomProvider();
+      if (provider?.isConnected) await provider?.disconnect?.();
+    } catch {}
+    setPhantomWallet("");
+    setToast("Phantom disconnected");
+  }
+
+  useEffect(() => {
+    const provider = getPhantomProvider();
+    if (!provider) return;
+
+    provider
+      .connect({ onlyIfTrusted: true })
+      .then((resp) => {
+        const addr = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
+        if (addr) setPhantomWallet(addr);
+      })
+      .catch(() => {});
+
+    const onConnect = (publicKey) => {
+      const addr = String(publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
+      if (addr) setPhantomWallet(addr);
+    };
+    const onDisconnect = () => setPhantomWallet("");
+
+    provider.on?.("connect", onConnect);
+    provider.on?.("disconnect", onDisconnect);
+
+    return () => {
+      provider.off?.("connect", onConnect);
+      provider.off?.("disconnect", onDisconnect);
+    };
+  }, []);
 
   const selectedCoin = useMemo(() => {
     return (coins || []).find((c) => String(c.id) === String(selectedCoinId)) || null;
@@ -2657,50 +2771,6 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     }
   }
 
-  async function loadAdminData() {
-    if (!isAdmin || !solAddr) return;
-    try {
-      setLoadingAdmin(true);
-      const [statsJson, coinsJson] = await Promise.all([
-        api(`/api/admin/stats?wallet=${encodeURIComponent(solAddr)}`),
-        api(`/api/admin/coins?wallet=${encodeURIComponent(solAddr)}&limit=100`),
-      ]);
-      setAdminStats(statsJson?.stats || null);
-      setAdminCoins((coinsJson?.coins || []).map(normalizeCoin));
-    } catch (e) {
-      setToast(e?.message || "Admin load failed");
-    } finally {
-      setLoadingAdmin(false);
-    }
-  }
-
-  async function updateAdminCoin(coin, patch) {
-    if (!isAdmin || !coin?.id) return;
-    try {
-      const nextPatch = {
-        adminFeatured: Boolean(patch.adminFeatured ?? coin.adminFeatured),
-        adminHidden: Boolean(patch.adminHidden ?? coin.adminHidden),
-        adminTrendBlocked: Boolean(patch.adminTrendBlocked ?? coin.adminTrendBlocked),
-        adminPriority: safeNum(patch.adminPriority ?? coin.adminPriority, 0),
-        adminNote: String(patch.adminNote ?? coin.adminNote ?? ""),
-      };
-      const json = await api(`/api/admin/coin/${encodeURIComponent(coin.id)}/update`, {
-        method: "POST",
-        body: JSON.stringify({ wallet: solAddr, patch: nextPatch }),
-      });
-      const updated = normalizeCoin(json?.coin || { ...coin, ...nextPatch });
-      setAdminCoins((prev) => (prev || []).map((c) => String(c.id) === String(updated.id) ? updated : c));
-      setCoins((prev) => {
-        const list = (prev || []).map((c) => String(c.id) === String(updated.id) ? updated : c);
-        return updated.adminHidden ? list.filter((c) => String(c.id) !== String(updated.id)) : list;
-      });
-      setToast("Admin change saved");
-      loadAdminData();
-    } catch (e) {
-      setToast(e?.message || "Admin update failed");
-    }
-  }
-
   async function loadProfile(wallet = solAddr) {
     if (!wallet) return;
 
@@ -2740,14 +2810,14 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   }, []);
 
   useEffect(() => {
-    if (!authenticated || !solAddr) {
+    if (!isWalletConnected || !solAddr) {
       setProfile(null);
       setWalletSolBalance(0);
       return;
     }
     loadProfile(solAddr);
     loadBalance(solAddr);
-  }, [authenticated, solAddr]);
+  }, [isWalletConnected, solAddr]);
 
   useEffect(() => {
     if (screen !== "HOME") return;
@@ -2883,11 +2953,6 @@ async function handleLogoPick(file) {
   }
 }
 
-
-  useEffect(() => {
-    if (screen === "ADMIN" && isAdmin) loadAdminData();
-  }, [screen, isAdmin, solAddr]);
-
   function goScreen(next) {
     setScreenHistory((prev) => {
       const last = prev[prev.length - 1];
@@ -2933,7 +2998,7 @@ async function handleLogoPick(file) {
   }
 
   async function handleCreateCoin() {
-    if (!authenticated || !solAddr) {
+    if (!isWalletConnected || !solAddr) {
       setToast("Connect wallet first");
       return;
     }
@@ -2996,7 +3061,7 @@ async function handleLogoPick(file) {
   }
 
 async function handleTrade() {
-  if (!authenticated || !solAddr) {
+  if (!isWalletConnected || !solAddr) {
     setToast("Connect wallet first");
     return;
   }
@@ -3041,12 +3106,20 @@ async function handleTrade() {
         : Math.max(1, oldMc * (1 - movePct / 185));
     const nextChart = [...oldChart.slice(-27), oldMc, midMc, newMc];
 
+    const holders = { ...(current.holders || {}) };
+    const currentTokens = Math.max(0, safeNum(holders?.[solAddr], 0));
+    const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
+    const optimisticTokens = tradeMode === "BUY" ? currentTokens + previewTokens : Math.max(0, currentTokens - amount);
+    if (optimisticTokens > 0) holders[solAddr] = optimisticTokens;
+    else delete holders[solAddr];
+
     const optimisticCoin = {
       ...current,
       mc: newMc,
       ath: Math.max(safeNum(current.ath, 0), newMc),
-      volumeSol: tradeMode === "BUY" ? oldVolume + amount : oldVolume + amount,
+      volumeSol: oldVolume + amount,
       chart: nextChart,
+      holders,
       lastTradeAt: Date.now(),
     };
 
@@ -3055,6 +3128,23 @@ async function handleTrade() {
         String(c.id) === String(current.id) ? optimisticCoin : c
       )
     );
+
+    setProfile((prev) => {
+      if (!prev || !optimisticCoin?.id) return prev;
+      const oldHoldings = Array.isArray(prev.holdings) ? prev.holdings : [];
+      const without = oldHoldings.filter((h) => String(h.coinId) !== String(optimisticCoin.id));
+      const nextHolding = {
+        coinId: optimisticCoin.id,
+        symbol: optimisticCoin.symbol,
+        name: optimisticCoin.name,
+        logo: optimisticCoin.logo,
+        amount: optimisticTokens,
+        totalSupply: Math.max(1, safeNum(optimisticCoin.totalSupply, 1_000_000_000)),
+        pct: (optimisticTokens / Math.max(1, safeNum(optimisticCoin.totalSupply, 1_000_000_000))) * 100,
+        lastAt: Date.now(),
+      };
+      return { ...prev, holdings: optimisticTokens > 0 ? [nextHolding, ...without] : without };
+    });
 
     const path = tradeMode === "BUY" ? "/api/coin/buy" : "/api/coin/sell";
 
@@ -3081,6 +3171,7 @@ async function handleTrade() {
           String(c.id) === String(updated.id)
             ? {
                 ...updated,
+                holders: Object.keys(updated?.holders || {}).length ? updated.holders : holders,
                 chart:
                   backendChart.length >= 2
                     ? backendChart
@@ -3097,11 +3188,9 @@ async function handleTrade() {
     setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
     setChartReloadKey((x) => x + 1);
 
-    setTimeout(() => {
-      loadProfile(solAddr);
-      loadBalance(solAddr);
-      loadCoins(0, false);
-    }, 80);
+    loadProfile(solAddr);
+    loadBalance(solAddr);
+    setTimeout(() => loadCoins(0, false), 650);
   } catch (e) {
     setToast(e?.message || "Trade failed");
   } finally {
@@ -3110,7 +3199,7 @@ async function handleTrade() {
 }
 
   async function handleSetReferrer() {
-    if (!authenticated || !solAddr) return;
+    if (!isWalletConnected || !solAddr) return;
 
     try {
       const saved = (localStorage.getItem("ref") || "").trim();
@@ -3127,12 +3216,12 @@ async function handleTrade() {
   }
 
   useEffect(() => {
-    if (!authenticated || !solAddr) return;
+    if (!isWalletConnected || !solAddr) return;
     handleSetReferrer();
-  }, [authenticated, solAddr]);
+  }, [isWalletConnected, solAddr]);
 
  async function handleClaim(kind) {
-  if (!authenticated || !solAddr) {
+  if (!isWalletConnected || !solAddr) {
     setToast("Connect wallet first");
     return;
   }
@@ -3381,24 +3470,33 @@ const tradePreview = useMemo(() => {
                   try {
                     await login?.();
                   } catch (e) {
-                    setToast(e?.message || "Connect failed");
+                    setToast(e?.message || "Google login failed");
                   }
                 }}
               >
-                Connect
+                Google Login
               </MiniBtn>
             ) : (
               <MiniBtn
                 onClick={async () => {
                   try {
                     await logout?.();
-                    setToast("Disconnected");
+                    setToast("Google logged out");
                   } catch (e) {
-                    setToast(e?.message || "Disconnect failed");
+                    setToast(e?.message || "Logout failed");
                   }
                 }}
               >
-                Logout
+                Google Logout
+              </MiniBtn>
+            )}
+            {phantomWallet ? (
+              <MiniBtn onClick={disconnectPhantom}>
+                {shortWallet(phantomWallet)}
+              </MiniBtn>
+            ) : (
+              <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
+                {connectingPhantom ? "Check Phantom" : "Connect Phantom"}
               </MiniBtn>
             )}
           </div>
@@ -3891,6 +3989,10 @@ const tradePreview = useMemo(() => {
                 ? "Buy Now"
                 : "Sell Now"}
             </PrimaryButton>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <LaunchToDexBox coin={selectedCoin} solAddr={solAddr} onToast={setToast} />
           </div>
         </Card>
 
@@ -4529,78 +4631,6 @@ const tradePreview = useMemo(() => {
 
 
 
-{screen === "ADMIN" && isAdmin && (
-  <ScreenShell>
-    <Title sub="Owner-only controls for safety, ranking, and launch operations">Admin Panel</Title>
-
-    <NativeFunRunAd compact />
-
-    <Card>
-      <SectionHeader
-        title="Platform Overview"
-        sub="Live admin stats"
-        right={<MiniBtn onClick={loadAdminData} disabled={loadingAdmin}>{loadingAdmin ? "Loading" : "Refresh"}</MiniBtn>}
-      />
-      <div className="statsGrid">
-        {[
-          ["Coins", adminStats?.total_coins],
-          ["Users", adminStats?.total_users],
-          ["Volume", `${fmtSol(adminStats?.total_volume_sol)} SOL`],
-          ["Fees", `${fmtSol(adminStats?.total_fees_sol)} SOL`],
-          ["Featured", adminStats?.featured_coins],
-          ["Hidden", adminStats?.hidden_coins],
-        ].map(([label, value]) => (
-          <div className="stat" key={label}>
-            <div className="statLabel">{label}</div>
-            <div className="statValue">{value ?? "—"}</div>
-          </div>
-        ))}
-      </div>
-    </Card>
-
-    <Card>
-      <SectionHeader title="Coin Controls" sub="Feature, hide, cooldown, or prioritize coins" right={<Pill>{adminCoins.length}</Pill>} />
-      <div className="coinList">
-        {(adminCoins || []).length ? adminCoins.map((c) => (
-          <div key={c.id} className="coinBtn" style={{ cursor: "default" }}>
-            <div className="coinRow">
-              <CoinLogo c={c} size={44} radius={14} />
-              <div className="coinText">
-                <div className="coinName">{c.name || "Untitled"}</div>
-                <div className="coinMeta">{c.symbol} • MC {fmtUsd(c.mc)} • Vol {fmtSol(c.volumeSol)} SOL</div>
-              </div>
-              <div className="rightNum">
-                <div className="rightNumMain">Priority {safeNum(c.adminPriority, 0)}</div>
-                <div className="rightNumSub">{c.adminHidden ? "Hidden" : c.adminFeatured ? "Featured" : "Live"}</div>
-              </div>
-            </div>
-
-            <div className="pillRow" style={{ marginTop: 12 }}>
-              <MiniBtn tone={c.adminFeatured ? "good" : "default"} onClick={() => updateAdminCoin(c, { ...c, adminFeatured: !c.adminFeatured, adminPriority: !c.adminFeatured ? Math.max(100, safeNum(c.adminPriority, 0)) : 0 })}>
-                {c.adminFeatured ? "Unfeature" : "Front / Featured"}
-              </MiniBtn>
-              <MiniBtn tone={c.adminHidden ? "danger" : "default"} onClick={() => updateAdminCoin(c, { ...c, adminHidden: !c.adminHidden })}>
-                {c.adminHidden ? "Restore" : "Hide / Delist"}
-              </MiniBtn>
-              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminTrendBlocked: !c.adminTrendBlocked })}>
-                {c.adminTrendBlocked ? "Allow Trend" : "Trend Cooldown"}
-              </MiniBtn>
-              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminPriority: safeNum(c.adminPriority, 0) + 25, adminFeatured: true })}>
-                + Priority
-              </MiniBtn>
-              <MiniBtn onClick={() => updateAdminCoin(c, { ...c, adminPriority: 0, adminFeatured: false, adminTrendBlocked: false })}>
-                Reset Rank
-              </MiniBtn>
-            </div>
-          </div>
-        )) : (
-          <div className="miniMuted">No admin coins loaded yet.</div>
-        )}
-      </div>
-    </Card>
-  </ScreenShell>
-)}
-
 {screen === "SETTINGS" && (
   <ScreenShell>
     {renderBackButton()}
@@ -4763,20 +4793,26 @@ const tradePreview = useMemo(() => {
             Export Wallet
           </MiniBtn>
 
+          {phantomWallet ? (
+            <MiniBtn tone="danger" onClick={disconnectPhantom}>
+              Disconnect Phantom
+            </MiniBtn>
+          ) : null}
+
           {authenticated ? (
             <MiniBtn
               tone="danger"
               onClick={async () => {
                 try {
                   await logout?.();
-                  setToast("Logged out");
+                  setToast("Google logged out");
                   goScreen("HOME");
                 } catch (e) {
                   setToast(e?.message || "Logout failed");
                 }
               }}
             >
-              Logout
+              Google Logout
             </MiniBtn>
           ) : null}
         </div>
@@ -4786,7 +4822,7 @@ const tradePreview = useMemo(() => {
 )}
 </div>
 
-<div className="footerNav" style={{ gridTemplateColumns: isAdmin ? "repeat(6, 1fr)" : "repeat(5, 1fr)" }}>
+<div className="footerNav">
   <button
     className={`footerBtn ${screen === "HOME" ? "active" : ""}`}
     onClick={() => goScreen("HOME")}
@@ -4826,18 +4862,6 @@ const tradePreview = useMemo(() => {
       <span>Profile</span>
     </div>
   </button>
-
-  {isAdmin ? (
-    <button
-      className={`footerBtn ${screen === "ADMIN" ? "active" : ""}`}
-      onClick={() => goScreen("ADMIN")}
-    >
-      <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 16 }}>🛡️</span>
-        <span>Admin</span>
-      </div>
-    </button>
-  ) : null}
 
   <button
     className={`footerBtn ${screen === "SETTINGS" ? "active" : ""}`}
@@ -4921,23 +4945,7 @@ const tradePreview = useMemo(() => {
             Copy Referral Link
           </MiniBtn>
 
-          {authenticated ? (
-            <MiniBtn
-              tone="danger"
-              onClick={async () => {
-                try {
-                  await logout?.();
-                  setSettingsOpen(false);
-                  setToast("Logged out");
-                  goScreen("HOME");
-                } catch (e) {
-                  setToast(e?.message || "Logout failed");
-                }
-              }}
-            >
-              Logout
-            </MiniBtn>
-          ) : (
+          {!authenticated ? (
             <MiniBtn
               tone="good"
               onClick={async () => {
@@ -4945,11 +4953,37 @@ const tradePreview = useMemo(() => {
                   if (ready) await login?.();
                   setSettingsOpen(false);
                 } catch (e) {
-                  setToast(e?.message || "Login failed");
+                  setToast(e?.message || "Google login failed");
                 }
               }}
             >
-              Connect Wallet
+              Google Login
+            </MiniBtn>
+          ) : (
+            <MiniBtn
+              tone="danger"
+              onClick={async () => {
+                try {
+                  await logout?.();
+                  setSettingsOpen(false);
+                  setToast("Google logged out");
+                  goScreen("HOME");
+                } catch (e) {
+                  setToast(e?.message || "Logout failed");
+                }
+              }}
+            >
+              Google Logout
+            </MiniBtn>
+          )}
+
+          {phantomWallet ? (
+            <MiniBtn tone="danger" onClick={disconnectPhantom}>
+              Disconnect Phantom
+            </MiniBtn>
+          ) : (
+            <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
+              {connectingPhantom ? "Connecting" : "Connect Phantom"}
             </MiniBtn>
           )}
         </div>

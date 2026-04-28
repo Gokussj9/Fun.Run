@@ -44,14 +44,6 @@ const CREATOR_PCT_OF_FEE = clampNum(Number(process.env.CREATOR_PCT_OF_FEE || 40)
 const REFERRAL_PCT_OF_FEE = clampNum(Number(process.env.REFERRAL_PCT_OF_FEE || 20), 0, 100);
 
 const APP_OWNER_WALLET = String(process.env.APP_OWNER_WALLET || "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji").trim();
-const ADMIN_WALLETS = String(
-  process.env.ADMIN_WALLETS ||
-    "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji,3Jujernac7seLXE9d7JDWpK8zphcYbphHjEMLtZn9WEf"
-)
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 const SOL_USD = clampNum(Number(process.env.SOL_USD || 80), 1, 100000);
 
 const VIRTUAL_SOL = clampNum(Number(process.env.VIRTUAL_SOL || 30), 0, 1000000);
@@ -62,6 +54,8 @@ const TOTAL_SUPPLY = Math.max(1, Number(process.env.TOTAL_SUPPLY || 1_000_000_00
 const MAX_CHART_POINTS = 140;
 const PROFILE_TX_LIMIT = 120;
 const PROFILE_HOLDING_TX_SCAN = 500;
+const DEX_LAUNCH_MC_USD = Math.max(1, Number(process.env.DEX_LAUNCH_MC_USD || 2_000_000));
+const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 
 // -------------------- APP SETUP --------------------
 if (TRUST_PROXY) app.set("trust proxy", 1);
@@ -77,6 +71,7 @@ app.use(cors({
   origin: "*"
 }));
 app.options("*", cors());
+app.use(compression());
 
 app.use((req, res, next) => {
   console.log("🌍 incoming:", req.method, req.url);
@@ -101,7 +96,7 @@ app.use(morgan("tiny"));
 const sql = DATABASE_URL
   ? postgres(DATABASE_URL, {
       ssl: "require",
-      max: 5,
+      max: Math.max(5, Math.min(30, Number(process.env.PG_MAX_CONNECTIONS || 12))),
       idle_timeout: 20,
       connect_timeout: 15,
       prepare: false,
@@ -125,31 +120,6 @@ function clampNum(n, min, max) {
 function safeNum(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
-}
-
-function isAdminWallet(wallet) {
-  const w = String(wallet || "").trim();
-  if (!w) return false;
-  return ADMIN_WALLETS.some((a) => String(a).trim() === w);
-}
-
-function getAdminWalletFromReq(req) {
-  return String(
-    req?.headers?.["x-admin-wallet"] ||
-      req?.query?.wallet ||
-      req?.body?.wallet ||
-      req?.body?.adminWallet ||
-      ""
-  ).trim();
-}
-
-function requireAdmin(req, res) {
-  const wallet = getAdminWalletFromReq(req);
-  if (!isAdminWallet(wallet)) {
-    res.status(403).json({ ok: false, error: "Admin wallet required" });
-    return null;
-  }
-  return wallet;
 }
 
 function uid() {
@@ -273,12 +243,9 @@ if (!safeId) return null;
     chart,
 
     creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
-
-    adminFeatured: Boolean(row.admin_featured),
-    adminHidden: Boolean(row.admin_hidden),
-    adminTrendBlocked: Boolean(row.admin_trend_blocked),
-    adminPriority: safeNum(row.admin_priority, 0),
-    adminNote: String(row.admin_note || ""),
+    dexLaunchReady: Math.max(0, safeNum(row.market_cap, pricing.mcUsd)) >= DEX_LAUNCH_MC_USD,
+    dexLaunched: Boolean(row.dex_launched),
+    dexPlatform: String(row.dex_platform || ""),
   };
 }
 
@@ -467,28 +434,13 @@ async function ensureSchema() {
       updated_at timestamptz default now(),
       primary key (coin_id, timeframe, bucket_time)
     )`;
+  await sql`alter table coins add column if not exists dex_launched boolean default false`;
+  await sql`alter table coins add column if not exists dex_platform text default ''`;
+  await sql`alter table coins add column if not exists dex_launch_requested_at timestamptz`;
 
 
-  await sql`alter table coins add column if not exists admin_featured boolean default false`;
-  await sql`alter table coins add column if not exists admin_hidden boolean default false`;
-  await sql`alter table coins add column if not exists admin_trend_blocked boolean default false`;
-  await sql`alter table coins add column if not exists admin_priority integer default 0`;
-  await sql`alter table coins add column if not exists admin_note text default ''`;
-  await sql`alter table coins add column if not exists admin_updated_at timestamptz`;
-  await sql`alter table coins add column if not exists admin_updated_by text`;
-
-  await sql`
-    create table if not exists admin_actions (
-      id text primary key,
-      admin_wallet text,
-      action text,
-      coin_id text,
-      payload jsonb default '{}'::jsonb,
-      created_at timestamptz default now()
-    )`;
 
   await sql`create index if not exists coins_created_at_idx on coins (created_at desc)`;
-  await sql`create index if not exists coins_admin_rank_idx on coins (admin_hidden, admin_featured desc, admin_priority desc, created_at desc)`;
   await sql`create index if not exists coins_creator_wallet_idx on coins (creator_wallet)`;
   await sql`create index if not exists tx_coin_id_created_at_idx on transactions (coin_id, created_at desc)`;
   await sql`create index if not exists tx_wallet_created_at_idx on transactions (wallet, created_at desc)`;
@@ -556,6 +508,28 @@ async function patchProfile(wallet, patch = {}) {
       referral_count = excluded.referral_count,
       updated_at = excluded.updated_at
     returning *`;
+
+  return ensureProfileShape(rows[0], w);
+}
+
+async function addProfileReward(wallet, column, amount) {
+  const w = String(wallet || "").trim();
+  const col = String(column || "").trim();
+  const delta = Math.max(0, safeNum(amount, 0));
+
+  if (!w || delta <= 0) return null;
+
+  const allowed = new Set(["referral_rewards", "creator_rewards", "owner_rewards"]);
+  if (!allowed.has(col)) throw new Error("invalid rewards column");
+
+  const rows = await sql`
+    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
+    values (${w}, '', ${col === "referral_rewards" ? delta : 0}, ${col === "creator_rewards" ? delta : 0}, ${col === "owner_rewards" ? delta : 0}, ${w.slice(0, 6)}, 0, now(), now())
+    on conflict (wallet) do update set
+      ${sql(col)} = profiles.${sql(col)} + ${delta},
+      updated_at = now()
+    returning *
+  `;
 
   return ensureProfileShape(rows[0], w);
 }
@@ -793,73 +767,57 @@ function recalcCoin(coin, opts = {}) {
 async function upsertCandlesForTrade(coinId, price, volumeSol) {
   await requireDb();
 
-  const timeframes = [
-    { tf: "5m", sec: 300 },
-    { tf: "15m", sec: 900 },
-    { tf: "1h", sec: 3600 },
-    { tf: "4h", sec: 14400 },
-    { tf: "1d", sec: 86400 },
-    { tf: "1w", sec: 604800 },
-    { tf: "1m", sec: 2592000 },
-  ];
+  const id = String(coinId || "").trim();
+  if (!id) return;
 
   const now = Date.now();
-  const p = Math.max(0, safeNum(price, 0));
+  const p = Math.max(0.00000001, safeNum(price, 0.00000001));
   const vol = Math.max(0, safeNum(volumeSol, 0));
 
-  for (const t of timeframes) {
-    const bucket = Math.floor(now / (t.sec * 1000)) * (t.sec * 1000);
+  const timeframes = [
+    ["5m", 300_000],
+    ["15m", 900_000],
+    ["1h", 3_600_000],
+    ["4h", 14_400_000],
+    ["1d", 86_400_000],
+    ["1w", 604_800_000],
+    ["1m", 2_592_000_000],
+  ];
 
-    const existing = await sql`
-      select * from candles
-      where coin_id = ${coinId}
-      and timeframe = ${t.tf}
-      and bucket_time = ${bucket}
-      limit 1
-    `;
-
-    if (existing[0]) {
-      await sql`
-        update candles set
-          high = greatest(${p}, high),
-          low = least(${p}, low),
-          close = ${p},
-          volume_sol = volume_sol + ${vol},
-          trades_count = trades_count + 1,
-          updated_at = now()
-        where coin_id = ${coinId}
-        and timeframe = ${t.tf}
-        and bucket_time = ${bucket}
-      `;
-    } else {
-      const prevRow = await sql`
-        select close
-        from candles
-        where coin_id = ${coinId}
-          and timeframe = ${t.tf}
-          and bucket_time < ${bucket}
-        order by bucket_time desc
-        limit 1
-      `;
-
-  const prevClose = prevRow?.[0]?.close != null
-    ? Number(prevRow[0].close)
-    : p;
+  const rows = timeframes.map(([tf, ms]) => ({
+    coin_id: id,
+    timeframe: tf,
+    bucket_time: Math.floor(now / ms) * ms,
+    open: p,
+    high: p,
+    low: p,
+    close: p,
+    volume_sol: vol,
+    trades_count: 1,
+  }));
 
   await sql`
-    insert into candles (
-      coin_id, timeframe, bucket_time,
-      open, high, low, close,
-      volume_sol, trades_count, updated_at
-    )
-    values (
-      ${coinId}, ${t.tf}, ${bucket},
-      ${prevClose}, ${Math.max(prevClose, p)}, ${Math.min(prevClose, p)}, ${p},
-      ${vol}, 1, now()
-    )
+    insert into candles ${sql(
+      rows,
+      "coin_id",
+      "timeframe",
+      "bucket_time",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume_sol",
+      "trades_count"
+    )}
+    on conflict (coin_id, timeframe, bucket_time)
+    do update set
+      high = greatest(candles.high, excluded.close),
+      low = least(candles.low, excluded.close),
+      close = excluded.close,
+      volume_sol = candles.volume_sol + excluded.volume_sol,
+      trades_count = candles.trades_count + 1,
+      updated_at = now()
   `;
-}
-  }
 }
 
 function applyFee(solAmount) {
@@ -929,38 +887,29 @@ async function distributeFeeDirect(coin, traderWallet, feeSol) {
   const creatorPart = fee * (CREATOR_PCT_OF_FEE / 100);
   const referralPart = fee * (REFERRAL_PCT_OF_FEE / 100);
 
+  const jobs = [];
+
   if (APP_OWNER_WALLET && ownerPart > 0) {
-    const ownerProfile = await getProfile(APP_OWNER_WALLET, true);
-    await patchProfile(APP_OWNER_WALLET, {
-      owner_rewards: Math.max(0, safeNum(ownerProfile?.owner_rewards, 0) + ownerPart),
-    });
+    jobs.push(addProfileReward(APP_OWNER_WALLET, "owner_rewards", ownerPart));
   }
 
   if (creatorWallet && creatorPart > 0) {
-    const creatorProfile = await getProfile(creatorWallet, true);
-
-    await patchProfile(creatorWallet, {
-      creator_rewards: Math.max(0, safeNum(creatorProfile?.creator_rewards, 0) + creatorPart),
-    });
-
-    coin.creatorRewardsSol = Math.max(
-      0,
-      safeNum(coin.creatorRewardsSol, 0) + creatorPart
-    );
-
-    const creatorUpline = String(creatorProfile?.referrer || "").trim();
-    if (creatorUpline && creatorUpline !== creatorWallet && referralPart > 0) {
-      const upProfile = await getProfile(creatorUpline, true);
-      await patchProfile(creatorUpline, {
-        referral_rewards: Math.max(
-          0,
-          safeNum(upProfile?.referral_rewards, 0) + referralPart
-        ),
-      });
-    }
+    jobs.push(addProfileReward(creatorWallet, "creator_rewards", creatorPart));
+    coin.creatorRewardsSol = Math.max(0, safeNum(coin.creatorRewardsSol, 0) + creatorPart);
   }
-}
 
+  const creatorProfileRows =
+    creatorWallet && referralPart > 0
+      ? await sql`select referrer from profiles where wallet = ${creatorWallet} limit 1`
+      : [];
+
+  const creatorUpline = String(creatorProfileRows?.[0]?.referrer || "").trim();
+  if (creatorUpline && creatorUpline !== creatorWallet && referralPart > 0) {
+    jobs.push(addProfileReward(creatorUpline, "referral_rewards", referralPart));
+  }
+
+  if (jobs.length) await Promise.all(jobs);
+}
 // ================= TRUE BONDING CURVE VERSION =================
 // sirf core changes kiye gaye hain (UI untouched, APIs same)
 
@@ -1150,8 +1099,7 @@ console.log("👉 query params:", req.query);
     const rows = await sql`
       select *
       from coins
-      where coalesce(admin_hidden, false) = false
-      order by coalesce(admin_featured, false) desc, coalesce(admin_priority, 0) desc, created_at desc
+      order by created_at desc
       limit ${limit} offset ${offset}
     `;
 
@@ -1175,116 +1123,6 @@ console.log("👉 query params:", req.query);
   }
 });
 
-
-app.get("/api/admin/stats", async (req, res) => {
-  try {
-    const adminWallet = requireAdmin(req, res);
-    if (!adminWallet) return;
-    await requireDb();
-
-    const coinStats = await sql`
-      select
-        count(*)::int as total_coins,
-        coalesce(sum(volume_sol), 0)::float as total_volume_sol,
-        coalesce(sum(creator_rewards), 0)::float as total_creator_rewards,
-        count(*) filter (where coalesce(admin_hidden, false) = true)::int as hidden_coins,
-        count(*) filter (where coalesce(admin_featured, false) = true)::int as featured_coins,
-        count(*) filter (where coalesce(admin_trend_blocked, false) = true)::int as trend_blocked_coins
-      from coins
-    `;
-    const profileStats = await sql`
-      select
-        count(*)::int as total_users,
-        coalesce(sum(referral_rewards), 0)::float as total_referral_rewards,
-        coalesce(sum(owner_rewards), 0)::float as total_owner_rewards
-      from profiles
-    `;
-    const txStats = await sql`
-      select
-        count(*)::int as total_transactions,
-        coalesce(sum(fee), 0)::float as total_fees_sol
-      from transactions
-    `;
-
-    return res.json({
-      ok: true,
-      adminWallet,
-      stats: {
-        ...(coinStats?.[0] || {}),
-        ...(profileStats?.[0] || {}),
-        ...(txStats?.[0] || {}),
-      },
-    });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || "admin stats failed" });
-  }
-});
-
-app.get("/api/admin/coins", async (req, res) => {
-  try {
-    const adminWallet = requireAdmin(req, res);
-    if (!adminWallet) return;
-    await requireDb();
-
-    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 100)));
-    const rows = await sql`
-      select *
-      from coins
-      order by coalesce(admin_featured, false) desc, coalesce(admin_priority, 0) desc, created_at desc
-      limit ${limit}
-    `;
-
-    return res.json({
-      ok: true,
-      coins: Array.isArray(rows) ? rows.map(mapDbCoinToApi).filter(Boolean) : [],
-    });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || "admin coins failed" });
-  }
-});
-
-app.post("/api/admin/coin/:id/update", async (req, res) => {
-  try {
-    const adminWallet = requireAdmin(req, res);
-    if (!adminWallet) return;
-    await requireDb();
-
-    const id = String(req.params.id || "").trim();
-    if (!id) return res.status(400).json({ ok: false, error: "coin id required" });
-
-    const patch = req.body?.patch && typeof req.body.patch === "object" ? req.body.patch : req.body || {};
-    const adminFeatured = Boolean(patch.adminFeatured ?? patch.admin_featured ?? false);
-    const adminHidden = Boolean(patch.adminHidden ?? patch.admin_hidden ?? false);
-    const adminTrendBlocked = Boolean(patch.adminTrendBlocked ?? patch.admin_trend_blocked ?? false);
-    const adminPriority = Math.max(0, Math.min(9999, Math.floor(safeNum(patch.adminPriority ?? patch.admin_priority, 0))));
-    const adminNote = String(patch.adminNote ?? patch.admin_note ?? "").slice(0, 300);
-
-    const rows = await sql`
-      update coins
-      set
-        admin_featured = ${adminFeatured},
-        admin_hidden = ${adminHidden},
-        admin_trend_blocked = ${adminTrendBlocked},
-        admin_priority = ${adminPriority},
-        admin_note = ${adminNote},
-        admin_updated_at = now(),
-        admin_updated_by = ${adminWallet}
-      where id = ${id}
-      returning *
-    `;
-
-    if (!rows?.[0]) return res.status(404).json({ ok: false, error: "coin not found" });
-
-    await sql`
-      insert into admin_actions (id, admin_wallet, action, coin_id, payload, created_at)
-      values (${uid()}, ${adminWallet}, ${"COIN_UPDATE"}, ${id}, ${sql.json({ adminFeatured, adminHidden, adminTrendBlocked, adminPriority, adminNote })}, now())
-    `;
-
-    return res.json({ ok: true, coin: mapDbCoinToApi(rows[0]) });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || "admin coin update failed" });
-  }
-});
 
 app.get("/api/coin/:id/activity", async (req, res) => {
   try {
@@ -1722,14 +1560,19 @@ async function doTrade(req, res, side) {
         return { ok: false, error: tradeResult?.error || "Trade failed" };
       }
 
-      await distributeFeeDirect(coin, wallet, Math.max(0, safeNum(tradeResult.feeSol, 0)));
+      const tradeFeeSol = Math.max(0, safeNum(tradeResult.feeSol, 0));
+      const creatorWallet = String(coin?.creatorWallet || coin?.owner || "").trim();
+      if (creatorWallet && tradeFeeSol > 0) {
+        coin.creatorRewardsSol = Math.max(
+          0,
+          safeNum(coin.creatorRewardsSol, 0) + tradeFeeSol * (CREATOR_PCT_OF_FEE / 100)
+        );
+      }
 
       coin = recalcCoin(coin, { appendChart: true, sideHint: sideLower });
       coin = await saveCoin(coin);
 
-      await insertTransaction({
-
-
+      const txPayload = {
         id: uid(),
         type: sideLower.toUpperCase(),
         side: sideLower.toUpperCase(),
@@ -1743,28 +1586,38 @@ async function doTrade(req, res, side) {
           sideLower === "buy"
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
             : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
-        fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
+        fee: tradeFeeSol,
         priceUsd: coin.priceUsd,
-      });
+      };
 
-            await upsertHolding(
-        wallet,
-        coin.id,
-        "set",
-        Math.max(0, safeNum(coin?.holders?.[wallet], 0))
-      );
-
-            await upsertCandlesForTrade(
-        coin.id,
-        Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
+      const candleVolumeSol =
         sideLower === "buy"
           ? Math.max(0, safeNum(sol, 0))
-          : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0))
-      );
+          : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0));
+
+      const nextWalletTokens = Math.max(0, safeNum(coin?.holders?.[wallet], 0));
+      await upsertHolding(wallet, coin.id, "set", nextWalletTokens);
+      await insertTransaction(txPayload);
+
+      const sideCoin = { ...coin };
+      setImmediate(() => {
+        Promise.allSettled([
+          distributeFeeDirect(sideCoin, wallet, tradeFeeSol),
+          upsertCandlesForTrade(
+            coin.id,
+            Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
+            candleVolumeSol
+          ),
+        ]).then((items) => {
+          const failed = items.find((x) => x.status === "rejected");
+          if (failed) console.log("trade side-effect error:", failed.reason?.message || failed.reason);
+        });
+      });
 
       return {
         ok: true,
         coin,
+        holdingTokens: nextWalletTokens,
         tokens:
           sideLower === "buy"
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
@@ -1790,6 +1643,30 @@ async function doTrade(req, res, side) {
 
 app.post("/api/coin/buy", (req, res) => doTrade(req, res, "buy"));
 app.post("/api/coin/sell", (req, res) => doTrade(req, res, "sell"));
+
+app.get("/api/dex/options", async (req, res) => {
+  return res.json({ ok: true, minMcUsd: DEX_LAUNCH_MC_USD, options: DEX_OPTIONS });
+});
+
+app.post("/api/coin/:id/dex/prepare", async (req, res) => {
+  try {
+    await requireDb();
+    const coinId = String(req.params?.id || "").trim();
+    const wallet = String(req.body?.wallet || "").trim();
+    const dex = String(req.body?.dex || "").trim();
+    if (!coinId || !wallet) return res.status(400).json({ ok: false, error: "coinId/wallet required" });
+    if (!DEX_OPTIONS.includes(dex)) return res.status(400).json({ ok: false, error: "Unsupported DEX" });
+    const row = await getCoinRowById(coinId);
+    if (!row) return res.status(404).json({ ok: false, error: "coin not found" });
+    const coin = mapDbCoinToApi(row);
+    if (String(coin.creatorWallet || "").trim() !== wallet) return res.status(403).json({ ok: false, error: "Only creator can prepare DEX launch" });
+    if (safeNum(coin.mc, 0) < DEX_LAUNCH_MC_USD) return res.status(400).json({ ok: false, error: `DEX launch unlocks at ${DEX_LAUNCH_MC_USD.toLocaleString()} MC` });
+    return res.json({ ok: true, status: "PHASE_2_PLACEHOLDER", dex, minMcUsd: DEX_LAUNCH_MC_USD, coin, message: "DEX launch is ready as a safe Phase 2 placeholder. Real liquidity transaction is intentionally disabled for initial mainnet launch." });
+  } catch (e) {
+    console.log("dex prepare error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
 app.post("/api/claim", async (req, res) => {
   try {
