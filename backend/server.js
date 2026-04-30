@@ -54,7 +54,7 @@ const TOTAL_SUPPLY = Math.max(1, Number(process.env.TOTAL_SUPPLY || 1_000_000_00
 const MAX_CHART_POINTS = 140;
 const PROFILE_TX_LIMIT = 120;
 const PROFILE_HOLDING_TX_SCAN = 500;
-const DEX_LAUNCH_MC_USD = Math.max(1, Number(process.env.DEX_LAUNCH_MC_USD || 2_000_000));
+const DEX_LAUNCH_MC_USD = 2_000_000;
 const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 
 // -------------------- APP SETUP --------------------
@@ -243,9 +243,6 @@ if (!safeId) return null;
     chart,
 
     creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
-    dexLaunchReady: Math.max(0, safeNum(row.market_cap, pricing.mcUsd)) >= DEX_LAUNCH_MC_USD,
-    dexLaunched: Boolean(row.dex_launched),
-    dexPlatform: String(row.dex_platform || ""),
   };
 }
 
@@ -434,9 +431,6 @@ async function ensureSchema() {
       updated_at timestamptz default now(),
       primary key (coin_id, timeframe, bucket_time)
     )`;
-  await sql`alter table coins add column if not exists dex_launched boolean default false`;
-  await sql`alter table coins add column if not exists dex_platform text default ''`;
-  await sql`alter table coins add column if not exists dex_launch_requested_at timestamptz`;
 
 
 
@@ -784,40 +778,69 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
     ["1m", 2_592_000_000],
   ];
 
-  const rows = timeframes.map(([tf, ms]) => ({
-    coin_id: id,
-    timeframe: tf,
-    bucket_time: Math.floor(now / ms) * ms,
-    open: p,
-    high: p,
-    low: p,
-    close: p,
-    volume_sol: vol,
-    trades_count: 1,
-  }));
+  for (const [tf, ms] of timeframes) {
+    const bucket = Math.floor(now / ms) * ms;
 
-  await sql`
-    insert into candles ${sql(
-      rows,
-      "coin_id",
-      "timeframe",
-      "bucket_time",
-      "open",
-      "high",
-      "low",
-      "close",
-      "volume_sol",
-      "trades_count"
-    )}
-    on conflict (coin_id, timeframe, bucket_time)
-    do update set
-      high = greatest(candles.high, excluded.close),
-      low = least(candles.low, excluded.close),
-      close = excluded.close,
-      volume_sol = candles.volume_sol + excluded.volume_sol,
-      trades_count = candles.trades_count + 1,
-      updated_at = now()
-  `;
+    const existing = await sql`
+      select open, high, low, close
+      from candles
+      where coin_id = ${id}
+        and timeframe = ${tf}
+        and bucket_time = ${bucket}
+      limit 1
+    `;
+
+    if (existing.length === 0) {
+      const prev = await sql`
+        select close
+        from candles
+        where coin_id = ${id}
+          and timeframe = ${tf}
+          and bucket_time < ${bucket}
+        order by bucket_time desc
+        limit 1
+      `;
+
+      const openPrice = Math.max(0.00000001, safeNum(prev?.[0]?.close, p));
+      const highPrice = Math.max(openPrice, p);
+      const lowPrice = Math.min(openPrice, p);
+
+      await sql`
+        insert into candles (
+          coin_id, timeframe, bucket_time,
+          open, high, low, close,
+          volume_sol, trades_count, updated_at
+        )
+        values (
+          ${id}, ${tf}, ${bucket},
+          ${openPrice}, ${highPrice}, ${lowPrice}, ${p},
+          ${vol}, 1, now()
+        )
+        on conflict (coin_id, timeframe, bucket_time)
+        do update set
+          high = greatest(candles.high, excluded.high),
+          low = least(candles.low, excluded.low),
+          close = excluded.close,
+          volume_sol = candles.volume_sol + excluded.volume_sol,
+          trades_count = candles.trades_count + 1,
+          updated_at = now()
+      `;
+    } else {
+      await sql`
+        update candles
+        set
+          high = greatest(high, ${p}),
+          low = least(low, ${p}),
+          close = ${p},
+          volume_sol = volume_sol + ${vol},
+          trades_count = trades_count + 1,
+          updated_at = now()
+        where coin_id = ${id}
+          and timeframe = ${tf}
+          and bucket_time = ${bucket}
+      `;
+    }
+  }
 }
 
 function applyFee(solAmount) {
@@ -1124,6 +1147,46 @@ console.log("👉 query params:", req.query);
 });
 
 
+app.get("/api/coin/:id/dex-preview", async (req, res) => {
+  try {
+    await requireDb();
+    const wallet = String(req.query.wallet || "").trim();
+    const row = await getCoinRowById(req.params.id);
+    const coin = row ? mapDbCoinToApi(row) : null;
+    if (!coin) return res.status(404).json({ ok: false, error: "Coin not found" });
+
+    const creatorWallet = String(coin.creatorWallet || coin.owner || "").trim();
+    const isCreator = Boolean(wallet && creatorWallet && wallet === creatorWallet);
+    const mc = Math.max(0, safeNum(coin.mc, 0));
+
+    return res.json({
+      ok: true,
+      coinId: coin.id,
+      eligible: isCreator && mc >= DEX_LAUNCH_MC_USD,
+      isCreator,
+      currentMc: mc,
+      requiredMc: DEX_LAUNCH_MC_USD,
+      options: DEX_OPTIONS,
+      status: mc >= DEX_LAUNCH_MC_USD ? "READY_PHASE_2" : "LOCKED_UNTIL_2M_MC",
+      message: "DEX launch is a safe placeholder. Real pool creation will be enabled after Phase 2 audit.",
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || "DEX preview failed" });
+  }
+});
+
+app.get("/api/coin/:id", async (req, res) => {
+  try {
+    await requireDb();
+    const coin = mapDbCoinToApi(await getCoinRowById(req.params.id));
+    if (!coin) return res.status(404).json({ ok: false, error: "Coin not found" });
+    return res.json({ ok: true, coin });
+  } catch (e) {
+    console.log("coin/detail error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.get("/api/coin/:id/activity", async (req, res) => {
   try {
     await requireDb();
@@ -1176,11 +1239,7 @@ app.get("/api/coin/:id/candles", async (req, res) => {
 
     const coinRows = await sql`
       select
-        id,
-        created_at,
-        market_cap,
-        last_price,
-        chart
+        *
       from coins
       where id = ${coinId}
       limit 1
@@ -1191,6 +1250,7 @@ app.get("/api/coin/:id/candles", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Coin not found" });
     }
 
+    const coinApi = mapDbCoinToApi(coin) || {};
     const createdAtMs = coin?.created_at ? new Date(coin.created_at).getTime() : Date.now();
     const now = Date.now();
 
@@ -1247,8 +1307,9 @@ app.get("/api/coin/:id/candles", async (req, res) => {
       const fallbackPrice =
         Math.max(
           0.00000001,
-          safeNum(coin.last_price, 0),
-          safeNum(coin.market_cap, 0) > 0 ? safeNum(coin.market_cap, 0) / 1000000000 : 0,
+          safeNum(coinApi.priceUsd, 0),
+          safeNum(coinApi.lastPriceUsd, 0),
+          safeNum(coin.market_cap, 0) > 0 ? safeNum(coin.market_cap, 0) / Math.max(1, safeNum(coin.total_supply, TOTAL_SUPPLY)) : 0,
           Array.isArray(coin.chart) && coin.chart.length
             ? safeNum(coin.chart[coin.chart.length - 1], 0)
             : 0.000001
@@ -1595,27 +1656,28 @@ async function doTrade(req, res, side) {
           ? Math.max(0, safeNum(sol, 0))
           : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0));
 
-      const nextWalletTokens = Math.max(0, safeNum(coin?.holders?.[wallet], 0));
-      await upsertHolding(wallet, coin.id, "set", nextWalletTokens);
-      await insertTransaction(txPayload);
-
-      await upsertCandlesForTrade(
-        coin.id,
-        Math.max(0, safeNum(coin?.priceUsd || coin?.price || 0, 0)),
-        candleVolumeSol
-      );
+      // Keep holder balance and candle close in sync before the response.
+      // This fixes delayed "Your Tokens" updates and stale chart candles after sell.
+      await Promise.all([
+        upsertHolding(wallet, coin.id, "set", Math.max(0, safeNum(coin?.holders?.[wallet], 0))),
+        upsertCandlesForTrade(
+          coin.id,
+          Math.max(0.00000001, safeNum(coin?.priceUsd || coin?.price || 0, 0.00000001)),
+          candleVolumeSol
+        ),
+      ]);
 
       const sideCoin = { ...coin };
-      setImmediate(() => {
-        distributeFeeDirect(sideCoin, wallet, tradeFeeSol).catch((err) => {
-          console.log("trade reward side-effect error:", err?.message || err);
-        });
-      });
+      const sideEffects = await Promise.allSettled([
+        distributeFeeDirect(sideCoin, wallet, tradeFeeSol),
+        insertTransaction(txPayload),
+      ]);
+      const failed = sideEffects.find((x) => x.status === "rejected");
+      if (failed) console.log("trade side-effect error:", failed.reason?.message || failed.reason);
 
       return {
         ok: true,
         coin,
-        holdingTokens: nextWalletTokens,
         tokens:
           sideLower === "buy"
             ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
@@ -1641,30 +1703,6 @@ async function doTrade(req, res, side) {
 
 app.post("/api/coin/buy", (req, res) => doTrade(req, res, "buy"));
 app.post("/api/coin/sell", (req, res) => doTrade(req, res, "sell"));
-
-app.get("/api/dex/options", async (req, res) => {
-  return res.json({ ok: true, minMcUsd: DEX_LAUNCH_MC_USD, options: DEX_OPTIONS });
-});
-
-app.post("/api/coin/:id/dex/prepare", async (req, res) => {
-  try {
-    await requireDb();
-    const coinId = String(req.params?.id || "").trim();
-    const wallet = String(req.body?.wallet || "").trim();
-    const dex = String(req.body?.dex || "").trim();
-    if (!coinId || !wallet) return res.status(400).json({ ok: false, error: "coinId/wallet required" });
-    if (!DEX_OPTIONS.includes(dex)) return res.status(400).json({ ok: false, error: "Unsupported DEX" });
-    const row = await getCoinRowById(coinId);
-    if (!row) return res.status(404).json({ ok: false, error: "coin not found" });
-    const coin = mapDbCoinToApi(row);
-    if (String(coin.creatorWallet || "").trim() !== wallet) return res.status(403).json({ ok: false, error: "Only creator can prepare DEX launch" });
-    if (safeNum(coin.mc, 0) < DEX_LAUNCH_MC_USD) return res.status(400).json({ ok: false, error: `DEX launch unlocks at ${DEX_LAUNCH_MC_USD.toLocaleString()} MC` });
-    return res.json({ ok: true, status: "PHASE_2_PLACEHOLDER", dex, minMcUsd: DEX_LAUNCH_MC_USD, coin, message: "DEX launch is ready as a safe Phase 2 placeholder. Real liquidity transaction is intentionally disabled for initial mainnet launch." });
-  } catch (e) {
-    console.log("dex prepare error:", e?.message || e);
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
 
 app.post("/api/claim", async (req, res) => {
   try {

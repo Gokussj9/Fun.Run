@@ -6,8 +6,9 @@ import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
-const API_BASE = (import.meta.env?.VITE_API_BASE || "https://zooming-solace-production-c360.up.railway.app").trim();
-const APP_BASE = (import.meta.env?.VITE_APP_URL || (typeof window !== "undefined" ? window.location.origin : "https://fun-run-lovat.vercel.app")).replace(/\/$/, "");
+const API_BASE =
+  (import.meta.env.VITE_API_BASE ||
+    "https://zooming-solace-production-c360.up.railway.app").trim();
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
@@ -16,7 +17,11 @@ const LS_PROFILE_AVATAR = "profile_avatar_v1";
 
 const APP_OWNER_WALLET = "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji";
 const DEX_LAUNCH_MC_USD = 2_000_000;
-const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
+const DEX_OPTIONS = [
+  { id: "raydium", name: "Raydium", sub: "Most popular Solana liquidity pool option." },
+  { id: "orca", name: "Orca", sub: "Clean Solana DEX with concentrated liquidity." },
+  { id: "meteora", name: "Meteora", sub: "Advanced pools and dynamic liquidity tools." },
+];
 const FUNRUN_NATIVE_ADS = [
   "Fun.Run — Start your crypto journey today",
   "Fun.Run — Create. Launch. Grow.",
@@ -843,23 +848,6 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
-
-      .dexLaunchBox{
-        position:relative;
-        overflow:hidden;
-        border-radius:26px;
-        border:1px solid color-mix(in srgb, var(--primary) 36%, rgba(255,255,255,.12));
-        background:
-          radial-gradient(420px 190px at 0% 0%, color-mix(in srgb, var(--primary) 26%, transparent), transparent 62%),
-          radial-gradient(340px 190px at 100% 105%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 64%),
-          linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
-        box-shadow:0 18px 48px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14);
-        padding:14px;
-      }
-      .dexOptionGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;}
-      .dexOptionBtn{border:1px solid rgba(255,255,255,.10);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025));color:var(--text);cursor:pointer;padding:12px 8px;font-size:12px;font-weight:1000;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
-      .dexOptionBtn:hover{border-color:color-mix(in srgb, var(--primary) 45%, rgba(255,255,255,.12));transform:translateY(-1px);}
-
       @media (max-width: 640px){
         .topbar{ padding:8px 8px 0; }
 
@@ -1277,35 +1265,6 @@ function NativeFunRunAd({ compact = false }) {
         </div>
       </div>
       <div className="nativeAdTag">{isReferral ? "50% Rewards" : "Fun.Run"}</div>
-    </div>
-  );
-}
-
-function LaunchToDexBox({ coin, solAddr, onToast }) {
-  const mc = Math.max(0, safeNum(coin?.mc, 0));
-  const creator = String(coin?.creatorWallet || coin?.owner || "").trim();
-  const wallet = String(solAddr || "").trim();
-  const isCreator = Boolean(wallet && creator && wallet === creator);
-  const unlocked = isCreator && mc >= DEX_LAUNCH_MC_USD;
-  if (!coin?.id || !isCreator) return null;
-  return (
-    <div className="dexLaunchBox">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 1000 }}>Launch to DEX</div>
-          <div style={{ marginTop: 5, fontSize: 12, color: "var(--muted)" }}>
-            {unlocked ? "MC unlocked. Choose a DEX when Phase 2 migration is activated." : "Unlocks at " + fmtUsd(DEX_LAUNCH_MC_USD) + " MC. Current: " + fmtUsd(mc)}
-          </div>
-        </div>
-        <Pill style={{ color: unlocked ? "var(--good)" : "var(--muted)" }}>{unlocked ? "Ready" : "Locked"}</Pill>
-      </div>
-      <div className="dexOptionGrid">
-        {DEX_OPTIONS.map((dex) => (
-          <button key={dex} className="dexOptionBtn" disabled={!unlocked} style={{ opacity: unlocked ? 1 : 0.48, cursor: unlocked ? "pointer" : "not-allowed" }} onClick={() => onToast?.(dex + " DEX launch is prepared for Phase 2. Real liquidity transaction is disabled for safe mainnet launch.")}>
-            {dex}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1888,26 +1847,6 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
 
 
 
-function normalizeChartCandleForDisplay(c) {
-  const open = Math.max(0.00000001, safeNum(c?.open, 0));
-  const close = Math.max(0.00000001, safeNum(c?.close, open));
-  const bodyHigh = Math.max(open, close);
-  const bodyLow = Math.max(0.00000001, Math.min(open, close));
-  let high = Math.max(bodyHigh, safeNum(c?.high, bodyHigh));
-  let low = Math.max(0.00000001, Math.min(bodyLow, safeNum(c?.low, bodyLow)));
-
-  if (high > bodyHigh * 6) high = bodyHigh * 1.28;
-  if (low < bodyLow / 6) low = bodyLow * 0.72;
-
-  return {
-    time: c.time,
-    open,
-    high: Math.max(high, bodyHigh),
-    low: Math.min(low, bodyLow),
-    close,
-  };
-}
-
 function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = false, reloadKey = 0 }) {
   const chartRef = useRef(null);
   const [candles, setCandles] = useState([]);
@@ -1951,7 +1890,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
           topText: "#F8FAFC",
           subText: "#94A3B8",
           faintText: "#64748B",
-          grid: "rgba(148,163,184,.10)",
+          grid: "rgba(148,163,184,.055)",
           axis: "rgba(148,163,184,.14)",
           up: "#23D7A0",
           down: "#F43F5E",
@@ -1987,6 +1926,27 @@ async function loadActivity(force = false) {
   if (!coin?.id) return;
 
   const tfKey = String(chartRange || "1D").toUpperCase();
+const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
+  const cacheTTL = 2500; // short cache so updates are fast
+
+  try {
+    setActivityLoading(true);
+
+    if (!force) {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        if (
+          cached &&
+          Array.isArray(cached.rows) &&
+          Date.now() - Number(cached.ts || 0) < cacheTTL
+        ) {
+          if (mounted) setCandles(cached.rows);
+          setActivityLoading(false);
+          return;
+        }
+      }
+    }
 
     
 const tfMap = {
@@ -2000,7 +1960,7 @@ const tfMap = {
 };
 
 const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
-const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120&_=${Date.now()}`);
+const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
 
 
 
@@ -2011,6 +1971,10 @@ const rows = Array.isArray(json?.candles) ? json.candles : [];
 
 if (rows.length > 0) {
   setCandles(rows);
+  localStorage.setItem(
+    cacheKey,
+    JSON.stringify({ ts: Date.now(), rows })
+  );
 } else {
   console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
 }
@@ -2033,13 +1997,8 @@ return () => {
 };
 }, [coin?.id, chartRange, reloadKey]);
 
-
-
-
-
-
-
-
+  // IMPORTANT: no frontend fake candle/price patching.
+  // MEXC-style chart data must come only from the backend /candles route.
 
 const candleData = useMemo(() => {
   const list = Array.isArray(candles) ? candles : [];
@@ -2049,30 +2008,58 @@ const candleData = useMemo(() => {
   const bucketMs = cfg.ms;
   const maxBars = 120;
 
+  const refPrice = Math.max(0.00000001, safeNum(coin?.priceUsd || coin?.lastPriceUsd || coin?.price || 0, 0.00000001));
+  const cleanPx = (v) => {
+    const x = Math.max(0.00000001, safeNum(v, refPrice));
+    // Old/bad candle rows sometimes store market-cap-like values as price.
+    // Ignore impossible outliers so sell candles and live price do not stay stuck high.
+    if (refPrice > 0 && x > refPrice * 250) return refPrice;
+    if (refPrice > 0 && x < refPrice / 250) return refPrice;
+    return x;
+  };
+
   const sorted = [...list]
-    .map((c) => ({
-      time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
-      open: safeNum(c.open, 0),
-      high: safeNum(c.high, 0),
-      low: safeNum(c.low, 0),
-      close: safeNum(c.close, 0),
-    }))
-    .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
+    .map((c) => {
+     const close = cleanPx(c.close);
+return {
+  time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
+  rawOpen: cleanPx(c.open),
+  rawHigh: cleanPx(c.high),
+  rawLow: cleanPx(c.low),
+  close,
+};
+    })
+    .filter((c) => c.time > 0 && c.rawOpen > 0 && c.rawHigh > 0 && c.rawLow > 0 && c.close > 0)
     .sort((a, b) => a.time - b.time);
 
   if (!sorted.length) return [];
 
   const merged = [];
-  for (const row of sorted) {
-    const last = merged[merged.length - 1];
-    if (last && last.time === row.time) {
-      last.high = Math.max(last.high, row.high);
-      last.low = Math.min(last.low, row.low);
-      last.close = row.close;
-    } else {
-      merged.push({ ...row });
-    }
+let chainPrevClose = null;
+
+for (const row of sorted) {
+  const last = merged[merged.length - 1];
+
+  const open = chainPrevClose !== null ? chainPrevClose : row.rawOpen;
+  const high = Math.max(open, row.close, row.rawHigh);
+  const low = Math.min(open, row.close, row.rawLow);
+
+  if (last && last.time === row.time) {
+    last.high = Math.max(last.high, high);
+    last.low = Math.min(last.low, low);
+    last.close = row.close;
+  } else {
+    merged.push({
+      time: row.time,
+      open,
+      high,
+      low,
+      close: row.close,
+    });
   }
+
+  chainPrevClose = row.close;
+}
 
   const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
   const start = Math.max(
@@ -2110,8 +2097,8 @@ const candleData = useMemo(() => {
     cursor += bucketMs;
   }
 
-  return normalized.slice(-maxBars).map(normalizeChartCandleForDisplay);
-}, [candles, chartRange]);
+  return normalized.slice(-maxBars);
+}, [candles, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.price]);
 
 
 
@@ -2119,12 +2106,8 @@ const candleData = useMemo(() => {
 
 
   const pct = useMemo(() => {
-  if (!candleData.length) return 0;
-  const first = Math.max(0.00000001, safeNum(candleData[0]?.open, 0.000001));
-  const last = Math.max(0.00000001, safeNum(candleData[candleData.length - 1]?.close, first));
-  const rawPct = ((last - first) / first) * 100;
-  return Number.isFinite(rawPct) ? Math.max(-9999, Math.min(9999, rawPct)) : 0;
-}, [candleData]);
+  return getCoin24hMovePct(coin || {});
+}, [coin?.chart, coin?.priceUsd, coin?.lastPriceUsd]);
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,
@@ -2139,7 +2122,7 @@ const candleData = useMemo(() => {
     const host = chartRef.current;
     if (!host) return;
 
-    host.innerHTML = "";
+    if (!candleData.length) return;
     const width = Math.max(280, host.clientWidth || 280);
 
     const chart = createChart(host, {
@@ -2248,7 +2231,7 @@ fixRightEdge: false,
       else window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [candleData, chartLook, height, themeCfg, isLight]);
+  }, [chartLook, height, themeCfg, isLight]);
 
   return (
     <div
@@ -2393,13 +2376,14 @@ fixRightEdge: false,
 
       <div
         ref={chartRef}
-        style={{
-          width: "100%",
-          height,
-          borderRadius: 20,
-          overflow: "hidden",
-          marginTop: 8,
-        }}
+       style={{
+  width: "100%",
+  height,
+  borderRadius: 0,   // 🔥 bezel hataya
+  overflow: "hidden",
+  marginTop: 0,      // 🔥 gap hataya
+  padding: 0,        // 🔥 extra space remove
+}}
       />
     </div>
   );
@@ -2445,21 +2429,25 @@ export default function App() {
 
 const connectPhantom = async () => {
   try {
-    if (!window.solana || !window.solana.isPhantom) {
-      alert("Phantom wallet not found. Install Phantom.");
+    setConnectingPhantom(true);
+    const provider = getPhantomProvider();
+    if (!provider) {
+      alert("Phantom wallet not found. Install Phantom extension/app first.");
       window.open("https://phantom.app/", "_blank");
       return;
     }
 
-    const resp = await window.solana.connect();
-    const address = resp.publicKey.toString();
+    const resp = await provider.connect();
+    const address = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
+    if (!address) throw new Error("Phantom address not found");
 
     setPhantomWallet(address);
-
-    console.log("Connected:", address);
-
+    setToast(`Phantom connected: ${shortWallet(address)}`);
   } catch (err) {
-    console.error(err);
+    console.error("Phantom connect error:", err);
+    setToast(err?.message || "Phantom connect failed");
+  } finally {
+    setConnectingPhantom(false);
   }
 };
 
@@ -2521,9 +2509,20 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   const [chartReloadKey, setChartReloadKey] = useState(0);
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
+  const [dexModalOpen, setDexModalOpen] = useState(false);
 
   const coinsLoadMoreRef = useRef(null);
   const didBootRef = useRef(false);
+
+  function clearCoinsCache() {
+    try {
+      Object.keys(localStorage || {}).forEach((key) => {
+        if (key === "coins_cache_v1" || key.startsWith("coins_page_")) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch {}
+  }
 
  const solAddr = useMemo(() => {
   const phantom = String(phantomWallet || "").trim();
@@ -2665,7 +2664,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     setLoadingCoins(true);
 
     const cacheKey = `coins_page_${page}`;
-    const cacheTTL = 30000; // 30 sec
+    const cacheTTL = 2500; // short cache so updates are fast
     let json = null;
 
     if (!append) {
@@ -3055,6 +3054,36 @@ async function handleLogoPick(file) {
     }
   }
 
+function patchProfileHoldingLocal(prev, coin, amount) {
+  if (!prev || !coin?.id) return prev;
+  const amt = Math.max(0, safeNum(amount, 0));
+  const list = Array.isArray(prev.holdings) ? [...prev.holdings] : [];
+  const idx = list.findIndex((h) => String(h.coinId || h.id || "") === String(coin.id));
+
+  if (amt <= 0) {
+    if (idx >= 0) list.splice(idx, 1);
+    return { ...prev, holdings: list };
+  }
+
+  const row = {
+    ...(idx >= 0 ? list[idx] : {}),
+    coinId: coin.id,
+    name: coin.name,
+    symbol: coin.symbol,
+    logo: coin.logo,
+    amount: amt,
+    tokens: amt,
+    totalSupply: Math.max(1, safeNum(coin.totalSupply, 1_000_000_000)),
+    pct: (amt / Math.max(1, safeNum(coin.totalSupply, 1_000_000_000))) * 100,
+    lastAt: Date.now(),
+  };
+
+  if (idx >= 0) list[idx] = row;
+  else list.unshift(row);
+
+  return { ...prev, holdings: list.sort((a, b) => safeNum(b.lastAt, 0) - safeNum(a.lastAt, 0)) };
+}
+
 async function handleTrade() {
   if (!isWalletConnected || !solAddr) {
     setToast("Connect wallet first");
@@ -3072,108 +3101,103 @@ async function handleTrade() {
     return;
   }
 
+  const current = { ...selectedCoin };
+  const currentHolder = Math.max(0, safeNum(current?.holders?.[solAddr], 0));
+
+  if (tradeMode === "SELL" && amount > currentHolder) {
+    setToast("Not enough tokens");
+    return;
+  }
+
+  const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
+
   try {
     setTrading(true);
 
-    const current = { ...selectedCoin };
-    const holders = { ...(current.holders || {}) };
-    const currentTokens = Math.max(0, safeNum(holders?.[solAddr], 0));
-    const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
-    const optimisticTokens =
-      tradeMode === "BUY"
-        ? currentTokens + previewTokens
-        : Math.max(0, currentTokens - amount);
-
-    if (optimisticTokens > 0) holders[solAddr] = optimisticTokens;
-    else delete holders[solAddr];
-
-    const optimisticCoin = {
-      ...current,
-      holders,
-      lastTradeAt: Date.now(),
-    };
-
-    setCoins((prev) =>
-      (prev || []).map((c) =>
-        String(c.id) === String(current.id) ? optimisticCoin : c
-      )
-    );
-
-    setProfile((prev) => {
-      if (!prev || !optimisticCoin?.id) return prev;
-      const oldHoldings = Array.isArray(prev.holdings) ? prev.holdings : [];
-      const without = oldHoldings.filter((h) => String(h.coinId) !== String(optimisticCoin.id));
-      const nextHolding = {
-        coinId: optimisticCoin.id,
-        symbol: optimisticCoin.symbol,
-        name: optimisticCoin.name,
-        logo: optimisticCoin.logo,
-        amount: optimisticTokens,
-        totalSupply: Math.max(1, safeNum(optimisticCoin.totalSupply, 1_000_000_000)),
-        pct: (optimisticTokens / Math.max(1, safeNum(optimisticCoin.totalSupply, 1_000_000_000))) * 100,
-        lastAt: Date.now(),
-      };
-      return { ...prev, holdings: optimisticTokens > 0 ? [nextHolding, ...without] : without };
-    });
-
     const path = tradeMode === "BUY" ? "/api/coin/buy" : "/api/coin/sell";
-
-  const payload = {
-  wallet: solAddr,
-  coinId: current.id,
-  ...(tradeMode === "BUY" ? { sol: amount } : { tokens: amount }),
-};
+    const payload = {
+      wallet: solAddr,
+      coinId: current.id,
+      ...(tradeMode === "BUY" ? { sol: amount } : { tokens: amount }),
+    };
 
     const json = await api(path, {
       method: "POST",
       body: JSON.stringify(payload),
     });
 
+    if (json?.ok === false) {
+      throw new Error(json?.error || "Trade failed");
+    }
+
     const updated = normalizeCoin(json?.coin || {});
+    const tradedTokens = Math.max(0, safeNum(json?.tokens, tradeMode === "BUY" ? previewTokens : amount));
+    const fallbackHolder = Math.max(
+      0,
+      currentHolder + (tradeMode === "BUY" ? tradedTokens : -tradedTokens)
+    );
+    const resolvedHolder = Math.max(
+      0,
+      safeNum(updated?.holders?.[solAddr], fallbackHolder)
+    );
 
     if (updated?.id) {
-      const exactHolding = Math.max(0, safeNum(json?.holdingTokens, updated?.holders?.[solAddr] || 0));
-      const fixedHolders = { ...(updated.holders || {}) };
-      if (exactHolding > 0) fixedHolders[solAddr] = exactHolding;
-      else delete fixedHolders[solAddr];
+      const resolvedCoin = {
+        ...updated,
+        holders: {
+          ...(updated.holders || {}),
+          [solAddr]: resolvedHolder,
+        },
+      };
 
-      const finalCoin = { ...updated, holders: fixedHolders };
-
-      setCoins((prev) =>
-        (prev || []).map((c) =>
-          String(c.id) === String(finalCoin.id) ? finalCoin : c
-        )
-      );
-
-      setProfile((prev) => {
-        if (!prev) return prev;
-        const oldHoldings = Array.isArray(prev.holdings) ? prev.holdings : [];
-        const without = oldHoldings.filter((h) => String(h.coinId) !== String(finalCoin.id));
-        const nextHolding = {
-          coinId: finalCoin.id,
-          symbol: finalCoin.symbol,
-          name: finalCoin.name,
-          logo: finalCoin.logo,
-          amount: exactHolding,
-          totalSupply: Math.max(1, safeNum(finalCoin.totalSupply, 1_000_000_000)),
-          pct: (exactHolding / Math.max(1, safeNum(finalCoin.totalSupply, 1_000_000_000))) * 100,
-          lastAt: Date.now(),
-        };
-        return { ...prev, holdings: exactHolding > 0 ? [nextHolding, ...without] : without };
+      setCoins((prev) => {
+        const rows = Array.isArray(prev) ? prev : [];
+        const exists = rows.some((c) => String(c.id) === String(resolvedCoin.id));
+        return exists
+          ? rows.map((c) => (String(c.id) === String(resolvedCoin.id) ? resolvedCoin : c))
+          : [resolvedCoin, ...rows];
       });
-
-      setSelectedCoinId(finalCoin.id);
-      setTimeout(() => setChartReloadKey((x) => x + 1), 250);
+      setProfile((prev) => patchProfileHoldingLocal(prev, resolvedCoin, resolvedHolder));
+      setSelectedCoinId(resolvedCoin.id);
     }
 
     setTradeAmount("");
     setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
-    setChartReloadKey((x) => x + 1);
+    clearCoinsCache();
 
-    loadProfile(solAddr);
-    loadBalance(solAddr);
-    setTimeout(() => loadCoins(0, false), 650);
+    // Refetch immediately so price, candles, % and Your Tokens all come from backend truth.
+    try {
+      const latestJson = await api(`/api/coin/${current.id}`);
+      const latestCoin = normalizeCoin(latestJson?.coin || updated || {});
+      if (latestCoin?.id) {
+        const latestHolder = Math.max(0, safeNum(latestCoin?.holders?.[solAddr], resolvedHolder));
+        const latestResolved = {
+          ...latestCoin,
+          holders: { ...(latestCoin.holders || {}), [solAddr]: latestHolder },
+        };
+        setCoins((prev) => {
+          const rows = Array.isArray(prev) ? prev : [];
+          const exists = rows.some((c) => String(c.id) === String(latestResolved.id));
+          return exists
+            ? rows.map((c) => (String(c.id) === String(latestResolved.id) ? latestResolved : c))
+            : [latestResolved, ...rows];
+        });
+        setProfile((prev) => patchProfileHoldingLocal(prev, latestResolved, latestHolder));
+        setSelectedCoinId(latestResolved.id);
+      }
+    } catch {}
+
+    setChartReloadKey((x) => x + 1);
+    await Promise.allSettled([loadProfile(solAddr), loadBalance(solAddr), loadCoins(0, false)]);
   } catch (e) {
+    setCoins((prev) =>
+      (prev || []).map((c) =>
+        String(c.id) === String(current.id)
+          ? { ...c, holders: { ...(c.holders || {}), [solAddr]: currentHolder } }
+          : c
+      )
+    );
+    setProfile((prev) => patchProfileHoldingLocal(prev, current, currentHolder));
     setToast(e?.message || "Trade failed");
   } finally {
     setTrading(false);
@@ -3266,7 +3290,9 @@ async function handleTrade() {
 
   const currentCoinPriceUsd = getCoinPriceUsd(selectedCoin || {});
   const currentCoinPriceSol = Math.max(0, safeNum(selectedCoin?.priceSol, 0));
-
+  const currentWalletTokens = Math.max(0, safeNum(selectedCoin?.holders?.[solAddr], 0));
+  const isSelectedCoinCreator = Boolean(selectedCoin?.creatorWallet && solAddr && String(selectedCoin.creatorWallet).trim() === String(solAddr).trim());
+  const dexLaunchReady = Boolean(selectedCoin && safeNum(selectedCoin.mc, 0) >= DEX_LAUNCH_MC_USD);
 
 
 
@@ -3418,6 +3444,70 @@ const tradePreview = useMemo(() => {
     </div>
   </div>
 )}
+
+      {dexModalOpen && selectedCoin ? (
+        <div className="modalBack" onClick={() => setDexModalOpen(false)}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHead">
+              <div className="modalTitle">Launch to DEX</div>
+              <MiniBtn onClick={() => setDexModalOpen(false)}>Close</MiniBtn>
+            </div>
+            <div className="modalBody">
+              <div style={{ display: "grid", gap: 12 }}>
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 18,
+                    border: "1px solid rgba(255,255,255,.10)",
+                    background: "linear-gradient(135deg, rgba(99,245,200,.12), rgba(124,203,255,.08), rgba(167,139,250,.10))",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 1000 }}>{selectedCoin.name} → DEX Migration</div>
+                  <div className="miniMuted" style={{ marginTop: 6 }}>
+                    Required MC: {fmtUsd(DEX_LAUNCH_MC_USD)} • Current MC: {fmtUsd(selectedCoin.mc || 0)}
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <Pill style={{ color: dexLaunchReady ? "var(--good)" : "var(--warn)" }}>
+                      {dexLaunchReady ? "Ready for Phase 2 launch" : "Locked until $2M MC"}
+                    </Pill>
+                  </div>
+                </div>
+
+                {DEX_OPTIONS.map((dex) => (
+                  <button
+                    key={dex.id}
+                    type="button"
+                    onClick={() => setToast(dexLaunchReady ? `${dex.name} launch will be enabled in Phase 2` : "DEX launch unlocks at $2M MC")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      border: "1px solid rgba(255,255,255,.10)",
+                      borderRadius: 18,
+                      padding: 14,
+                      cursor: "pointer",
+                      color: "var(--text)",
+                      background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025))",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 1000 }}>{dex.name}</div>
+                        <div className="miniMuted" style={{ marginTop: 5 }}>{dex.sub}</div>
+                      </div>
+                      <Pill>{dexLaunchReady ? "Select" : "Phase 2"}</Pill>
+                    </div>
+                  </button>
+                ))}
+
+                <div className="miniMuted" style={{ lineHeight: 1.55 }}>
+                  This is a safe placeholder for launch. Real liquidity pool creation is intentionally disabled until mainnet DEX integration is audited.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Toast text={toast} onClose={() => setToast("")} />
 
       {showIntro ? (
@@ -3873,6 +3963,12 @@ const tradePreview = useMemo(() => {
                 Copy Coin Address
               </MiniBtn>
 
+              {isSelectedCoinCreator ? (
+                <MiniBtn tone="good" onClick={() => setDexModalOpen(true)}>
+                  Launch to DEX
+                </MiniBtn>
+              ) : null}
+
 
             </div>
           </div>
@@ -3919,7 +4015,7 @@ const tradePreview = useMemo(() => {
 
             <div className="stat">
               <div className="statLabel">Your Tokens</div>
-              <div className="statValue">{fmtNum(selectedCoin?.holders?.[solAddr] || 0, 0)}</div>
+              <div className="statValue">{fmtNum(currentWalletTokens, 0)}</div>
             </div>
           </div>
 
@@ -3932,8 +4028,8 @@ const tradePreview = useMemo(() => {
               rightLabel={tradeMode === "SELL" ? "ALL" : undefined}
               onRightLabelClick={() => {
                 if (tradeMode === "SELL" && selectedCoin && solAddr) {
-                  const allTokens = Math.max(0, safeNum(selectedCoin?.holders?.[solAddr], 0));
-                  setTradeAmount(allTokens > 0 ? String(allTokens) : "");
+                  const allTokens = Math.max(0, currentWalletTokens);
+                  setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
                 }
               }}
             />
@@ -3971,10 +4067,6 @@ const tradePreview = useMemo(() => {
                 ? "Buy Now"
                 : "Sell Now"}
             </PrimaryButton>
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <LaunchToDexBox coin={selectedCoin} solAddr={solAddr} onToast={setToast} />
           </div>
         </Card>
 
