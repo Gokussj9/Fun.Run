@@ -8,7 +8,7 @@ const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE =
   (import.meta.env.VITE_API_BASE ||
-    "https://zooming-solace-production-c360.up.railway.app").trim();
+    "https://zooming-solace-production-c360.up.railway.app/api").trim();
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
