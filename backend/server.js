@@ -1096,6 +1096,40 @@ app.get("/health", async (req, res) => {
   }
 });
 
+
+app.get("/api/chart/:coin", async (req, res) => {
+  try {
+    const now = Date.now();
+    const candles = [];
+    let price = 1;
+
+    for (let i = 30; i >= 0; i--) {
+      const t = now - i * 60 * 1000;
+
+      const open = price;
+      const change = (Math.random() - 0.5) * 0.2;
+      const close = Math.max(0.1, open + change);
+      const high = Math.max(open, close) + Math.random() * 0.1;
+      const low = Math.min(open, close) - Math.random() * 0.1;
+
+      price = close;
+
+      candles.push({
+        time: t,
+        open,
+        high,
+        low,
+        close
+      });
+    }
+
+    res.json(candles);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+
 app.get("/api/balance/:wallet", async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();

@@ -2180,6 +2180,27 @@ fixRightEdge: false,
 },
     });
 
+
+    const candleSeries = chart.addCandlestickSeries({
+  upColor: "#22c55e",
+  downColor: "#ef4444",
+  borderUpColor: "#22c55e",
+  borderDownColor: "#ef4444",
+  wickUpColor: "#22c55e",
+  wickDownColor: "#ef4444",
+});
+
+const candleSeries = chart.addCandlestickSeries({
+  upColor: "#22c55e",
+  downColor: "#ef4444",
+  borderUpColor: "#22c55e",
+  borderDownColor: "#ef4444",
+  wickUpColor: "#22c55e",
+  wickDownColor: "#ef4444",
+});
+
+return () => chart.remove();
+
     
 
     const series = chart.addSeries(CandlestickSeries, {
