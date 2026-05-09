@@ -8,7 +8,7 @@ const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE =
   (import.meta.env.VITE_API_BASE ||
-    "https://zooming-solace-production-c360.up.railway.app/api").trim();
+    "https://zooming-solace-production-c360.up.railway.app").trim();
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
@@ -581,14 +581,14 @@ function ThemeStyles() {
     0 10px 24px color-mix(in srgb, var(--glow) 24%, transparent);
 }
 
-/* 🔥 GLOBAL SCROLLBAR HIDE */
+/* GLOBAL SCROLLBAR HIDE */
 ::-webkit-scrollbar {
   width: 0px;
   height: 0px;
 }
 
 body {
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
   overflow-x: hidden;
 }
 
@@ -999,14 +999,7 @@ function MiniBtn({ children, onClick, disabled, tone = "default", style }) {
           border: "1px solid rgba(25,230,162,.30)",
           color: "var(--text)",
           boxShadow: "0 8px 20px rgba(25,230,162,.12)",
-
-
-
-
-
-
-
-                  }
+        }
       : tone === "danger"
       ? {
           background: "rgba(255,107,107,.12)",
@@ -1104,9 +1097,6 @@ function Input({
   rightLabel,
   onRightLabelClick,
 }) {
-
-
-
   const baseStyle = {
     width: "100%",
     padding: "12px 13px",
@@ -1326,9 +1316,6 @@ function pctChangeFromChart(chart, lookback = 12) {
   if (!start || !Number.isFinite(start) || start <= 0) return 0;
 
   const pct = ((end - start) / start) * 100;
-
-  // pehle 500 pe clamp ho raha tha — usi ki wajah se hamesha 500% nazar aa raha tha
-  // ab realistic range rakho
   const clamped = Math.max(-9999, Math.min(9999, pct));
   return Number.isFinite(clamped) ? clamped : 0;
 }
@@ -1841,12 +1828,6 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
 }
 
 
-
-
-
-
-
-
 function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = false, reloadKey = 0 }) {
   const chartRef = useRef(null);
   const [candles, setCandles] = useState([]);
@@ -1916,198 +1897,175 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
     let mounted = true;
     let timer = null;
 
+    async function loadActivity(force = false) {
+      if (!coin?.id) return;
 
+      const tfKey = String(chartRange || "1D").toUpperCase();
+      const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
+      const cacheTTL = 2500;
 
+      try {
+        setActivityLoading(true);
 
-
-
-
-async function loadActivity(force = false) {
-  if (!coin?.id) return;
-
-  const tfKey = String(chartRange || "1D").toUpperCase();
-const cacheKey = `coin_activity_${coin.id}_${tfKey}`;
-  const cacheTTL = 2500; // short cache so updates are fast
-
-  try {
-    setActivityLoading(true);
-
-    if (!force) {
-      const cachedRaw = localStorage.getItem(cacheKey);
-      if (cachedRaw) {
-        const cached = JSON.parse(cachedRaw);
-        if (
-          cached &&
-          Array.isArray(cached.rows) &&
-          Date.now() - Number(cached.ts || 0) < cacheTTL
-        ) {
-          if (mounted) setCandles(cached.rows);
-          setActivityLoading(false);
-          return;
+        if (!force) {
+          const cachedRaw = localStorage.getItem(cacheKey);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            if (
+              cached &&
+              Array.isArray(cached.rows) &&
+              Date.now() - Number(cached.ts || 0) < cacheTTL
+            ) {
+              if (mounted) setCandles(cached.rows);
+              setActivityLoading(false);
+              return;
+            }
+          }
         }
+
+        const tfMap = {
+          "5M": "5m",
+          "15M": "15m",
+          "1H": "1h",
+          "4H": "4h",
+          "1D": "1d",
+          "1W": "1w",
+          "1M": "1m",
+        };
+
+        const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
+        const json = await api(`/coin/${coin.id}/candles?tf=${tf}&limit=120`);
+
+        if (!mounted) return;
+
+        const rows = Array.isArray(json?.candles) ? json.candles : [];
+
+        if (rows.length > 0) {
+          setCandles(rows);
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ ts: Date.now(), rows })
+          );
+        } else {
+          console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
+        }
+      } catch {
+      } finally {
+        if (mounted) setActivityLoading(false);
       }
     }
 
-    
-const tfMap = {
-  "5M": "5m",
-  "15M": "15m",
-  "1H": "1h",
-  "4H": "4h",
-  "1D": "1d",
-  "1W": "1w",
-  "1M": "1m",
-};
+    loadActivity(Boolean(reloadKey));
+    timer = setInterval(() => loadActivity(true), 8000);
 
-const tf = tfMap[String(chartRange || "1D").toUpperCase()] || "1d";
-const json = await api(`/api/coin/${coin.id}/candles?tf=${tf}&limit=120`);
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [coin?.id, chartRange, reloadKey]);
 
+  const candleData = useMemo(() => {
+    const list = Array.isArray(candles) ? candles : [];
+    if (!list.length) return [];
 
+    const cfg = getTimeframeCfg(chartRange);
+    const bucketMs = cfg.ms;
+    const maxBars = 120;
 
-    if (!mounted) return;
+    const refPrice = Math.max(0.00000001, safeNum(coin?.priceUsd || coin?.lastPriceUsd || coin?.price || 0, 0.00000001));
+    const cleanPx = (v) => {
+      const x = Math.max(0.00000001, safeNum(v, refPrice));
+      if (refPrice > 0 && x > refPrice * 250) return refPrice;
+      if (refPrice > 0 && x < refPrice / 250) return refPrice;
+      return x;
+    };
 
-    
-const rows = Array.isArray(json?.candles) ? json.candles : [];
+    const sorted = [...list]
+      .map((c) => {
+        const close = cleanPx(c.close);
+        return {
+          time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
+          rawOpen: cleanPx(c.open),
+          rawHigh: cleanPx(c.high),
+          rawLow: cleanPx(c.low),
+          close,
+        };
+      })
+      .filter((c) => c.time > 0 && c.rawOpen > 0 && c.rawHigh > 0 && c.rawLow > 0 && c.close > 0)
+      .sort((a, b) => a.time - b.time);
 
-if (rows.length > 0) {
-  setCandles(rows);
-  localStorage.setItem(
-    cacheKey,
-    JSON.stringify({ ts: Date.now(), rows })
-  );
-} else {
-  console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
-}
+    if (!sorted.length) return [];
 
+    const merged = [];
+    let chainPrevClose = null;
 
+    for (const row of sorted) {
+      const last = merged[merged.length - 1];
 
-  } catch {
- 
-  } finally {
-    if (mounted) setActivityLoading(false);
-  }
-}
+      const open = chainPrevClose !== null ? chainPrevClose : row.rawOpen;
+      const high = Math.max(open, row.close, row.rawHigh);
+      const low = Math.min(open, row.close, row.rawLow);
 
-loadActivity(Boolean(reloadKey));
-timer = setInterval(() => loadActivity(true), 8000);
+      if (last && last.time === row.time) {
+        last.high = Math.max(last.high, high);
+        last.low = Math.min(last.low, low);
+        last.close = row.close;
+      } else {
+        merged.push({
+          time: row.time,
+          open,
+          high,
+          low,
+          close: row.close,
+        });
+      }
 
-return () => {
-  mounted = false;
-  if (timer) clearInterval(timer);
-};
-}, [coin?.id, chartRange, reloadKey]);
-
-  // IMPORTANT: no frontend fake candle/price patching.
-  // MEXC-style chart data must come only from the backend /candles route.
-
-const candleData = useMemo(() => {
-  const list = Array.isArray(candles) ? candles : [];
-  if (!list.length) return [];
-
-  const cfg = getTimeframeCfg(chartRange);
-  const bucketMs = cfg.ms;
-  const maxBars = 120;
-
-  const refPrice = Math.max(0.00000001, safeNum(coin?.priceUsd || coin?.lastPriceUsd || coin?.price || 0, 0.00000001));
-  const cleanPx = (v) => {
-    const x = Math.max(0.00000001, safeNum(v, refPrice));
-    // Old/bad candle rows sometimes store market-cap-like values as price.
-    // Ignore impossible outliers so sell candles and live price do not stay stuck high.
-    if (refPrice > 0 && x > refPrice * 250) return refPrice;
-    if (refPrice > 0 && x < refPrice / 250) return refPrice;
-    return x;
-  };
-
-  const sorted = [...list]
-    .map((c) => {
-     const close = cleanPx(c.close);
-return {
-  time: Math.floor(safeNum(c.time, 0) / bucketMs) * bucketMs,
-  rawOpen: cleanPx(c.open),
-  rawHigh: cleanPx(c.high),
-  rawLow: cleanPx(c.low),
-  close,
-};
-    })
-    .filter((c) => c.time > 0 && c.rawOpen > 0 && c.rawHigh > 0 && c.rawLow > 0 && c.close > 0)
-    .sort((a, b) => a.time - b.time);
-
-  if (!sorted.length) return [];
-
-  const merged = [];
-let chainPrevClose = null;
-
-for (const row of sorted) {
-  const last = merged[merged.length - 1];
-
-  const open = chainPrevClose !== null ? chainPrevClose : row.rawOpen;
-  const high = Math.max(open, row.close, row.rawHigh);
-  const low = Math.min(open, row.close, row.rawLow);
-
-  if (last && last.time === row.time) {
-    last.high = Math.max(last.high, high);
-    last.low = Math.min(last.low, low);
-    last.close = row.close;
-  } else {
-    merged.push({
-      time: row.time,
-      open,
-      high,
-      low,
-      close: row.close,
-    });
-  }
-
-  chainPrevClose = row.close;
-}
-
-  const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
-  const start = Math.max(
-    merged[0].time,
-    nowBucket - (maxBars - 1) * bucketMs
-  );
-
-  const normalized = [];
-  let cursor = start;
-  let i = 0;
-  let prevClose = merged[0].close;
-
-  while (i < merged.length && merged[i].time < start) {
-    prevClose = merged[i].close;
-    i += 1;
-  }
-
-  while (cursor <= nowBucket) {
-    const row = merged[i];
-
-    if (row && row.time === cursor) {
-      normalized.push(row);
-      prevClose = row.close;
-      i += 1;
-    } else {
-      normalized.push({
-        time: cursor,
-        open: prevClose,
-        high: prevClose,
-        low: prevClose,
-        close: prevClose,
-      });
+      chainPrevClose = row.close;
     }
 
-    cursor += bucketMs;
-  }
+    const nowBucket = Math.floor(Date.now() / bucketMs) * bucketMs;
+    const start = Math.max(
+      merged[0].time,
+      nowBucket - (maxBars - 1) * bucketMs
+    );
 
-  return normalized.slice(-maxBars);
-}, [candles, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.price]);
+    const normalized = [];
+    let cursor = start;
+    let i = 0;
+    let prevClose = merged[0].close;
 
+    while (i < merged.length && merged[i].time < start) {
+      prevClose = merged[i].close;
+      i += 1;
+    }
 
+    while (cursor <= nowBucket) {
+      const row = merged[i];
 
+      if (row && row.time === cursor) {
+        normalized.push(row);
+        prevClose = row.close;
+        i += 1;
+      } else {
+        normalized.push({
+          time: cursor,
+          open: prevClose,
+          high: prevClose,
+          low: prevClose,
+          close: prevClose,
+        });
+      }
 
+      cursor += bucketMs;
+    }
+
+    return normalized.slice(-maxBars);
+  }, [candles, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.price]);
 
 
   const pct = useMemo(() => {
-  return getCoin24hMovePct(coin || {});
-}, [coin?.chart, coin?.priceUsd, coin?.lastPriceUsd]);
+    return getCoin24hMovePct(coin || {});
+  }, [coin?.chart, coin?.priceUsd, coin?.lastPriceUsd]);
 
   const livePrice = safeNum(
     candleData[candleData.length - 1]?.close,
@@ -2121,8 +2079,8 @@ for (const row of sorted) {
   useEffect(() => {
     const host = chartRef.current;
     if (!host) return;
-
     if (!candleData.length) return;
+
     const width = Math.max(280, host.clientWidth || 280);
 
     const chart = createChart(host, {
@@ -2149,12 +2107,18 @@ for (const row of sorted) {
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 2,
-        barSpacing: Math.max(2.2, Math.min(candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2, width / Math.max(100, candleData.length))),
+        barSpacing: Math.max(
+          2.2,
+          Math.min(
+            candleData.length < 25 ? 12 : candleData.length < 60 ? 7 : 4.2,
+            width / Math.max(100, candleData.length)
+          )
+        ),
         minBarSpacing: 1,
         rightBarStaysOnScroll: true,
-lockVisibleTimeRangeOnResize: false,
-       fixLeftEdge: false,
-fixRightEdge: false,
+        lockVisibleTimeRangeOnResize: false,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
       crosshair: {
         mode: 0,
@@ -2167,41 +2131,18 @@ fixRightEdge: false,
           labelBackgroundColor: up ? themeCfg.up : themeCfg.down,
         },
       },
-  handleScroll: {
-  mouseWheel: true,
-  pressedMouseMove: true,
-  horzTouchDrag: true,
-  vertTouchDrag: true,
-},
-  handleScale: {
-  axisPressedMouseMove: true,
-  mouseWheel: true,
-  pinch: true,
-},
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
     });
-
-
-    const candleSeries = chart.addCandlestickSeries({
-  upColor: "#22c55e",
-  downColor: "#ef4444",
-  borderUpColor: "#22c55e",
-  borderDownColor: "#ef4444",
-  wickUpColor: "#22c55e",
-  wickDownColor: "#ef4444",
-});
-
-const candleSeries = chart.addCandlestickSeries({
-  upColor: "#22c55e",
-  downColor: "#ef4444",
-  borderUpColor: "#22c55e",
-  borderDownColor: "#ef4444",
-  wickUpColor: "#22c55e",
-  wickDownColor: "#ef4444",
-});
-
-return () => chart.remove();
-
-    
 
     const series = chart.addSeries(CandlestickSeries, {
       upColor: themeCfg.up,
@@ -2220,15 +2161,17 @@ return () => chart.remove();
       },
     });
 
-
-
     series.setData(
-  candleData.map((c) => ({
-    ...c,
-    time: Math.floor(c.time / 1000),
-  }))
-);
-    
+      candleData.map((c) => ({
+        time: Math.floor(c.time / 1000),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+    );
+
+    chart.timeScale().fitContent();
 
     const handleResize = () => {
       if (!chartRef.current) return;
@@ -2236,7 +2179,6 @@ return () => chart.remove();
         width: Math.max(280, chartRef.current.clientWidth || 280),
         height,
       });
-      
     };
 
     let ro = null;
@@ -2252,7 +2194,7 @@ return () => chart.remove();
       else window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [chartLook, height, themeCfg, isLight]);
+  }, [candleData, chartLook, height, themeCfg, isLight, up, livePrice]);
 
   return (
     <div
@@ -2397,14 +2339,14 @@ return () => chart.remove();
 
       <div
         ref={chartRef}
-       style={{
-  width: "100%",
-  height,
-  borderRadius: 0,   // 🔥 bezel hataya
-  overflow: "hidden",
-  marginTop: 0,      // 🔥 gap hataya
-  padding: 0,        // 🔥 extra space remove
-}}
+        style={{
+          width: "100%",
+          height,
+          borderRadius: 0,
+          overflow: "hidden",
+          marginTop: 0,
+          padding: 0,
+        }}
       />
     </div>
   );
@@ -2446,38 +2388,36 @@ export default function App() {
     } catch {}
   }, []);
 
- 
+  const connectPhantom = async () => {
+    try {
+      setConnectingPhantom(true);
+      const provider = getPhantomProvider();
+      if (!provider) {
+        alert("Phantom wallet not found. Install Phantom extension/app first.");
+        window.open("https://phantom.app/", "_blank");
+        return;
+      }
 
-const connectPhantom = async () => {
-  try {
-    setConnectingPhantom(true);
-    const provider = getPhantomProvider();
-    if (!provider) {
-      alert("Phantom wallet not found. Install Phantom extension/app first.");
-      window.open("https://phantom.app/", "_blank");
-      return;
+      const resp = await provider.connect();
+      const address = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
+      if (!address) throw new Error("Phantom address not found");
+
+      setPhantomWallet(address);
+      setToast(`Phantom connected: ${shortWallet(address)}`);
+    } catch (err) {
+      console.error("Phantom connect error:", err);
+      setToast(err?.message || "Phantom connect failed");
+    } finally {
+      setConnectingPhantom(false);
     }
-
-    const resp = await provider.connect();
-    const address = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
-    if (!address) throw new Error("Phantom address not found");
-
-    setPhantomWallet(address);
-    setToast(`Phantom connected: ${shortWallet(address)}`);
-  } catch (err) {
-    console.error("Phantom connect error:", err);
-    setToast(err?.message || "Phantom connect failed");
-  } finally {
-    setConnectingPhantom(false);
-  }
-};
+  };
 
   const isMobile = typeof window !== "undefined" && window.innerWidth < 520;
 
   const [toast, setToast] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-const [withdrawAddr, setWithdrawAddr] = useState("");
-const [withdrawAmt, setWithdrawAmt] = useState("");
+  const [withdrawAddr, setWithdrawAddr] = useState("");
+  const [withdrawAmt, setWithdrawAmt] = useState("");
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem(LS_THEME) || "calm";
@@ -2589,9 +2529,6 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     }
   }
 
-  
-   
-
   async function disconnectPhantom() {
     try {
       const provider = getPhantomProvider();
@@ -2685,7 +2622,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
     setLoadingCoins(true);
 
     const cacheKey = `coins_page_${page}`;
-    const cacheTTL = 2500; // short cache so updates are fast
+    const cacheTTL = 2500;
     let json = null;
 
     if (!append) {
@@ -2702,10 +2639,10 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
 
     if (!json) {
       try {
-        json = await api(`/api/coin/list?page=${page}&limit=50`);
+        json = await api(`/coin/list?page=${page}&limit=50`);
       } catch {
         const base = String(API_BASE || "").replace(/\/$/, "");
-        const res = await fetch(`${base ? base : ""}/api/coin/list?page=${page}&limit=50`, { cache: "no-store" });
+        const res = await fetch(`${base}/coin/list?page=${page}&limit=50`, { cache: "no-store" });
         json = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(json?.error || `Request failed (${res.status})`);
@@ -2791,7 +2728,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
 
     try {
       setLoadingProfile(true);
-      const json = await api(`/api/profile/${wallet}`);
+      const json = await api(`/profile/${wallet}`);
       setProfile(json?.profile || null);
     } catch (e) {
       setToast(e?.message || "Failed to load profile");
@@ -2803,7 +2740,7 @@ const [withdrawAmt, setWithdrawAmt] = useState("");
   async function loadBalance(wallet = solAddr) {
     if (!wallet) return;
     try {
-      const json = await api(`/api/balance/${wallet}`);
+      const json = await api(`/balance/${wallet}`);
       setWalletSolBalance(Math.max(0, safeNum(json?.sol, 0)));
     } catch {
       setWalletSolBalance(0);
@@ -3042,7 +2979,7 @@ async function handleLogoPick(file) {
         creatorWallet: solAddr,
       };
 
-      const json = await api("/api/coin/create", {
+      const json = await api("/coin/create", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -3135,7 +3072,7 @@ async function handleTrade() {
   try {
     setTrading(true);
 
-    const path = tradeMode === "BUY" ? "/api/coin/buy" : "/api/coin/sell";
+    const path = tradeMode === "BUY" ? "/coin/buy" : "/coin/sell";
     const payload = {
       wallet: solAddr,
       coinId: current.id,
@@ -3186,9 +3123,8 @@ async function handleTrade() {
     setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
     clearCoinsCache();
 
-    // Refetch immediately so price, candles, % and Your Tokens all come from backend truth.
     try {
-      const latestJson = await api(`/api/coin/${current.id}`);
+      const latestJson = await api(`/coin/${current.id}`);
       const latestCoin = normalizeCoin(latestJson?.coin || updated || {});
       if (latestCoin?.id) {
         const latestHolder = Math.max(0, safeNum(latestCoin?.holders?.[solAddr], resolvedHolder));
@@ -3232,7 +3168,7 @@ async function handleTrade() {
       const saved = (localStorage.getItem("ref") || "").trim();
       if (!saved || saved === solAddr) return;
 
-      await api("/api/referral/set", {
+      await api("/referral/set", {
         method: "POST",
         body: JSON.stringify({
           wallet: solAddr,
@@ -3254,7 +3190,7 @@ async function handleTrade() {
   }
 
   try {
-    const json = await api("/api/claim", {
+    const json = await api("/claim", {
       method: "POST",
       body: JSON.stringify({
         wallet: solAddr,
@@ -3386,14 +3322,6 @@ const tradePreview = useMemo(() => {
   };
 }, [tradeAmount, tradeMode, selectedCoin]);
 
- 
-
-
-
-
-
-
-
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
   return (
@@ -3437,7 +3365,7 @@ const tradePreview = useMemo(() => {
         return;
       }
 
-      const json = await api("/api/withdraw", {
+      const json = await api("/withdraw", {
         method: "POST",
         body: JSON.stringify({
           wallet: solAddr,

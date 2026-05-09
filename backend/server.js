@@ -12,25 +12,13 @@ const app = express();
 
 app.use(express.json({ limit: "15mb" }));
 
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
-
 // -------------------- ENV --------------------
 const PORT = process.env.PORT || 5000;
 const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 
-const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
+const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.mainnet-beta.solana.com";
 const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
 
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5173")
@@ -59,13 +47,6 @@ const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 
 // -------------------- APP SETUP --------------------
 if (TRUST_PROXY) app.set("trust proxy", 1);
-
-
-app.use((req, res, next) => {
-  console.log("🌍 incoming:", req.method, req.url);
-  next();
-});
-
 
 app.use(cors({
   origin: "*"
@@ -851,54 +832,6 @@ function applyFee(solAmount) {
 }
 
 // ================= TRUE BONDING CURVE VERSION =================
-// sirf core changes kiye gaye hain (UI untouched, APIs same)
-
-// ================= SELL (TRUE CURVE) =================
-
-function distributeFee(store, coin, traderWallet, feeSol) {
-  if (feeSol <= 0) return;
-
-  const creatorWallet = String(coin.creatorWallet || coin.owner || "").trim();
-
-  const ownerPart = feeSol * 0.4;
-  const creatorPart = feeSol * 0.4;
-  const referralPart = feeSol * 0.2;
-
-  if (APP_OWNER_WALLET && ownerPart > 0) {
-    const ownerProfile = ensureProfile(store, APP_OWNER_WALLET);
-    ownerProfile.ownerRewardsSol = Math.max(
-      0,
-      safeNum(ownerProfile.ownerRewardsSol, 0) + ownerPart
-    );
-    ownerProfile.updatedAt = nowMS();
-  }
-
-  if (creatorWallet && creatorPart > 0) {
-    const creatorProfile = ensureProfile(store, creatorWallet);
-
-    creatorProfile.creatorRewardsSol = Math.max(
-      0,
-      safeNum(creatorProfile.creatorRewardsSol, 0) + creatorPart
-    );
-    creatorProfile.updatedAt = nowMS();
-
-    coin.creatorRewardsSol = Math.max(
-      0,
-      safeNum(coin.creatorRewardsSol, 0) + creatorPart
-    );
-
-    // ✅ referral creator ke upline ko
-    const creatorUpline = String(creatorProfile?.referrer || "").trim();
-    if (creatorUpline && creatorUpline !== creatorWallet && referralPart > 0) {
-      const upProfile = ensureProfile(store, creatorUpline);
-      upProfile.referralRewardsSol = Math.max(
-        0,
-        safeNum(upProfile.referralRewardsSol, 0) + referralPart
-      );
-      upProfile.updatedAt = nowMS();
-    }
-  }
-}
 
 async function distributeFeeDirect(coin, traderWallet, feeSol) {
   const fee = Math.max(0, safeNum(feeSol, 0));
@@ -933,8 +866,6 @@ async function distributeFeeDirect(coin, traderWallet, feeSol) {
 
   if (jobs.length) await Promise.all(jobs);
 }
-// ================= TRUE BONDING CURVE VERSION =================
-// sirf core changes kiye gaye hain (UI untouched, APIs same)
 
 function ammBuy(coin, wallet, solInGross) {
   const { fee, net } = applyFee(solInGross);
@@ -1096,41 +1027,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
-
-app.get("/api/chart/:coin", async (req, res) => {
-  try {
-    const now = Date.now();
-    const candles = [];
-    let price = 1;
-
-    for (let i = 30; i >= 0; i--) {
-      const t = now - i * 60 * 1000;
-
-      const open = price;
-      const change = (Math.random() - 0.5) * 0.2;
-      const close = Math.max(0.1, open + change);
-      const high = Math.max(open, close) + Math.random() * 0.1;
-      const low = Math.min(open, close) - Math.random() * 0.1;
-
-      price = close;
-
-      candles.push({
-        time: t,
-        open,
-        high,
-        low,
-        close
-      });
-    }
-
-    res.json(candles);
-  } catch (err) {
-    res.json([]);
-  }
-});
-
-
-app.get("/api/balance/:wallet", async (req, res) => {
+app.get("/balance/:wallet", async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
@@ -1143,7 +1040,7 @@ app.get("/api/balance/:wallet", async (req, res) => {
   }
 });
 
-app.get("/api/coin/list", async (req, res) => {
+app.get("/coin/list", async (req, res) => {
   try {
     console.log("🔥 /api/coin/list hit");
 console.log("👉 query params:", req.query);
@@ -1181,7 +1078,7 @@ console.log("👉 query params:", req.query);
 });
 
 
-app.get("/api/coin/:id/dex-preview", async (req, res) => {
+app.get("/coin/:id/dex-preview", async (req, res) => {
   try {
     await requireDb();
     const wallet = String(req.query.wallet || "").trim();
@@ -1209,7 +1106,7 @@ app.get("/api/coin/:id/dex-preview", async (req, res) => {
   }
 });
 
-app.get("/api/coin/:id", async (req, res) => {
+app.get("/coin/:id", async (req, res) => {
   try {
     await requireDb();
     const coin = mapDbCoinToApi(await getCoinRowById(req.params.id));
@@ -1221,7 +1118,7 @@ app.get("/api/coin/:id", async (req, res) => {
   }
 });
 
-app.get("/api/coin/:id/activity", async (req, res) => {
+app.get("/coin/:id/activity", async (req, res) => {
   try {
     await requireDb();
     const limit = Math.min(120, Math.max(20, Number(req.query.limit || 60)));
@@ -1233,7 +1130,7 @@ app.get("/api/coin/:id/activity", async (req, res) => {
 });
 
 
-app.get("/api/coin/:id/candles", async (req, res) => {
+app.get("/coin/:id/candles", async (req, res) => {
   try {
     await requireDb();
 
@@ -1451,7 +1348,7 @@ app.get("/api/coin/:id/candles", async (req, res) => {
   }
 });
 
-app.post("/api/coin/create", async (req, res) => {
+app.post("/coin/create", async (req, res) => {
   try {
     await requireDb();
 
@@ -1578,7 +1475,7 @@ app.post("/api/coin/create", async (req, res) => {
   }
 });
 
-app.post("/api/referral/set", async (req, res) => {
+app.post("/referral/set", async (req, res) => {
   try {
     await requireDb();
 
@@ -1690,8 +1587,6 @@ async function doTrade(req, res, side) {
           ? Math.max(0, safeNum(sol, 0))
           : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0));
 
-      // Keep holder balance and candle close in sync before the response.
-      // This fixes delayed "Your Tokens" updates and stale chart candles after sell.
       await Promise.all([
         upsertHolding(wallet, coin.id, "set", Math.max(0, safeNum(coin?.holders?.[wallet], 0))),
         upsertCandlesForTrade(
@@ -1735,10 +1630,10 @@ async function doTrade(req, res, side) {
   }
 }
 
-app.post("/api/coin/buy", (req, res) => doTrade(req, res, "buy"));
-app.post("/api/coin/sell", (req, res) => doTrade(req, res, "sell"));
+app.post("/coin/buy", (req, res) => doTrade(req, res, "buy"));
+app.post("/coin/sell", (req, res) => doTrade(req, res, "sell"));
 
-app.post("/api/claim", async (req, res) => {
+app.post("/claim", async (req, res) => {
   try {
     await requireDb();
 
@@ -1871,11 +1766,11 @@ async function handleWithdraw(req, res, forcedKind = "") {
   }
 }
 
-app.post("/api/withdraw", (req, res) => handleWithdraw(req, res));
-app.post("/api/withdraw/creator", (req, res) => handleWithdraw(req, res, "CREATOR"));
-app.post("/api/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF"));
+app.post("/withdraw", (req, res) => handleWithdraw(req, res));
+app.post("/withdraw/creator", (req, res) => handleWithdraw(req, res, "CREATOR"));
+app.post("/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF"));
 
-app.get("/api/profile/:wallet", async (req, res) => {
+app.get("/profile/:wallet", async (req, res) => {
   try {
     await requireDb();
 
@@ -2004,38 +1899,11 @@ app.get("/api/profile/:wallet", async (req, res) => {
 // -------------------- START --------------------
 try {
   await ensureSchema();
-
-  try {
-  } catch (migrateErr) {
-    console.log("⚠️ Supabase migration skipped:", migrateErr?.message || migrateErr);
-  }
-
-  const PORT = process.env.PORT || 5000;
-    console.log("✅ Backend running on port:", PORT);
-    console.log("✅ Solana RPC:", SOLANA_RPC);
-    console.log("✅ DB MODE: neon-postgres");
-    console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
-    console.log("✅ JSON_LIMIT:", JSON_LIMIT);
-    console.log("✅ Fee:", FEE_PCT + "%");
-    console.log(
-      "✅ Rewards: creator",
-      CREATOR_PCT_OF_FEE + "% of fee, owner",
-      OWNER_PCT_OF_FEE + "% of fee, referral",
-      REFERRAL_PCT_OF_FEE + "% of fee"
-    );
-    console.log("✅ AMM virtual:", "vSOL", VIRTUAL_SOL, "vTOK%", VIRTUAL_TOKEN_PCT);
-    console.log("✅ SOL_USD:", SOL_USD);
-
+  console.log("✅ Schema ready");
 } catch (e) {
   console.error("❌ Startup failed:", e?.message || e);
   process.exit(1);
 }
-
-process.on("SIGINT", async () => {
-  process.exit(0);
-});
-
-
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("✅ Backend running on port:", PORT);
@@ -2054,7 +1922,10 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log("✅ SOL_USD:", SOL_USD);
 });
 
-process.on("SIGTERM", async () => {
+process.on("SIGINT", async () => {
   process.exit(0);
 });
 
+process.on("SIGTERM", async () => {
+  process.exit(0);
+});
