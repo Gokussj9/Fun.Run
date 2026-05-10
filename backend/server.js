@@ -1905,6 +1905,58 @@ try {
   process.exit(1);
 }
 
+app.get("/coin/list", async (req, res) => {
+  try {
+    const rows = await sql`select * from coins order by created_at desc`;
+    const coins = rows.map(mapDbCoinToApi).filter(Boolean);
+    res.json(coins);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "failed" });
+  }
+});
+
+app.get("/profile/:wallet", async (req, res) => {
+  try {
+    const profile = await getProfile(req.params.wallet, true);
+    res.json(profile);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "failed" });
+  }
+});
+
+app.post("/referral/set", async (req, res) => {
+  try {
+    const { wallet, referrer } = req.body;
+
+    if (!wallet || !referrer) {
+      return res.status(400).json({ error: "missing fields" });
+    }
+
+    const profile = await patchProfile(wallet, { referrer });
+
+    res.json({
+      ok: true,
+      profile,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "failed" });
+  }
+});
+
+app.get("/balance/:wallet", async (req, res) => {
+  try {
+    res.json({
+      balance: 0,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "failed" });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("✅ Backend running on port:", PORT);
   console.log("✅ Solana RPC:", SOLANA_RPC);
