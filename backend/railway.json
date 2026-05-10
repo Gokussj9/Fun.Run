@@ -2,7 +2,8 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildCommand": "rm -f package-lock.json && npm install --legacy-peer-deps"
+    "installCommand": "npm install --legacy-peer-deps",
+    "buildCommand": "echo build done"
   },
   "deploy": {
     "startCommand": "node server.js"
