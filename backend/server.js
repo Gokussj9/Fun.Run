@@ -1042,7 +1042,7 @@ app.get("/balance/:wallet", async (req, res) => {
   }
 });
 
-app.get("/coin/list", async (req, res) => {
+app.get("/coin/list*", async (req, res) => {
   try {
     console.log("🔥 /api/coin/list hit");
 console.log("👉 query params:", req.query);
