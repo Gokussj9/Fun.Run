@@ -1,3 +1,5 @@
+console.log("FUNRUN SERVER UPDATED");
+
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -1905,16 +1907,7 @@ try {
   process.exit(1);
 }
 
-app.get("/coin/list", async (req, res) => {
-  try {
-    const rows = await sql`select * from coins order by created_at desc`;
-    const coins = rows.map(mapDbCoinToApi).filter(Boolean);
-    res.json(coins);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "failed" });
-  }
-});
+
 
 app.get("/profile/:wallet", async (req, res) => {
   try {
