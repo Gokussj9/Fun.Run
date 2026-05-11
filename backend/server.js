@@ -1271,12 +1271,15 @@ app.get("/coin/:id/candles", async (req, res) => {
             tradesCount: 1,
           });
         } else {
-          prev.high = Math.max(prev.high, px);
-          prev.low = Math.min(prev.low, px);
-          prev.close = px;
-          prev.volumeSol += sol;
-          prev.tradesCount += 1;
-        }
+  prev.high = Math.max(prev.high, px);
+  prev.low = Math.min(prev.low, px);
+  prev.close = px;
+
+  prev.color = px >= prev.open ? "green" : "red";
+
+  prev.volumeSol += sol;
+  prev.tradesCount += 1;
+}
       }
 
       candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
