@@ -20,5 +20,8 @@
   },
   "overrides": {
     "utf-8-validate": "6.0.6"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }
