@@ -717,7 +717,7 @@ async function saveCoin(coin) {
   };
 
   const rows = await sql`
-    insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart, holders)
+    insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart)
     values (
       ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story}, ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
       ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold}, ${payload.v_sol}, ${payload.v_tokens}, ${payload.reserve_sol}, ${payload.reserve_token},
