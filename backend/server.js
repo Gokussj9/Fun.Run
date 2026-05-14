@@ -13,21 +13,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
-});
 
-const wss = new WebSocketServer({ server });
-
-const wsClients = new Set();
-
-wss.on("connection", (ws) => {
-  wsClients.add(ws);
-
-  ws.on("close", () => {
-    wsClients.delete(ws);
-  });
-});
 
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
@@ -2080,4 +2066,21 @@ process.on("SIGINT", async () => {
 
 process.on("SIGTERM", async () => {
   process.exit(0);
+});
+
+
+const server = app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
+
+const wss = new WebSocketServer({ server });
+
+const wsClients = new Set();
+
+wss.on("connection", (ws) => {
+  wsClients.add(ws);
+
+  ws.on("close", () => {
+    wsClients.delete(ws);
+  });
 });
