@@ -2165,15 +2165,32 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
       },
     });
 
-    series.setData(
-      candleData.map((c) => ({
-        time: Math.floor(c.time / 1000),
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }))
-    );
+ const uniqueCandles = [];
+const seen = new Set();
+
+for (const c of candleData || []) {
+  const t = Math.floor(Number(c.time) / 1000);
+
+  if (
+    !seen.has(t) &&
+    Number.isFinite(c.open) &&
+    Number.isFinite(c.high) &&
+    Number.isFinite(c.low) &&
+    Number.isFinite(c.close)
+  ) {
+    seen.add(t);
+
+    uniqueCandles.push({
+      time: t,
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+    });
+  }
+}
+
+series.setData(uniqueCandles);
 
     chart.timeScale().scrollToRealTime();
 

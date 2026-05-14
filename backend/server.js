@@ -721,7 +721,7 @@ async function saveCoin(coin) {
     values (
       ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story}, ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
       ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold}, ${payload.v_sol}, ${payload.v_tokens}, ${payload.reserve_sol}, ${payload.reserve_token},
-      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${sql.json(payload.chart || [])},
+      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${payload.chart || []} 
     )
     on conflict (id) do update set
       name = excluded.name,
@@ -744,8 +744,8 @@ async function saveCoin(coin) {
       volume_sol = excluded.volume_sol,
       last_trade_at = excluded.last_trade_at,
       creator_rewards = excluded.creator_rewards,
-      chart = excluded.chart,
-      holders = excluded.holders
+      chart = excluded.chart
+      
     returning *`;
 
     coinCache.set(payload.id, rows[0]);
