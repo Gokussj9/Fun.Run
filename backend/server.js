@@ -6,11 +6,48 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
-import morgan from "morgan";
 import postgres from "postgres";
+import { WebSocketServer } from "ws";
+import NodeCache from "node-cache";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const app = express();
+
+const server = app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
+
+const wss = new WebSocketServer({ server });
+
+const wsClients = new Set();
+
+wss.on("connection", (ws) => {
+  wsClients.add(ws);
+
+  ws.on("close", () => {
+    wsClients.delete(ws);
+  });
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+const coinCache = new NodeCache({
+  stdTTL: 3,
+  checkperiod: 5,
+  useClones: false,
+});
+
+const profileCache = new NodeCache({
+  stdTTL: 10,
+  checkperiod: 20,
+  useClones: false,
+});
 
 app.use(express.json({ limit: "15mb" }));
 
@@ -51,29 +88,25 @@ const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 if (TRUST_PROXY) app.set("trust proxy", 1);
 
 app.use(cors({
-  origin: "*"
+  origin: CORS_ORIGINS,
+credentials: true
 }));
 app.options("*", cors());
 app.use(compression());
 
-app.use((req, res, next) => {
-  console.log("🌍 incoming:", req.method, req.url);
-  next();
-});
 
-app.use((req, res, next) => {
-  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  next();
-});
 app.use(
   rateLimit({
     windowMs: 60_000,
-    max: 240,
+    max: 500,
     standardHeaders: true,
     legacyHeaders: false,
   })
 );
-app.use(morgan("tiny"));
+
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("tiny"));
+}
 
 // -------------------- CLIENTS --------------------
 const sql = DATABASE_URL
@@ -82,7 +115,7 @@ const sql = DATABASE_URL
       max: Math.max(5, Math.min(30, Number(process.env.PG_MAX_CONNECTIONS || 12))),
       idle_timeout: 20,
       connect_timeout: 15,
-      prepare: false,
+      prepare: true,
     
     })
   : null;
@@ -92,6 +125,19 @@ const connection = new Connection(SOLANA_RPC, "confirmed");
 // -------------------- HELPERS --------------------
 function nowMS() {
   return Date.now();
+}
+
+function broadcast(event, payload) {
+  const msg = JSON.stringify({
+    event,
+    payload,
+  });
+
+  wsClients.forEach((ws) => {
+    if (ws.readyState === 1) {
+      ws.send(msg);
+    }
+  });
 }
 
 function clampNum(n, min, max) {
@@ -208,7 +254,7 @@ if (!safeId) return null;
     vSol,
     solReserve: Math.max(0, safeNum(row.reserve_sol, 0)),
     tokenReserve,
-    holders: asObj(row.holders, {}),
+    
 
     volumeSol: Math.max(0, safeNum(row.volume_sol, 0)),
     lastTradeAt: safeNum(row.last_trade_at, 0),
@@ -261,7 +307,7 @@ function coinToDbUpdate(coin = {}) {
     last_trade_at: coin.lastTradeAt || 0,
     creator_rewards: coin.creatorRewardsSol || 0,
     chart: Array.isArray(coin.chart) ? coin.chart.slice(-MAX_CHART_POINTS) : [],
-    holders: asObj(coin.holders, {}),
+    
   };
 }
 
@@ -362,7 +408,6 @@ async function ensureSchema() {
       volume_sol numeric default 0,
       last_trade_at bigint default 0,
       creator_rewards numeric default 0,
-      chart jsonb default '[]'::jsonb,
       holders jsonb default '{}'::jsonb
     )`;
 
@@ -538,74 +583,144 @@ async function insertTransaction(tx = {}) {
     created_at: new Date().toISOString(),
   };
 
+  const cachedCoin = coinCache.get(row.coin_id);
+
+if (cachedCoin) {
+  cachedCoin.last_trade_at = Date.now();
+}
+
   await sql`
     insert into transactions (id, wallet, coin_id, type, sol, tokens, fee, created_at)
     values (${row.id}, ${row.wallet}, ${row.coin_id}, ${row.type}, ${row.sol}, ${row.tokens}, ${row.fee}, ${row.created_at})`;
+broadcast("trade:new", {
+  coinId: row.coin_id,
+  type: row.type,
+  sol: row.sol,
+  tokens: row.tokens,
+  price: row.price,
+  ts: Date.now(),
+});
+
   return row;
 }
 
-async function upsertHolding(wallet, coinId, tokensDeltaMode = "set", tokensValue = 0) {
+
+
+async function upsertHolding(wallet, coinId, mode = "set", amount = 0) {
   const w = String(wallet || "").trim();
   const c = String(coinId || "").trim();
-  if (!w || !c) return null;
 
-  const current = await sql`
-    select wallet, coin_id, tokens
-    from holdings
-    where wallet = ${w} and coin_id = ${c}
-    limit 1
-  `;
+  if (!w || !c) return 0;
 
-  const prev = current?.[0] ? Number(current[0].tokens || 0) : 0;
+  const delta = Number(amount || 0);
 
-  let nextTokens = 0;
-  if (tokensDeltaMode === "inc") {
-    nextTokens = Math.max(0, prev + Number(tokensValue || 0));
-  } else if (tokensDeltaMode === "dec") {
-    nextTokens = Math.max(0, prev - Number(tokensValue || 0));
-  } else {
-    nextTokens = Math.max(0, Number(tokensValue || 0));
-  }
+  const rows = await sql.begin(async (tx) => {
+    const current = await tx`
+      SELECT tokens
+      FROM holdings
+      WHERE wallet = ${w}
+      AND coin_id = ${c}
+      FOR UPDATE
+    `;
 
-  await sql`
-    insert into holdings (wallet, coin_id, tokens, updated_at)
-    values (${w}, ${c}, ${nextTokens}, now())
-    on conflict (wallet, coin_id)
-    do update set
-      tokens = excluded.tokens,
-      updated_at = now()
-  `;
+    const prev = Number(current?.[0]?.tokens || 0);
 
-  return nextTokens;
+    let next = prev;
+
+    if (mode === "inc") {
+      next = prev + delta;
+    } else if (mode === "dec") {
+      next = Math.max(0, prev - delta);
+    } else {
+      next = Math.max(0, delta);
+    }
+
+    await tx`
+      INSERT INTO holdings (
+        wallet,
+        coin_id,
+        tokens,
+        updated_at
+      )
+      VALUES (
+        ${w},
+        ${c},
+        ${next},
+        NOW()
+      )
+      ON CONFLICT (wallet, coin_id)
+      DO UPDATE SET
+        tokens = EXCLUDED.tokens,
+        updated_at = NOW()
+    `;
+
+    return next;
+  });
+
+  return rows;
 }
 
 async function getCoinRowById(coinId) {
   const id = String(coinId || "").trim();
+
   if (!id) return null;
+
+  const cached = coinCache.get(id);
+
+  if (cached) return cached;
+
   await requireDb();
-  const rows = await sql`select * from coins where id = ${id} limit 1`;
-  return rows[0] || null;
+
+  const rows = await sql`
+    select * from coins
+    where id = ${id}
+    limit 1
+  `;
+
+  const row = rows[0] || null;
+
+  if (row) {
+    coinCache.set(id, row);
+  }
+
+  return row;
 }
 
 async function getRecentCoinActivity(coinId, limit = 50) {
   const id = String(coinId || "").trim();
+
+  const cacheKey = `activity_${id}_${limit}`;
+
+const cached = coinCache.get(cacheKey);
+
+if (cached) {
+  return cached;
+}
   if (!id) return [];
   await requireDb();
   const safeLimit = Math.max(1, Math.min(120, safeNum(limit, 50)));
   const rows = await sql`select id, coin_id, type, sol, tokens, fee, created_at, wallet from transactions where coin_id = ${id} order by created_at desc limit ${safeLimit}`;
-  return Array.isArray(rows)
-    ? rows.map((t) => ({
-        id: t.id,
-        coinId: t.coinId || t.coin_id,
-        side: String(t.type || "TX").toUpperCase(),
-        type: String(t.type || "TX").toUpperCase(),
-        sol: safeNum(t.sol, 0),
-        tokens: safeNum(t.tokens, 0),
-        fee: safeNum(t.fee, 0),
-        ts: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-        wallet: t.wallet,
-      }))
-    : [];
+ const activity = Array.isArray(rows)
+  ? rows.map((t) => ({
+      id: t.id,
+      coinId: t.coinId || t.coin_id,
+      side: String(t.type || "TX").toUpperCase(),
+      type: String(t.type || "TX").toUpperCase(),
+      sol: safeNum(t.sol, 0),
+      tokens: safeNum(t.tokens, 0),
+      fee: safeNum(t.fee, 0),
+      ts: t.createdAt
+        ? new Date(t.createdAt).getTime()
+        : t.created_at
+        ? new Date(t.created_at).getTime()
+        : nowMS(),
+      wallet: t.wallet,
+    }))
+  : [];
+
+coinCache.set(cacheKey, activity);
+
+return activity;
 }
 
 async function saveCoin(coin) {
@@ -620,7 +735,7 @@ async function saveCoin(coin) {
     values (
       ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story}, ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
       ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold}, ${payload.v_sol}, ${payload.v_tokens}, ${payload.reserve_sol}, ${payload.reserve_token},
-      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${sql.json(payload.chart || [])}, ${sql.json(payload.holders || {})}
+      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${sql.json(payload.chart || [])},
     )
     on conflict (id) do update set
       name = excluded.name,
@@ -646,6 +761,10 @@ async function saveCoin(coin) {
       chart = excluded.chart,
       holders = excluded.holders
     returning *`;
+
+    coinCache.set(payload.id, rows[0]);
+
+    broadcast("coin:update", mapDbCoinToApi(rows[0]));
 
   return mapDbCoinToApi(rows[0]);
 }

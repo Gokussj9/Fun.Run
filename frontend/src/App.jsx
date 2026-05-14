@@ -1,14 +1,18 @@
 import IntroSplash from "./IntroSplash";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
-import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+import { createChart, ColorType } from "lightweight-charts";
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
 const API_BASE =
   (import.meta.env.VITE_API_BASE ||
     "https://zooming-solace-production-c360.up.railway.app").trim();
+
+const WS_BASE = API_BASE
+  .replace("https://", "wss://")
+  .replace("http://", "ws://");
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const STARTING_MC_USD = 6500;
@@ -152,8 +156,8 @@ function ThemeStyles() {
         background:
           linear-gradient(180deg, rgba(16,22,28,.78), rgba(10,14,18,.70));
         box-shadow: var(--shadow1), var(--shine);
-        backdrop-filter: blur(18px) saturate(140%);
-        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        backdrop-filter: blur(6px) saturate(140%);
+        -webkit-backdrop-filter: blur(6px) saturate(140%);
       }
 
       .brand{
@@ -248,8 +252,8 @@ function ThemeStyles() {
     0 18px 50px color-mix(in srgb, var(--glow) 18%, transparent),
     var(--shine);
   overflow:hidden;
-  backdrop-filter: blur(18px) saturate(135%);
-  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(6px) saturate(135%);
+  -webkit-backdrop-filter: blur(6px) saturate(135%);
   padding: 16px;
 }
 
@@ -392,7 +396,7 @@ function ThemeStyles() {
         height:260px;
         background:radial-gradient(circle at center, rgba(25,230,162,.18), transparent 62%);
         pointer-events:none;
-        filter:blur(18px);
+        filter:blur(6px);
       }
 
       .heroTitle{
@@ -551,8 +555,8 @@ function ThemeStyles() {
         padding:10px;
         border:1px solid rgba(255,255,255,.08);
         background:rgba(8,12,15,.88);
-        backdrop-filter: blur(18px) saturate(140%);
-        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        backdrop-filter: blur(6px) saturate(140%);
+        -webkit-backdrop-filter: blur(6px) saturate(140%);
         border-radius:24px;
         box-shadow:
           0 20px 60px rgba(0,0,0,.34),
@@ -624,7 +628,7 @@ body {
         padding:14px 16px;
         border-bottom:1px solid rgba(255,255,255,.08);
         background:rgba(10,15,18,.92);
-        backdrop-filter:blur(14px);
+        backdrop-filter:blur(6px)
       }
 
       .modalTitle{
@@ -675,7 +679,7 @@ body {
         position:relative;
         isolation:isolate;
         overflow:hidden;
-        min-height:96px;
+        min-height:72px;
         border-radius:30px;
         border:1px solid color-mix(in srgb, var(--primary) 48%, rgba(255,255,255,.16));
         background:
@@ -695,8 +699,8 @@ body {
         align-items:center;
         justify-content:space-between;
         gap:14px;
-        backdrop-filter:blur(22px) saturate(175%);
-        -webkit-backdrop-filter:blur(22px) saturate(175%);
+        backdrop-filter:blur(8px) saturate(175%);
+        -webkit-backdrop-filter:blur(8px) saturate(175%);
         transform:translateZ(0);
       }
 
@@ -783,7 +787,7 @@ body {
       .nativeAdText{
         position:relative;
         z-index:2;
-        font-size:16px;
+        font-size:14px;
         font-weight:1000;
         letter-spacing:.05px;
         line-height:1.22;
@@ -1224,7 +1228,7 @@ function NativeFunRunAd({ compact = false }) {
   useEffect(() => {
     const t = setInterval(() => {
       setIdx((v) => (v + 1) % FUNRUN_AD_SEQUENCE.length);
-    }, 5200);
+    }, 15000);
     return () => clearInterval(t);
   }, []);
 
@@ -1233,7 +1237,7 @@ function NativeFunRunAd({ compact = false }) {
   const displayText = isReferral ? "Fun.Run — Invite friends and earn " : text;
 
   return (
-    <div className="nativeAd" style={compact ? { minHeight: 82, borderRadius: 26, padding: "15px 15px" } : null}>
+    <div className="nativeAd" style={compact ? { minHeight: 68, borderRadius: 22, padding: "10px 12px" } : null}>
       <div className="nativeAdOrb" />
       <div className="nativeAdCrystal" />
       <div className="nativeAdContent">
@@ -1708,7 +1712,7 @@ function ThemeOption({ theme, current, setTheme, label }) {
   );
 }
 
-function CoinMiniCard({ c, subtitle, onOpen }) {
+const CoinMiniCard = React.memo(function CoinMiniCard({ c, onOpen, subtitle }) {
   const move24h = getCoin24hMovePct(c);
   const isUp = move24h >= 0;
   const age = getCoinAgeLabel(c);
@@ -1757,7 +1761,7 @@ function CoinMiniCard({ c, subtitle, onOpen }) {
       </div>
     </button>
   );
-}
+});
 
 function InlineAffiliateBar({ wallet, onCopy }) {
   return (
@@ -1956,7 +1960,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
     }
 
     loadActivity(Boolean(reloadKey));
-    timer = setInterval(() => loadActivity(true), 8000);
+    timer = setInterval(() => loadActivity(true), 600000);
 
     return () => {
       mounted = false;
@@ -2144,7 +2148,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
       },
     });
 
-    const series = chart.addSeries(CandlestickSeries, {
+    const series = chart.addCandlestickSeries({
       upColor: themeCfg.up,
       downColor: themeCfg.down,
       borderUpColor: themeCfg.up,
@@ -2171,13 +2175,13 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
       }))
     );
 
-    chart.timeScale().fitContent();
+    chart.timeScale().scrollToRealTime();
 
     const handleResize = () => {
       if (!chartRef.current) return;
       chart.applyOptions({
         width: Math.max(280, chartRef.current.clientWidth || 280),
-        height,
+        
       });
     };
 
@@ -2356,6 +2360,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
 export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
+  const wsRef = useRef(null);
 
  const [showIntro, setShowIntro] = useState(() => {
     try {
@@ -2375,6 +2380,44 @@ export default function App() {
     }, INTRO_MS);
     return () => clearTimeout(t);
   }, [showIntro]);
+
+  useEffect(() => {
+  const ws = new WebSocket(WS_BASE);
+
+  wsRef.current = ws;
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+
+      if (msg.event === "coin:update") {
+        const updated = normalizeCoin(msg.payload);
+
+        setCoins((prev) =>
+          prev.map((c) => (c.id === updated.id ? updated : c))
+        );
+
+        setSelectedCoin((prev) =>
+          prev?.id === updated.id ? updated : prev
+        );
+      }
+
+if (msg.event === "trade:new") {
+  setRecentTrades((prev) => [
+    msg.payload,
+    ...prev.slice(0, 24),
+  ]);
+}
+
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return () => {
+    ws.close();
+  };
+}, []);
 
   useEffect(() => {
     try {

@@ -16,7 +16,8 @@
     "helmet": "^7.0.0",
     "morgan": "^1.10.0",
     "postgres": "^3.4.9",
-    "utf-8-validate": "6.0.6"
+    "utf-8-validate": "6.0.6",
+    "ws": "^8.18.0"
   },
   "overrides": {
     "utf-8-validate": "6.0.6"
