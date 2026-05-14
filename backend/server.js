@@ -2072,22 +2072,7 @@ app.get("/balance/:wallet", async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("✅ Backend running on port:", PORT);
-  console.log("✅ Solana RPC:", SOLANA_RPC);
-  console.log("✅ DB MODE: neon-postgres");
-  console.log("✅ CORS_ORIGINS:", CORS_ORIGINS.join(", "));
-  console.log("✅ JSON_LIMIT:", JSON_LIMIT);
-  console.log("✅ Fee:", FEE_PCT + "%");
-  console.log(
-    "✅ Rewards: creator",
-    CREATOR_PCT_OF_FEE + "% of fee, owner",
-    OWNER_PCT_OF_FEE + "% of fee, referral",
-    REFERRAL_PCT_OF_FEE + "% of fee"
-  );
-  console.log("✅ AMM virtual:", "vSOL", VIRTUAL_SOL, "vTOK%", VIRTUAL_TOKEN_PCT);
-  console.log("✅ SOL_USD:", SOL_USD);
-});
+
 
 process.on("SIGINT", async () => {
   process.exit(0);
