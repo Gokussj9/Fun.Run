@@ -182,22 +182,31 @@ function calcPricing(input) {
 
 function mapDbCoinToApi(row = {}) {
   const totalSupply = Math.max(1, safeNum(row.total_supply, TOTAL_SUPPLY));
+
   const curveSupply = Math.max(
     1,
     safeNum(row.curve_supply, saleSupplyFromTotal(totalSupply))
   );
+
   const tokenReserve = clampNum(
     safeNum(row.reserve_token, curveSupply),
     1,
     curveSupply
   );
+
   const curveSold = clampNum(
     safeNum(row.curve_sold, curveSupply - tokenReserve),
     0,
     curveSupply
   );
+
   const vSol = Math.max(1e-9, safeNum(row.v_sol, VIRTUAL_SOL));
-  const vTokens = calcVirtualTokens(totalSupply, curveSupply, row.v_tokens);
+
+  const vTokens = calcVirtualTokens(
+    totalSupply,
+    curveSupply,
+    row.v_tokens
+  );
 
   const pricing = calcPricing({
     totalSupply,
@@ -209,55 +218,124 @@ function mapDbCoinToApi(row = {}) {
   });
 
   const chartInput = Array.isArray(row.chart)
-    ? row.chart.filter((n) => Number.isFinite(Number(n))).map(Number)
+    ? row.chart
+        .filter((n) => Number.isFinite(Number(n)))
+        .map(Number)
     : [];
 
-  const seedPrice = Math.max(0, safeNum(pricing.priceUsd, 0));
+  const seedPrice = Math.max(
+    0,
+    safeNum(pricing.priceUsd, 0)
+  );
+
   const chart =
     chartInput.length > 0
       ? chartInput.slice(-MAX_CHART_POINTS)
-      : [seedPrice, seedPrice, seedPrice, seedPrice, seedPrice];
+      : [
+          seedPrice,
+          seedPrice,
+          seedPrice,
+          seedPrice,
+          seedPrice,
+        ];
 
-      const safeId = String(row.id || row.coin_id || "").trim();
-if (!safeId) return null;
+  const safeId = String(
+    row.id || row.coin_id || ""
+  ).trim();
+
+  if (!safeId) return null;
 
   return {
     id: safeId,
+
     name: String(row.name || "").trim(),
-    symbol: String(row.symbol || "").trim().toUpperCase(),
+
+    symbol: String(row.symbol || "")
+      .trim()
+      .toUpperCase(),
+
     story: String(row.story || "").trim(),
+
     logo: String(row.logo || ""),
-    metadataUri: String(row.metadata_uri || ""),
-    creatorWallet: String(row.creator_wallet || "").trim(),
-    owner: String(row.creator_wallet || "").trim(),
-    createdAt: row.created_at ? new Date(row.created_at).getTime() : nowMS(),
+
+    metadataUri: String(
+      row.metadata_uri || ""
+    ),
+
+    creatorWallet: String(
+      row.creator_wallet || ""
+    ).trim(),
+
+    owner: String(
+      row.creator_wallet || ""
+    ).trim(),
+
+    createdAt: row.created_at
+      ? new Date(row.created_at).getTime()
+      : nowMS(),
+
     status: "LIVE",
 
     totalSupply,
-    curveSupply,
-    curveSold,
-    vTokens,
-    vSol,
-    solReserve: Math.max(0, safeNum(row.reserve_sol, 0)),
-    tokenReserve,
-    
 
-    volumeSol: Math.max(0, safeNum(row.volume_sol, 0)),
-    lastTradeAt: safeNum(row.last_trade_at, 0),
+    curveSupply,
+
+    curveSold,
+
+    vTokens,
+
+    vSol,
+
+    solReserve: Math.max(
+      0,
+      safeNum(row.reserve_sol, 0)
+    ),
+
+    tokenReserve,
+
+    volumeSol: Math.max(
+      0,
+      safeNum(row.volume_sol, 0)
+    ),
+
+    lastTradeAt: safeNum(
+      row.last_trade_at,
+      0
+    ),
 
     priceSol: pricing.priceSol,
+
     priceUsd: pricing.priceUsd,
+
     price: pricing.priceUsd,
+
     lastPriceUsd: pricing.priceUsd,
-    mc: Math.max(0, safeNum(row.market_cap, pricing.mcUsd)),
+
+    mc: Math.max(
+      0,
+      safeNum(row.market_cap, pricing.mcUsd)
+    ),
+
     ath: Math.max(
-      Math.max(0, safeNum(row.ath_market_cap, 0)),
-      Math.max(0, safeNum(row.market_cap, pricing.mcUsd)),
+      Math.max(
+        0,
+        safeNum(row.ath_market_cap, 0)
+      ),
+      Math.max(
+        0,
+        safeNum(row.market_cap, pricing.mcUsd)
+      ),
       pricing.mcUsd
     ),
+
     chart,
 
-    creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
+    holders: asObj(row.holders, {}),
+
+    creatorRewardsSol: Math.max(
+      0,
+      safeNum(row.creator_rewards, 0)
+    ),
   };
 }
 

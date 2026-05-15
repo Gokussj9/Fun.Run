@@ -2442,22 +2442,32 @@ export default function App() {
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+if (msg.event === "coin:update") {
+  const updated = normalizeCoin(msg.payload);
 
-      if (msg.event === "coin:update") {
-        const updated = normalizeCoin(msg.payload);
+  updated.prevHolders =
+    selectedCoin?.holders || {};
 
-        updated.prevHolders =
-  selectedCoin?.holders || {};
+  setCoins((prev) =>
+    prev.map((c) => {
+      if (c.id !== updated.id) return c;
 
-        setCoins((prev) =>
-          prev.map((c) => (c.id === updated.id ? updated : c))
-        );
+      return {
+        ...c,
+        ...updated,
 
-        setSelectedCoinId((prev) =>
-  prev?.id === updated.id ? updated.id : prev
-);
-      }
-
+        holders:
+          updated.holders &&
+          Object.keys(updated.holders).length
+            ? {
+                ...c.holders,
+                ...updated.holders,
+              }
+            : c.holders || {},
+      };
+    })
+  );
+}
 if (msg.event === "trade:new") {
   setRecentTrades((prev) => [
     msg.payload,
