@@ -262,6 +262,20 @@ if (!safeId) return null;
 }
 
 function coinToDbUpdate(coin = {}) {
+  const rawMarketCap = Math.max(
+    0,
+    safeNum(coin.mc, 0)
+  );
+
+  // fake launch floor for better visual momentum
+  const boostedMarketCap =
+    rawMarketCap > 0
+      ? Math.max(
+          rawMarketCap,
+          5000 + Math.random() * 3000
+        )
+      : 5000 + Math.random() * 3000;
+
   return {
     name: coin.name || "",
     symbol: coin.symbol || "",
@@ -269,31 +283,63 @@ function coinToDbUpdate(coin = {}) {
     logo: coin.logo || "",
     metadata_uri: coin.metadataUri || "",
     creator_wallet: coin.creatorWallet || coin.owner || "",
-    created_at: new Date(coin.createdAt || Date.now()).toISOString(),
-    total_supply: coin.totalSupply || TOTAL_SUPPLY,
-    curve_supply: coin.curveSupply || saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
+    created_at: new Date(
+      coin.createdAt || Date.now()
+    ).toISOString(),
+
+    total_supply:
+      coin.totalSupply || TOTAL_SUPPLY,
+
+    curve_supply:
+      coin.curveSupply ||
+      saleSupplyFromTotal(
+        coin.totalSupply || TOTAL_SUPPLY
+      ),
+
     curve_sold: coin.curveSold || 0,
+
     v_sol: coin.vSol || VIRTUAL_SOL,
+
     v_tokens:
       coin.vTokens ||
       calcVirtualTokens(
         coin.totalSupply || TOTAL_SUPPLY,
-        coin.curveSupply || saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
+        coin.curveSupply ||
+          saleSupplyFromTotal(
+            coin.totalSupply || TOTAL_SUPPLY
+          ),
         coin.vTokens
       ),
+
     reserve_sol: coin.solReserve || 0,
+
     reserve_token:
       coin.tokenReserve ||
       coin.curveSupply ||
-      saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
-    market_cap: coin.mc || 0,
+      saleSupplyFromTotal(
+        coin.totalSupply || TOTAL_SUPPLY
+      ),
+
+    market_cap: boostedMarketCap,
+
     last_price: coin.priceSol || 0,
-    ath_market_cap: coin.ath || 0,
+
+    ath_market_cap: Math.max(
+      boostedMarketCap,
+      safeNum(coin.ath, 0)
+    ),
+
     volume_sol: coin.volumeSol || 0,
-    last_trade_at: coin.lastTradeAt || 0,
-    creator_rewards: coin.creatorRewardsSol || 0,
-    chart: Array.isArray(coin.chart) ? coin.chart.slice(-MAX_CHART_POINTS) : [],
-    
+
+    last_trade_at:
+      coin.lastTradeAt || 0,
+
+    creator_rewards:
+      coin.creatorRewardsSol || 0,
+
+    chart: Array.isArray(coin.chart)
+      ? coin.chart.slice(-MAX_CHART_POINTS)
+      : [],
   };
 }
 
@@ -763,25 +809,49 @@ function buildChartTrail(prevChart, nextPoint, sideHint = "") {
     : [];
 
   const point = Math.max(0, safeNum(nextPoint, 0));
-  if (!point) return history.length ? history.slice(-MAX_CHART_POINTS) : [0];
 
+  if (!point) {
+    return history.length ? history.slice(-MAX_CHART_POINTS) : [0];
+  }
+
+  // Launch pump effect
   if (!history.length) {
-    return [point, point, point, point, point];
+    return [
+      point * 0.78,
+      point * 0.92,
+      point * 1.06,
+      point * 1.22,
+      point * 1.12,
+      point
+    ];
   }
 
   const last = Math.max(1e-9, safeNum(history[history.length - 1], point));
+
   const isSell = String(sideHint || "").toLowerCase() === "sell";
 
   let finalPoint = point;
 
-  if (!isSell && finalPoint < last) {
-    finalPoint = point;
-  }
-  if (isSell && finalPoint > last) {
-    finalPoint = point;
+  // smoother movement
+  if (!isSell && finalPoint <= last) {
+    finalPoint = last * (1 + Math.random() * 0.04);
   }
 
-  return history.slice(-(MAX_CHART_POINTS - 1)).concat([finalPoint]);
+  if (isSell && finalPoint >= last) {
+    finalPoint = last * (1 - Math.random() * 0.03);
+  }
+
+  // slight volatility
+  const volatility =
+    finalPoint * (0.01 + Math.random() * 0.025);
+
+  const noisyPoint =
+    finalPoint +
+    (Math.random() > 0.5 ? volatility : -volatility);
+
+  return history
+    .slice(-(MAX_CHART_POINTS - 1))
+    .concat([Math.max(0.00000001, noisyPoint)]);
 }
 
 function recalcCoin(coin, opts = {}) {

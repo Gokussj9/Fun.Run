@@ -679,7 +679,7 @@ body {
         position:relative;
         isolation:isolate;
         overflow:hidden;
-        min-height:72px;
+        min-height:58px;
         border-radius:30px;
         border:1px solid color-mix(in srgb, var(--primary) 48%, rgba(255,255,255,.16));
         background:
@@ -694,7 +694,7 @@ body {
           0 0 70px rgba(167,139,250,.16),
           inset 0 1px 0 rgba(255,255,255,.26),
           inset 0 -1px 0 rgba(255,255,255,.08);
-        padding:19px 18px;
+        padding:10px 12px;
         display:flex;
         align-items:center;
         justify-content:space-between;
@@ -922,9 +922,9 @@ body {
         }
 
         .nativeAd{
-          min-height:84px;
+          min-height:62px;
           border-radius:24px;
-          padding:14px 13px;
+          padding:8px 10px;
           gap:10px;
         }
 
@@ -1237,7 +1237,7 @@ function NativeFunRunAd({ compact = false }) {
   const displayText = isReferral ? "Fun.Run — Invite friends and earn " : text;
 
   return (
-    <div className="nativeAd" style={compact ? { minHeight: 68, borderRadius: 22, padding: "10px 12px" } : null}>
+    <div className="nativeAd" style={compact ? { minHeight: 56, borderRadius: 18, padding: "7px 10px" } : null}>
       <div className="nativeAdOrb" />
       <div className="nativeAdCrystal" />
       <div className="nativeAdContent">
@@ -1363,7 +1363,12 @@ function normalizeCoin(c = {}) {
     mc,
     ath: Math.max(mc, safeNum(c.ath, c.ath_market_cap || mc)),
     chart,
-    holders: c && typeof c.holders === "object" && !Array.isArray(c.holders) ? c.holders : {},
+    holders:
+  c && typeof c.holders === "object" && !Array.isArray(c.holders)
+    ? c.holders
+    : c.prevHolders && typeof c.prevHolders === "object"
+    ? c.prevHolders
+    : {},
     createdAt: safeNum(c.createdAt, c.created_at ? new Date(c.created_at).getTime() : Date.now()),
     lastTradeAt: safeNum(c.lastTradeAt, c.last_trade_at || 0),
     creatorRewardsSol: Math.max(0, safeNum(c.creatorRewardsSol, c.creator_rewards || 0)),
@@ -2091,11 +2096,28 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
       width,
       height,
       layout: {
+
+
         background: { type: ColorType.Solid, color: themeCfg.chartBg },
         textColor: themeCfg.faintText,
         attributionLogo: false,
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
       },
+
+handleScale: {
+  mouseWheel: true,
+  pinch: true,
+  axisPressedMouseMove: true,
+},
+
+rightPriceScale: {
+  visible: true,
+  scaleMargins: {
+    top: 0.1,
+    bottom: 0.1,
+  },
+},
+
       grid: {
         vertLines: { color: themeCfg.grid, visible: true },
         horzLines: { color: themeCfg.grid, visible: true },
@@ -2193,6 +2215,16 @@ for (const c of candleData || []) {
 series.setData(uniqueCandles);
 
     chart.timeScale().scrollToRealTime();
+
+    chart.timeScale().fitContent();
+
+series.priceScale().applyOptions({
+  autoScale: true,
+  scaleMargins: {
+    top: 0.25,
+    bottom: 0.25,
+  },
+});
 
     const handleResize = () => {
       if (!chartRef.current) return;
@@ -2379,6 +2411,10 @@ export default function App() {
   const { exportWallet } = useExportWallet();
   const wsRef = useRef(null);
 
+  
+
+  const [recentTrades, setRecentTrades] = useState([]);
+
  const [showIntro, setShowIntro] = useState(() => {
     try {
       return sessionStorage.getItem("introSeen") !== "1";
@@ -2414,9 +2450,9 @@ export default function App() {
           prev.map((c) => (c.id === updated.id ? updated : c))
         );
 
-        setSelectedCoin((prev) =>
-          prev?.id === updated.id ? updated : prev
-        );
+        setSelectedCoinId((prev) =>
+  prev?.id === updated.id ? updated.id : prev
+);
       }
 
 if (msg.event === "trade:new") {
@@ -3604,86 +3640,17 @@ const tradePreview = useMemo(() => {
                   Create Coin
                 </MiniBtn>
                 <MiniBtn onClick={() => goScreen("SEARCH")}>Explore Coins</MiniBtn>
+                <button
+  className="ghostBtn"
+  onClick={() => setPage("info")}
+>
+  Why Fun.Run
+</button>
               </div>
             </Card>
 
             <NativeFunRunAd />
 
-            <Card>
-              <SectionHeader
-                title="Why Fun.Run"
-                sub="Creator-first growth engine"
-                right={<Pill>50% affiliate</Pill>}
-              />
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-                  gap: 0,
-                }}
-              >
-                {[
-                  {
-                    title: "Launch",
-                    text: "Create a coin in seconds",
-                    icon: "🚀",
-                    glow: "linear-gradient(135deg, rgba(34,211,238,.28), rgba(59,130,246,.18))",
-                    ring: "rgba(34,211,238,.35)",
-                  },
-                  {
-                    title: "Earn",
-                    text: "Creator fees on every trade",
-                    icon: "💎",
-                    glow: "linear-gradient(135deg, rgba(168,85,247,.30), rgba(236,72,153,.18))",
-                    ring: "rgba(236,72,153,.35)",
-                  },
-                  {
-                    title: "Affiliate",
-                    text: "Share link and earn 50%",
-                    icon: "⚡",
-                    glow: "linear-gradient(135deg, rgba(16,185,129,.30), rgba(34,197,94,.18))",
-                    ring: "rgba(16,185,129,.35)",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.title}
-                    style={{
-                      position: "relative",
-                      overflow: "hidden",
-                      padding: 14,
-                      borderRadius: 20,
-                      border: `1px solid ${item.ring}`,
-                      background: item.glow,
-                      boxShadow: "0 14px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.12)",
-                      backdropFilter: "blur(14px)",
-                      WebkitBackdropFilter: "blur(14px)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: -28,
-                        right: -26,
-                        width: 94,
-                        height: 94,
-                        borderRadius: "50%",
-                        background: "rgba(255,255,255,.18)",
-                        filter: "blur(28px)",
-                        pointerEvents: "none",
-                      }}
-                    />
-                    <div style={{ fontSize: 22, position: "relative", zIndex: 1 }}>{item.icon}</div>
-                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000, position: "relative", zIndex: 1 }}>{item.title}</div>
-                    <div style={{ marginTop: 4, fontSize: 11, color: "rgba(238,248,255,.78)", lineHeight: 1.4, position: "relative", zIndex: 1 }}>
-                      {item.text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <NativeFunRunAd compact />
 
             <Card>
               <SectionHeader
