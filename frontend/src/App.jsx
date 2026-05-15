@@ -2446,6 +2446,9 @@ export default function App() {
       if (msg.event === "coin:update") {
         const updated = normalizeCoin(msg.payload);
 
+        updated.prevHolders =
+  selectedCoin?.holders || {};
+
         setCoins((prev) =>
           prev.map((c) => (c.id === updated.id ? updated : c))
         );
