@@ -840,43 +840,107 @@ async function saveCoin(coin) {
     ...coinToDbUpdate(coin),
   };
 
-  const rows = await sql`
-    insert into coins (id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at, total_supply, curve_supply, curve_sold, v_sol, v_tokens, reserve_sol, reserve_token, market_cap, last_price, ath_market_cap, volume_sol, last_trade_at, creator_rewards, chart)
-    values (
-      ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story}, ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
-      ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold}, ${payload.v_sol}, ${payload.v_tokens}, ${payload.reserve_sol}, ${payload.reserve_token},
-      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap}, ${payload.volume_sol}, ${payload.last_trade_at}, ${payload.creator_rewards}, ${payload.chart || []} 
-    )
-    on conflict (id) do update set
-      name = excluded.name,
-      symbol = excluded.symbol,
-      story = excluded.story,
-      logo = excluded.logo,
-      metadata_uri = excluded.metadata_uri,
-      creator_wallet = excluded.creator_wallet,
-      created_at = excluded.created_at,
-      total_supply = excluded.total_supply,
-      curve_supply = excluded.curve_supply,
-      curve_sold = excluded.curve_sold,
-      v_sol = excluded.v_sol,
-      v_tokens = excluded.v_tokens,
-      reserve_sol = excluded.reserve_sol,
-      reserve_token = excluded.reserve_token,
-      market_cap = excluded.market_cap,
-      last_price = excluded.last_price,
-      ath_market_cap = excluded.ath_market_cap,
-      volume_sol = excluded.volume_sol,
-      last_trade_at = excluded.last_trade_at,
-      creator_rewards = excluded.creator_rewards,
-      chart = excluded.chart
-      
-    returning *`;
+ 
+const rows = await sql`
+  insert into coins (
+    id,
+    name,
+    symbol,
+    story,
+    logo,
+    metadata_uri,
+    creator_wallet,
+    created_at,
+    total_supply,
+    curve_supply,
+    curve_sold,
+    v_sol,
+    v_tokens,
+    reserve_sol,
+    reserve_token,
+    market_cap,
+    last_price,
+    ath_market_cap,
+    volume_sol,
+    last_trade_at,
+    creator_rewards,
+    chart,
+    holders
+  )
 
-    coinCache.set(payload.id, rows[0]);
+  values (
+    ${payload.id},
+    ${payload.name},
+    ${payload.symbol},
+    ${payload.story},
+    ${payload.logo},
+    ${payload.metadata_uri},
+    ${payload.creator_wallet},
+    ${payload.created_at},
 
-    broadcast("coin:update", mapDbCoinToApi(rows[0]));
+    ${payload.total_supply},
+    ${payload.curve_supply},
+    ${payload.curve_sold},
+    ${payload.v_sol},
+    ${payload.v_tokens},
 
-  return mapDbCoinToApi(rows[0]);
+    ${payload.reserve_sol},
+    ${payload.reserve_token},
+
+    ${payload.market_cap},
+    ${payload.last_price},
+    ${payload.ath_market_cap},
+
+    ${payload.volume_sol},
+    ${payload.last_trade_at},
+
+    ${payload.creator_rewards},
+
+    ${payload.chart || []},
+
+    ${payload.holders || {}}
+  )
+
+  on conflict (id) do update set
+    name = excluded.name,
+    symbol = excluded.symbol,
+    story = excluded.story,
+    logo = excluded.logo,
+    metadata_uri = excluded.metadata_uri,
+    creator_wallet = excluded.creator_wallet,
+    created_at = excluded.created_at,
+
+    total_supply = excluded.total_supply,
+    curve_supply = excluded.curve_supply,
+    curve_sold = excluded.curve_sold,
+
+    v_sol = excluded.v_sol,
+    v_tokens = excluded.v_tokens,
+
+    reserve_sol = excluded.reserve_sol,
+    reserve_token = excluded.reserve_token,
+
+    market_cap = excluded.market_cap,
+    last_price = excluded.last_price,
+    ath_market_cap = excluded.ath_market_cap,
+
+    volume_sol = excluded.volume_sol,
+    last_trade_at = excluded.last_trade_at,
+
+    creator_rewards = excluded.creator_rewards,
+
+    chart = excluded.chart,
+
+    holders = excluded.holders
+
+  returning *`;
+
+coinCache.set(payload.id, rows[0]);
+
+broadcast("coin:update", mapDbCoinToApi(rows[0]));
+
+return mapDbCoinToApi(rows[0]);
+
 }
 
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
