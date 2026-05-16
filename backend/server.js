@@ -356,58 +356,80 @@ function coinToDbUpdate(coin = {}) {
 
   return {
     name: coin.name || "",
+
     symbol: coin.symbol || "",
+
     story: coin.story || "",
+
     logo: coin.logo || "",
+
     metadata_uri: coin.metadataUri || "",
-    creator_wallet: coin.creatorWallet || coin.owner || "",
+
+    creator_wallet:
+      coin.creatorWallet ||
+      coin.owner ||
+      "",
+
     created_at: new Date(
       coin.createdAt || Date.now()
     ).toISOString(),
 
     total_supply:
-      coin.totalSupply || TOTAL_SUPPLY,
+      coin.totalSupply ||
+      TOTAL_SUPPLY,
 
     curve_supply:
       coin.curveSupply ||
       saleSupplyFromTotal(
-        coin.totalSupply || TOTAL_SUPPLY
+        coin.totalSupply ||
+          TOTAL_SUPPLY
       ),
 
-    curve_sold: coin.curveSold || 0,
+    curve_sold:
+      coin.curveSold || 0,
 
-    v_sol: coin.vSol || VIRTUAL_SOL,
+    v_sol:
+      coin.vSol || VIRTUAL_SOL,
 
     v_tokens:
       coin.vTokens ||
       calcVirtualTokens(
-        coin.totalSupply || TOTAL_SUPPLY,
+        coin.totalSupply ||
+          TOTAL_SUPPLY,
+
         coin.curveSupply ||
           saleSupplyFromTotal(
-            coin.totalSupply || TOTAL_SUPPLY
+            coin.totalSupply ||
+              TOTAL_SUPPLY
           ),
+
         coin.vTokens
       ),
 
-    reserve_sol: coin.solReserve || 0,
+    reserve_sol:
+      coin.solReserve || 0,
 
     reserve_token:
       coin.tokenReserve ||
       coin.curveSupply ||
       saleSupplyFromTotal(
-        coin.totalSupply || TOTAL_SUPPLY
+        coin.totalSupply ||
+          TOTAL_SUPPLY
       ),
 
-    market_cap: boostedMarketCap,
+    market_cap:
+      boostedMarketCap,
 
-    last_price: coin.priceSol || 0,
+    last_price:
+      coin.priceSol || 0,
 
     ath_market_cap: Math.max(
       boostedMarketCap,
       safeNum(coin.ath, 0)
     ),
 
-    volume_sol: coin.volumeSol || 0,
+    volume_sol:
+      coin.volumeSol || 0,
 
     last_trade_at:
       coin.lastTradeAt || 0,
@@ -415,8 +437,17 @@ function coinToDbUpdate(coin = {}) {
     creator_rewards:
       coin.creatorRewardsSol || 0,
 
-    chart: Array.isArray(coin.chart)
-      ? coin.chart.slice(-MAX_CHART_POINTS)
+    holders: asObj(
+      coin.holders,
+      {}
+    ),
+
+    chart: Array.isArray(
+      coin.chart
+    )
+      ? coin.chart.slice(
+          -MAX_CHART_POINTS
+        )
       : [],
   };
 }
