@@ -852,6 +852,19 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
+      .ghostBtn{
+        border:none;
+        cursor:pointer;
+        padding:10px 13px;
+        border-radius:16px;
+        font-size:12px;
+        font-weight:900;
+        color:var(--text);
+        background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+        border:1px solid rgba(255,255,255,.10);
+        transition:all .15s ease;
+      }
+
       @media (max-width: 640px){
         .topbar{ padding:8px 8px 0; }
 
@@ -1130,43 +1143,43 @@ function Input({
   }
 
   return (
-  <div style={{ position: "relative" }}>
-    <input
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      type={type === "number" ? "text" : type}
-      inputMode={type === "number" ? "decimal" : undefined}
-      style={{
-        ...baseStyle,
-        paddingRight: rightLabel ? 76 : undefined,
-        ...style,
-      }}
-    />
-    {rightLabel ? (
-      <button
-        type="button"
-        onClick={onRightLabelClick}
+    <div style={{ position: "relative" }}>
+      <input
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        type={type === "number" ? "text" : type}
+        inputMode={type === "number" ? "decimal" : undefined}
         style={{
-          position: "absolute",
-          right: 10,
-          top: "50%",
-          transform: "translateY(-50%)",
-          border: "1px solid rgba(255,255,255,.10)",
-          background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
-          color: "var(--text)",
-          borderRadius: 12,
-          padding: "7px 10px",
-          fontSize: 11,
-          fontWeight: 1000,
-          cursor: "pointer",
+          ...baseStyle,
+          paddingRight: rightLabel ? 76 : undefined,
+          ...style,
         }}
-      >
-        {rightLabel}
-      </button>
-    ) : null}
-  </div>
-);
+      />
+      {rightLabel ? (
+        <button
+          type="button"
+          onClick={onRightLabelClick}
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            border: "1px solid rgba(255,255,255,.10)",
+            background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+            color: "var(--text)",
+            borderRadius: 12,
+            padding: "7px 10px",
+            fontSize: 11,
+            fontWeight: 1000,
+            cursor: "pointer",
+          }}
+        >
+          {rightLabel}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function ScreenShell({ children }) {
@@ -1364,11 +1377,11 @@ function normalizeCoin(c = {}) {
     ath: Math.max(mc, safeNum(c.ath, c.ath_market_cap || mc)),
     chart,
     holders:
-  c && typeof c.holders === "object" && !Array.isArray(c.holders)
-    ? c.holders
-    : c.prevHolders && typeof c.prevHolders === "object"
-    ? c.prevHolders
-    : {},
+      c && typeof c.holders === "object" && !Array.isArray(c.holders)
+        ? c.holders
+        : c.prevHolders && typeof c.prevHolders === "object"
+        ? c.prevHolders
+        : {},
     createdAt: safeNum(c.createdAt, c.created_at ? new Date(c.created_at).getTime() : Date.now()),
     lastTradeAt: safeNum(c.lastTradeAt, c.last_trade_at || 0),
     creatorRewardsSol: Math.max(0, safeNum(c.creatorRewardsSol, c.creator_rewards || 0)),
@@ -1503,9 +1516,9 @@ function getTradePriceUsd(trade, coin, fallback) {
   }
 
   return Math.max(
-  0.00000001,
-  safeNum(fallback, 0.000001)
-);
+    0.00000001,
+    safeNum(fallback, 0.000001)
+  );
 }
 
 function getCoin24hMovePct(c) {
@@ -1703,7 +1716,7 @@ function ThemeOption({ theme, current, setTheme, label }) {
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 1000, fontSize: 13 }}>{label}</div>
+          <div style={{ fontWeight: 1000, fontSize: 13 }}>{label || theme}</div>
           <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>{theme}</div>
         </div>
 
@@ -1835,7 +1848,6 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
     </button>
   );
 }
-
 
 function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = false, reloadKey = 0 }) {
   const chartRef = useRef(null);
@@ -2071,7 +2083,6 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
     return normalized.slice(-maxBars);
   }, [candles, chartRange, coin?.priceUsd, coin?.lastPriceUsd, coin?.price]);
 
-
   const pct = useMemo(() => {
     return getCoin24hMovePct(coin || {});
   }, [coin?.chart, coin?.priceUsd, coin?.lastPriceUsd]);
@@ -2096,33 +2107,17 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
       width,
       height,
       layout: {
-
-
         background: { type: ColorType.Solid, color: themeCfg.chartBg },
         textColor: themeCfg.faintText,
         attributionLogo: false,
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
       },
-
-handleScale: {
-  mouseWheel: true,
-  pinch: true,
-  axisPressedMouseMove: true,
-},
-
-rightPriceScale: {
-  visible: true,
-  scaleMargins: {
-    top: 0.1,
-    bottom: 0.1,
-  },
-},
-
       grid: {
         vertLines: { color: themeCfg.grid, visible: true },
         horzLines: { color: themeCfg.grid, visible: true },
       },
       rightPriceScale: {
+        visible: true,
         borderColor: themeCfg.axis,
         scaleMargins: { top: 0.10, bottom: 0.08 },
         entireTextOnly: true,
@@ -2187,50 +2182,48 @@ rightPriceScale: {
       },
     });
 
- const uniqueCandles = [];
-const seen = new Set();
+    const uniqueCandles = [];
+    const seen = new Set();
 
-for (const c of candleData || []) {
-  const t = Math.floor(Number(c.time) / 1000);
+    for (const c of candleData || []) {
+      const t = Math.floor(Number(c.time) / 1000);
 
-  if (
-    !seen.has(t) &&
-    Number.isFinite(c.open) &&
-    Number.isFinite(c.high) &&
-    Number.isFinite(c.low) &&
-    Number.isFinite(c.close)
-  ) {
-    seen.add(t);
+      if (
+        !seen.has(t) &&
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close)
+      ) {
+        seen.add(t);
 
-    uniqueCandles.push({
-      time: t,
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-    });
-  }
-}
+        uniqueCandles.push({
+          time: t,
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+        });
+      }
+    }
 
-series.setData(uniqueCandles);
+    series.setData(uniqueCandles);
 
     chart.timeScale().scrollToRealTime();
-
     chart.timeScale().fitContent();
 
-series.priceScale().applyOptions({
-  autoScale: true,
-  scaleMargins: {
-    top: 0.25,
-    bottom: 0.25,
-  },
-});
+    series.priceScale().applyOptions({
+      autoScale: true,
+      scaleMargins: {
+        top: 0.25,
+        bottom: 0.25,
+      },
+    });
 
     const handleResize = () => {
       if (!chartRef.current) return;
       chart.applyOptions({
         width: Math.max(280, chartRef.current.clientWidth || 280),
-        
       });
     };
 
@@ -2316,7 +2309,6 @@ series.priceScale().applyOptions({
             marginLeft: "auto",
             maxWidth: "100%",
             width: "100%",
-
           }}
         >
           <button
@@ -2405,17 +2397,14 @@ series.priceScale().applyOptions({
   );
 }
 
-
 export default function App() {
   const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
   const wsRef = useRef(null);
 
-  
-
   const [recentTrades, setRecentTrades] = useState([]);
 
- const [showIntro, setShowIntro] = useState(() => {
+  const [showIntro, setShowIntro] = useState(() => {
     try {
       return sessionStorage.getItem("introSeen") !== "1";
     } catch {
@@ -2433,93 +2422,6 @@ export default function App() {
     }, INTRO_MS);
     return () => clearTimeout(t);
   }, [showIntro]);
-
-  useEffect(() => {
-  const ws = new WebSocket(WS_BASE);
-
-  wsRef.current = ws;
-
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-if (msg.event === "coin:update") {
-  const updated = normalizeCoin(msg.payload);
-
-  updated.prevHolders =
-    selectedCoin?.holders || {};
-
-  setCoins((prev) =>
-    prev.map((c) => {
-      if (c.id !== updated.id) return c;
-
-      return {
-        ...c,
-        ...updated,
-
-        holders:
-          updated.holders &&
-          Object.keys(updated.holders).length
-            ? {
-                ...c.holders,
-                ...updated.holders,
-              }
-            : c.holders || {},
-      };
-    })
-  );
-}
-if (msg.event === "trade:new") {
-  setRecentTrades((prev) => [
-    msg.payload,
-    ...prev.slice(0, 24),
-  ]);
-}
-
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  return () => {
-    ws.close();
-  };
-}, []);
-
-  useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      const ref = (url.searchParams.get("ref") || "").trim();
-      if (ref) {
-        localStorage.setItem("ref", ref);
-        url.searchParams.delete("ref");
-        window.history.replaceState({}, "", url.toString());
-      }
-    } catch {}
-  }, []);
-
-  const connectPhantom = async () => {
-    try {
-      setConnectingPhantom(true);
-      const provider = getPhantomProvider();
-      if (!provider) {
-        alert("Phantom wallet not found. Install Phantom extension/app first.");
-        window.open("https://phantom.app/", "_blank");
-        return;
-      }
-
-      const resp = await provider.connect();
-      const address = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
-      if (!address) throw new Error("Phantom address not found");
-
-      setPhantomWallet(address);
-      setToast(`Phantom connected: ${shortWallet(address)}`);
-    } catch (err) {
-      console.error("Phantom connect error:", err);
-      setToast(err?.message || "Phantom connect failed");
-    } finally {
-      setConnectingPhantom(false);
-    }
-  };
 
   const isMobile = typeof window !== "undefined" && window.innerWidth < 520;
 
@@ -2594,29 +2496,63 @@ if (msg.event === "trade:new") {
     } catch {}
   }
 
- const solAddr = useMemo(() => {
-  const phantom = String(phantomWallet || "").trim();
-  if (phantom) return phantom;
+  useEffect(() => {
+    const ws = new WebSocket(WS_BASE);
 
-  const primary = String(user?.wallet?.address || "").trim();
-  if (primary) return primary;
+    wsRef.current = ws;
 
-  const solLinked =
-    user?.linkedAccounts?.find(
-      (a) => a?.type === "wallet" && a?.chainType === "solana" && a?.address
-    )?.address || "";
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.event === "coin:update") {
+          const updated = normalizeCoin(msg.payload);
 
-  if (solLinked) return String(solLinked).trim();
+          setCoins((prev) =>
+            prev.map((c) => {
+              if (c.id !== updated.id) return c;
 
-  const anyLinked =
-    user?.linkedAccounts?.find(
-      (a) => a?.type === "wallet" && a?.address
-    )?.address || "";
+              return {
+                ...c,
+                ...updated,
+                holders:
+                  updated.holders &&
+                  Object.keys(updated.holders).length
+                    ? {
+                        ...c.holders,
+                        ...updated.holders,
+                      }
+                    : c.holders || {},
+              };
+            })
+          );
+        }
+        if (msg.event === "trade:new") {
+          setRecentTrades((prev) => [
+            msg.payload,
+            ...prev.slice(0, 24),
+          ]);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
-  return String(anyLinked).trim();
-}, [user, phantomWallet]);
+    return () => {
+      ws.close();
+    };
+  }, []);
 
-  const isWalletConnected = useMemo(() => Boolean(solAddr), [solAddr]);
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const ref = (url.searchParams.get("ref") || "").trim();
+      if (ref) {
+        localStorage.setItem("ref", ref);
+        url.searchParams.delete("ref");
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch {}
+  }, []);
 
   function getPhantomProvider() {
     try {
@@ -2638,6 +2574,30 @@ if (msg.event === "trade:new") {
     }
   }
 
+  const connectPhantom = async () => {
+    try {
+      setConnectingPhantom(true);
+      const provider = getPhantomProvider();
+      if (!provider) {
+        alert("Phantom wallet not found. Install Phantom extension/app first.");
+        window.open("https://phantom.app/", "_blank");
+        return;
+      }
+
+      const resp = await provider.connect();
+      const address = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
+      if (!address) throw new Error("Phantom address not found");
+
+      setPhantomWallet(address);
+      setToast(`Phantom connected: ${shortWallet(address)}`);
+    } catch (err) {
+      console.error("Phantom connect error:", err);
+      setToast(err?.message || "Phantom connect failed");
+    } finally {
+      setConnectingPhantom(false);
+    }
+  };
+
   async function disconnectPhantom() {
     try {
       const provider = getPhantomProvider();
@@ -2646,6 +2606,30 @@ if (msg.event === "trade:new") {
     setPhantomWallet("");
     setToast("Phantom disconnected");
   }
+
+  const solAddr = useMemo(() => {
+    const phantom = String(phantomWallet || "").trim();
+    if (phantom) return phantom;
+
+    const primary = String(user?.wallet?.address || "").trim();
+    if (primary) return primary;
+
+    const solLinked =
+      user?.linkedAccounts?.find(
+        (a) => a?.type === "wallet" && a?.chainType === "solana" && a?.address
+      )?.address || "";
+
+    if (solLinked) return String(solLinked).trim();
+
+    const anyLinked =
+      user?.linkedAccounts?.find(
+        (a) => a?.type === "wallet" && a?.address
+      )?.address || "";
+
+    return String(anyLinked).trim();
+  }, [user, phantomWallet]);
+
+  const isWalletConnected = useMemo(() => Boolean(solAddr), [solAddr]);
 
   useEffect(() => {
     const provider = getPhantomProvider();
@@ -2726,71 +2710,71 @@ if (msg.event === "trade:new") {
       .sort((a, b) => Number(b?.volumeSol || 0) - Number(a?.volumeSol || 0));
   }, [coins]);
 
- async function loadCoins(page = 0, append = false) {
-  try {
-    setLoadingCoins(true);
+  async function loadCoins(page = 0, append = false) {
+    try {
+      setLoadingCoins(true);
 
-    const cacheKey = `coins_page_${page}`;
-    const cacheTTL = 2500;
-    let json = null;
-
-    if (!append) {
-      try {
-        const cachedRaw = localStorage.getItem(cacheKey);
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
-          if (cached && Date.now() - Number(cached.ts || 0) < cacheTTL) {
-            json = cached.data || null;
-          }
-        }
-      } catch {}
-    }
-
-    if (!json) {
-      try {
-        json = await api(`/coin/list?page=${page}&limit=50`);
-      } catch {
-        const base = String(API_BASE || "").replace(/\/$/, "");
-        const res = await fetch(`${base}/coin/list?page=${page}&limit=50`, { cache: "no-store" });
-        json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(json?.error || `Request failed (${res.status})`);
-        }
-      }
+      const cacheKey = `coins_page_${page}`;
+      const cacheTTL = 2500;
+      let json = null;
 
       if (!append) {
         try {
-          localStorage.setItem(
-            cacheKey,
-            JSON.stringify({ ts: Date.now(), data: json })
-          );
+          const cachedRaw = localStorage.getItem(cacheKey);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            if (cached && Date.now() - Number(cached.ts || 0) < cacheTTL) {
+              json = cached.data || null;
+            }
+          }
         } catch {}
       }
-    }
 
-    const rawCoins =
-      Array.isArray(json?.coins) ? json.coins :
-      Array.isArray(json?.items) ? json.items :
-      Array.isArray(json?.data) ? json.data :
-      Array.isArray(json) ? json :
-      [];
-
-    const rawHot =
-      Array.isArray(json?.hot15m) ? json.hot15m :
-      Array.isArray(json?.hot) ? json.hot :
-      [];
-
-    const incoming = (rawCoins || [])
-      .map((c) => {
+      if (!json) {
         try {
-          const coin = normalizeCoin(c);
-          if (!coin?.id) return null;
-          return coin;
+          json = await api(`/coin/list?page=${page}&limit=50`);
         } catch {
-          return null;
+          const base = String(API_BASE || "").replace(/\/$/, "");
+          const res = await fetch(`${base}/coin/list?page=${page}&limit=50`, { cache: "no-store" });
+          json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(json?.error || `Request failed (${res.status})`);
+          }
         }
-      })
-      .filter(Boolean);
+
+        if (!append) {
+          try {
+            localStorage.setItem(
+              cacheKey,
+              JSON.stringify({ ts: Date.now(), data: json })
+            );
+          } catch {}
+        }
+      }
+
+      const rawCoins =
+        Array.isArray(json?.coins) ? json.coins :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.data) ? json.data :
+        Array.isArray(json) ? json :
+        [];
+
+      const rawHot =
+        Array.isArray(json?.hot15m) ? json.hot15m :
+        Array.isArray(json?.hot) ? json.hot :
+        [];
+
+      const incoming = (rawCoins || [])
+        .map((c) => {
+          try {
+            const coin = normalizeCoin(c);
+            if (!coin?.id) return null;
+            return coin;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
 
       const incomingHot = (rawHot || [])
         .map((c) => {
@@ -2899,120 +2883,123 @@ if (msg.event === "trade:new") {
     return () => io.disconnect();
   }, [screen, coinsPage, coinsHasMore, loadingCoins]);
 
-  
+  useEffect(() => {
+    const themes = {
+      calm: {
+        bg: "#07111F",
+        card: "rgba(18,29,45,.45)",
+        text: "#F7FBFF",
+        primary: "#63F5C8",
+        secondary: "#7CCBFF",
+        accent: "#A78BFA",
+        danger: "#FF8DA1",
+        glow: "rgba(99,245,200,.25)",
+      },
+      neon: {
+        bg: "#0C0B1A",
+        card: "rgba(31,20,49,.45)",
+        text: "#FBF8FF",
+        primary: "#C084FC",
+        secondary: "#22D3EE",
+        accent: "#F472B6",
+        danger: "#FF4D6D",
+        glow: "rgba(192,132,252,.35)",
+      },
+      ocean: {
+        bg: "#071A22",
+        card: "rgba(15,40,54,.45)",
+        text: "#F2FCFF",
+        primary: "#4FD1FF",
+        secondary: "#63F5C8",
+        accent: "#38BDF8",
+        danger: "#FF7B7B",
+        glow: "rgba(79,209,255,.25)",
+      },
+      fire: {
+        bg: "#140707",
+        card: "rgba(40,15,15,.45)",
+        text: "#FFF5F5",
+        primary: "#FF6B3D",
+        secondary: "#FFD166",
+        accent: "#FF3D6E",
+        danger: "#FF2E2E",
+        glow: "rgba(255,107,61,.25)",
+      },
+      royal: {
+        bg: "#0A1024",
+        card: "rgba(22,30,62,.45)",
+        text: "#F6F8FF",
+        primary: "#8FA8FF",
+        secondary: "#63F5C8",
+        accent: "#A78BFA",
+        danger: "#FF6B9D",
+        glow: "rgba(143,168,255,.25)",
+      },
+      rose: {
+        bg: "#1A0B14",
+        card: "rgba(56,24,43,.45)",
+        text: "#FFF7FB",
+        primary: "#FF8FB1",
+        secondary: "#FDB7EA",
+        accent: "#F472B6",
+        danger: "#FF6B8A",
+        glow: "rgba(255,143,177,.28)",
+      },
+    };
+
+    const t = themes[theme] || themes.calm;
+
+    document.documentElement.style.setProperty("--bg", t.bg);
+    document.documentElement.style.setProperty("--card", t.card);
+    document.documentElement.style.setProperty("--text", t.text);
+
+    document.documentElement.style.setProperty("--btn-primary", t.primary);
+    document.documentElement.style.setProperty("--btn-secondary", t.secondary);
+
+    document.documentElement.style.setProperty("--border", t.secondary + "33");
+    document.documentElement.style.setProperty("--shadow", t.glow);
+
+    document.documentElement.style.setProperty("--primary", t.primary);
+    document.documentElement.style.setProperty("--secondary", t.secondary);
+    document.documentElement.style.setProperty("--accent", t.accent);
+    document.documentElement.style.setProperty("--danger", t.danger);
+    document.documentElement.style.setProperty("--glow", t.glow);
+
+    document.body.style.background = `
+      radial-gradient(900px 600px at 10% 0%, ${t.glow}, transparent),
+      radial-gradient(800px 500px at 100% 0%, ${t.accent}, transparent),
+      ${t.bg}
+    `;
+
+    document.body.style.color = t.text;
+
+    try {
+      localStorage.setItem(LS_THEME, theme);
+    } catch {}
+  }, [theme]);
 
   useEffect(() => {
-  const themes = {
-    calm: {
-      bg: "#07111F",
-      card: "rgba(18,29,45,.45)",
-      text: "#F7FBFF",
-      primary: "#63F5C8",
-      secondary: "#7CCBFF",
-      accent: "#A78BFA",
-      danger: "#FF8DA1",
-      glow: "rgba(99,245,200,.25)",
-    },
-    neon: {
-      bg: "#0C0B1A",
-      card: "rgba(31,20,49,.45)",
-      text: "#FBF8FF",
-      primary: "#C084FC",
-      secondary: "#22D3EE",
-      accent: "#F472B6",
-      danger: "#FF4D6D",
-      glow: "rgba(192,132,252,.35)",
-    },
-    ocean: {
-      bg: "#071A22",
-      card: "rgba(15,40,54,.45)",
-      text: "#F2FCFF",
-      primary: "#4FD1FF",
-      secondary: "#63F5C8",
-      accent: "#38BDF8",
-      danger: "#FF7B7B",
-      glow: "rgba(79,209,255,.25)",
-    },
-    fire: {
-      bg: "#140707",
-      card: "rgba(40,15,15,.45)",
-      text: "#FFF5F5",
-      primary: "#FF6B3D",
-      secondary: "#FFD166",
-      accent: "#FF3D6E",
-      danger: "#FF2E2E",
-      glow: "rgba(255,107,61,.25)",
-    },
-    royal: {
-      bg: "#0A1024",
-      card: "rgba(22,30,62,.45)",
-      text: "#F6F8FF",
-      primary: "#8FA8FF",
-      secondary: "#63F5C8",
-      accent: "#A78BFA",
-      danger: "#FF6B9D",
-      glow: "rgba(143,168,255,.25)",
-    },
-    rose: {
-      bg: "#1A0B14",
-      card: "rgba(56,24,43,.45)",
-      text: "#FFF7FB",
-      primary: "#FF8FB1",
-      secondary: "#FDB7EA",
-      accent: "#F472B6",
-      danger: "#FF6B8A",
-      glow: "rgba(255,143,177,.28)",
-    },
-  };
+    try {
+      localStorage.setItem(LS_PROFILE_AVATAR, profileAvatar);
+    } catch {}
+  }, [profileAvatar]);
 
-  const t = themes[theme] || themes.calm;
+  async function handleLogoPick(file) {
+    if (!file) return;
 
+    if (file.size > MAX_LOGO_BYTES) {
+      setToast("Logo too large");
+      return;
+    }
 
-  document.documentElement.style.setProperty("--bg", t.bg);
-document.documentElement.style.setProperty("--card", t.card);
-document.documentElement.style.setProperty("--text", t.text);
-
-document.documentElement.style.setProperty("--btn-primary", t.primary);
-document.documentElement.style.setProperty("--btn-secondary", t.secondary);
-
-document.documentElement.style.setProperty("--border", t.secondary + "33");
-document.documentElement.style.setProperty("--shadow", t.glow);
-
-  document.documentElement.style.setProperty("--primary", t.primary);
-  document.documentElement.style.setProperty("--secondary", t.secondary);
-  document.documentElement.style.setProperty("--accent", t.accent);
-  document.documentElement.style.setProperty("--danger", t.danger);
-  document.documentElement.style.setProperty("--glow", t.glow);
-
-  document.body.style.background = `
-    radial-gradient(900px 600px at 10% 0%, ${t.glow}, transparent),
-    radial-gradient(800px 500px at 100% 0%, ${t.accent}, transparent),
-    ${t.bg}
-  `;
-
-  document.body.style.color = t.text;
-
-  try {
-    localStorage.setItem(LS_THEME, theme);
-  } catch {}
-}, [theme]);
-
-async function handleLogoPick(file) {
-  if (!file) return;
-
-  if (file.size > MAX_LOGO_BYTES) {
-    setToast("Logo too large");
-    return;
+    try {
+      const data = await fileToDataUrl(file);
+      setLogoFile(file);
+      setLogoPreview(data);
+    } catch {
+      setToast("Logo read failed");
+    }
   }
-
-  try {
-    const data = await fileToDataUrl(file);
-    setLogoFile(file);
-    setLogoPreview(data);
-  } catch {
-    setToast("Logo read failed");
-  }
-}
 
   function goScreen(next) {
     setScreenHistory((prev) => {
@@ -3050,7 +3037,6 @@ async function handleLogoPick(file) {
   }
 
   function renderBackButton() {
-    
     return (
       <MiniBtn onClick={goBack} style={{ width: "fit-content" }}>
         ← Back
@@ -3121,154 +3107,223 @@ async function handleLogoPick(file) {
     }
   }
 
-function patchProfileHoldingLocal(prev, coin, amount) {
-  if (!prev || !coin?.id) return prev;
-  const amt = Math.max(0, safeNum(amount, 0));
-  const list = Array.isArray(prev.holdings) ? [...prev.holdings] : [];
-  const idx = list.findIndex((h) => String(h.coinId || h.id || "") === String(coin.id));
+  function patchProfileHoldingLocal(prev, coin, amount) {
+    if (!prev || !coin?.id) return prev;
+    const amt = Math.max(0, safeNum(amount, 0));
+    const list = Array.isArray(prev.holdings) ? [...prev.holdings] : [];
+    const idx = list.findIndex((h) => String(h.coinId || h.id || "") === String(coin.id));
 
-  if (amt <= 0) {
-    if (idx >= 0) list.splice(idx, 1);
-    return { ...prev, holdings: list };
-  }
+    if (amt <= 0) {
+      if (idx >= 0) list.splice(idx, 1);
+      return { ...prev, holdings: list };
+    }
 
-  const row = {
-    ...(idx >= 0 ? list[idx] : {}),
-    coinId: coin.id,
-    name: coin.name,
-    symbol: coin.symbol,
-    logo: coin.logo,
-    amount: amt,
-    tokens: amt,
-    totalSupply: Math.max(1, safeNum(coin.totalSupply, 1_000_000_000)),
-    pct: (amt / Math.max(1, safeNum(coin.totalSupply, 1_000_000_000))) * 100,
-    lastAt: Date.now(),
-  };
-
-  if (idx >= 0) list[idx] = row;
-  else list.unshift(row);
-
-  return { ...prev, holdings: list.sort((a, b) => safeNum(b.lastAt, 0) - safeNum(a.lastAt, 0)) };
-}
-
-async function handleTrade() {
-  if (!isWalletConnected || !solAddr) {
-    setToast("Connect wallet first");
-    return;
-  }
-
-  if (!selectedCoin?.id) {
-    setToast("Select a coin first");
-    return;
-  }
-
-  const amount = Math.max(0, safeNum(tradeAmount, 0));
-  if (amount <= 0) {
-    setToast("Enter amount");
-    return;
-  }
-
-  const current = { ...selectedCoin };
-  const currentHolder = Math.max(0, safeNum(current?.holders?.[solAddr], 0));
-
-  if (tradeMode === "SELL" && amount > currentHolder) {
-    setToast("Not enough tokens");
-    return;
-  }
-
-  const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
-
-  try {
-    setTrading(true);
-
-    const path = tradeMode === "BUY" ? "/coin/buy" : "/coin/sell";
-    const payload = {
-      wallet: solAddr,
-      coinId: current.id,
-      ...(tradeMode === "BUY" ? { sol: amount } : { tokens: amount }),
+    const row = {
+      ...(idx >= 0 ? list[idx] : {}),
+      coinId: coin.id,
+      name: coin.name,
+      symbol: coin.symbol,
+      logo: coin.logo,
+      amount: amt,
+      tokens: amt,
+      totalSupply: Math.max(1, safeNum(coin.totalSupply, 1_000_000_000)),
+      pct: (amt / Math.max(1, safeNum(coin.totalSupply, 1_000_000_000))) * 100,
+      lastAt: Date.now(),
     };
 
-    const json = await api(path, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    if (idx >= 0) list[idx] = row;
+    else list.unshift(row);
 
-    if (json?.ok === false) {
-      throw new Error(json?.error || "Trade failed");
-    }
+    return { ...prev, holdings: list.sort((a, b) => safeNum(b.lastAt, 0) - safeNum(a.lastAt, 0)) };
+  }
 
-    const updated = normalizeCoin(json?.coin || {});
-    const tradedTokens = Math.max(0, safeNum(json?.tokens, tradeMode === "BUY" ? previewTokens : amount));
-    const fallbackHolder = Math.max(
-      0,
-      currentHolder + (tradeMode === "BUY" ? tradedTokens : -tradedTokens)
-    );
-    const resolvedHolder = Math.max(
-      0,
-      safeNum(updated?.holders?.[solAddr], fallbackHolder)
-    );
+  const tradePreview = useMemo(() => {
+    const amount = Math.max(0, safeNum(tradeAmount, 0));
+    const feePct = 0.01;
 
-    if (updated?.id) {
-      const resolvedCoin = {
-        ...updated,
-        holders: {
-          ...(updated.holders || {}),
-          [solAddr]: resolvedHolder,
-        },
+    if (!selectedCoin || amount <= 0) {
+      return {
+        ok: false,
+        estTokens: 0,
+        feeSol: 0,
+        netSol: 0,
+        grossSolNeeded: 0,
+        youReceiveSol: 0,
+        priceSol: Math.max(0, safeNum(selectedCoin?.priceSol, 0)),
       };
-
-      setCoins((prev) => {
-        const rows = Array.isArray(prev) ? prev : [];
-        const exists = rows.some((c) => String(c.id) === String(resolvedCoin.id));
-        return exists
-          ? rows.map((c) => (String(c.id) === String(resolvedCoin.id) ? resolvedCoin : c))
-          : [resolvedCoin, ...rows];
-      });
-      setProfile((prev) => patchProfileHoldingLocal(prev, resolvedCoin, resolvedHolder));
-      setSelectedCoinId(resolvedCoin.id);
     }
 
-    setTradeAmount("");
-    setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
-    clearCoinsCache();
+    const priceSol = Math.max(0.0000000001, safeNum(selectedCoin?.priceSol, 0));
+    const solReserve = Math.max(0, safeNum(selectedCoin?.solReserve, 0));
+    const tokenReserve = Math.max(1, safeNum(selectedCoin?.tokenReserve, 1));
+    const curveSupply = Math.max(1, safeNum(selectedCoin?.curveSupply, tokenReserve));
+    const vSol = Math.max(0.000000001, safeNum(selectedCoin?.vSol, 30));
+    const vTokens = Math.max(1, safeNum(selectedCoin?.vTokens, curveSupply * 0.02));
+
+    if (tradeMode === "BUY") {
+      const feeSol = amount * feePct;
+      const netSol = Math.max(0, amount - feeSol);
+
+      const x = solReserve + vSol;
+      const y = tokenReserve + vTokens;
+      const k = x * y;
+
+      const newX = x + netSol;
+      const newY = k / Math.max(0.000000001, newX);
+      const estTokens = Math.max(0, y - newY);
+
+      return {
+        ok: estTokens > 0,
+        estTokens,
+        feeSol,
+        netSol,
+        grossSolNeeded: amount,
+        youReceiveSol: 0,
+        priceSol,
+      };
+    }
+
+    const tokensIn = amount;
+    const x = solReserve + vSol;
+    const y = tokenReserve + vTokens;
+    const k = x * y;
+
+    const newY = y + tokensIn;
+    const newX = k / newY;
+    const solOut = Math.max(0, x - newX);
+
+    const feeSol = solOut * feePct;
+    const netSol = Math.max(0, solOut - feeSol);
+
+    return {
+      ok: netSol > 0,
+      estTokens: tokensIn,
+      feeSol,
+      netSol,
+      grossSolNeeded: 0,
+      youReceiveSol: netSol,
+      priceSol,
+    };
+  }, [tradeAmount, tradeMode, selectedCoin]);
+
+  async function handleTrade() {
+    if (!isWalletConnected || !solAddr) {
+      setToast("Connect wallet first");
+      return;
+    }
+
+    if (!selectedCoin?.id) {
+      setToast("Select a coin first");
+      return;
+    }
+
+    const amount = Math.max(0, safeNum(tradeAmount, 0));
+    if (amount <= 0) {
+      setToast("Enter amount");
+      return;
+    }
+
+    const current = { ...selectedCoin };
+    const currentHolder = Math.max(0, safeNum(current?.holders?.[solAddr], 0));
+
+    if (tradeMode === "SELL" && amount > currentHolder) {
+      setToast("Not enough tokens");
+      return;
+    }
+
+    const previewTokens = Math.max(0, safeNum(tradePreview?.estTokens, 0));
 
     try {
-      const latestJson = await api(`/coin/${current.id}`);
-      const latestCoin = normalizeCoin(latestJson?.coin || updated || {});
-      if (latestCoin?.id) {
-        const latestHolder = Math.max(0, safeNum(latestCoin?.holders?.[solAddr], resolvedHolder));
-        const latestResolved = {
-          ...latestCoin,
-          holders: { ...(latestCoin.holders || {}), [solAddr]: latestHolder },
+      setTrading(true);
+
+      const path = tradeMode === "BUY" ? "/coin/buy" : "/coin/sell";
+      const payload = {
+        wallet: solAddr,
+        coinId: current.id,
+        ...(tradeMode === "BUY" ? { sol: amount } : { tokens: amount }),
+      };
+
+      const json = await api(path, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (json?.ok === false) {
+        throw new Error(json?.error || "Trade failed");
+      }
+
+      const updated = normalizeCoin(json?.coin || {});
+      const tradedTokens = Math.max(0, safeNum(json?.tokens, tradeMode === "BUY" ? previewTokens : amount));
+      const fallbackHolder = Math.max(
+        0,
+        currentHolder + (tradeMode === "BUY" ? tradedTokens : -tradedTokens)
+      );
+      const resolvedHolder = Math.max(
+        0,
+        safeNum(updated?.holders?.[solAddr], fallbackHolder)
+      );
+
+      if (updated?.id) {
+        const resolvedCoin = {
+          ...updated,
+          holders: {
+            ...(updated.holders || {}),
+            [solAddr]: resolvedHolder,
+          },
         };
+
         setCoins((prev) => {
           const rows = Array.isArray(prev) ? prev : [];
-          const exists = rows.some((c) => String(c.id) === String(latestResolved.id));
+          const exists = rows.some((c) => String(c.id) === String(resolvedCoin.id));
           return exists
-            ? rows.map((c) => (String(c.id) === String(latestResolved.id) ? latestResolved : c))
-            : [latestResolved, ...rows];
+            ? rows.map((c) => (String(c.id) === String(resolvedCoin.id) ? resolvedCoin : c))
+            : [resolvedCoin, ...rows];
         });
-        setProfile((prev) => patchProfileHoldingLocal(prev, latestResolved, latestHolder));
-        setSelectedCoinId(latestResolved.id);
+        setProfile((prev) => patchProfileHoldingLocal(prev, resolvedCoin, resolvedHolder));
+        setSelectedCoinId(resolvedCoin.id);
       }
-    } catch {}
 
-    setChartReloadKey((x) => x + 1);
-    await Promise.allSettled([loadProfile(solAddr), loadBalance(solAddr), loadCoins(0, false)]);
-  } catch (e) {
-    setCoins((prev) =>
-      (prev || []).map((c) =>
-        String(c.id) === String(current.id)
-          ? { ...c, holders: { ...(c.holders || {}), [solAddr]: currentHolder } }
-          : c
-      )
-    );
-    setProfile((prev) => patchProfileHoldingLocal(prev, current, currentHolder));
-    setToast(e?.message || "Trade failed");
-  } finally {
-    setTrading(false);
+      setTradeAmount("");
+      setToast(tradeMode === "BUY" ? "Buy successful" : "Sell successful");
+      clearCoinsCache();
+
+      try {
+        const latestJson = await api(`/coin/${current.id}`);
+        const latestCoin = normalizeCoin(latestJson?.coin || updated || {});
+        if (latestCoin?.id) {
+          const latestHolder = Math.max(0, safeNum(latestCoin?.holders?.[solAddr], resolvedHolder));
+          const latestResolved = {
+            ...latestCoin,
+            holders: { ...(latestCoin.holders || {}), [solAddr]: latestHolder },
+          };
+          setCoins((prev) => {
+            const rows = Array.isArray(prev) ? prev : [];
+            const exists = rows.some((c) => String(c.id) === String(latestResolved.id));
+            return exists
+              ? rows.map((c) => (String(c.id) === String(latestResolved.id) ? latestResolved : c))
+              : [latestResolved, ...rows];
+          });
+          setProfile((prev) => patchProfileHoldingLocal(prev, latestResolved, latestHolder));
+          setSelectedCoinId(latestResolved.id);
+        }
+      } catch {}
+
+      setChartReloadKey((x) => x + 1);
+      await Promise.allSettled([loadProfile(solAddr), loadBalance(solAddr), loadCoins(0, false)]);
+    } catch (e) {
+      setCoins((prev) =>
+        (prev || []).map((c) =>
+          String(c.id) === String(current.id)
+            ? { ...c, holders: { ...(c.holders || {}), [solAddr]: currentHolder } }
+            : c
+        )
+      );
+      setProfile((prev) => patchProfileHoldingLocal(prev, current, currentHolder));
+      setToast(e?.message || "Trade failed");
+    } finally {
+      setTrading(false);
+    }
   }
-}
 
   async function handleSetReferrer() {
     if (!isWalletConnected || !solAddr) return;
@@ -3292,33 +3347,33 @@ async function handleTrade() {
     handleSetReferrer();
   }, [isWalletConnected, solAddr]);
 
- async function handleClaim(kind) {
-  if (!isWalletConnected || !solAddr) {
-    setToast("Connect wallet first");
-    return;
-  }
-
-  try {
-    const json = await api("/claim", {
-      method: "POST",
-      body: JSON.stringify({
-        wallet: solAddr,
-        kind,
-      }),
-    });
-
-    if (json?.ok) {
-      setToast(`Claimed ${fmtSol(json.amount)} SOL 🚀`);
-      loadProfile(solAddr);
-      loadBalance(solAddr);
-      loadCoins(0, false);
-    } else {
-      setToast(json?.error || "Claim failed");
+  async function handleClaim(kind) {
+    if (!isWalletConnected || !solAddr) {
+      setToast("Connect wallet first");
+      return;
     }
-  } catch (e) {
-    setToast(e?.message || "Claim failed");
+
+    try {
+      const json = await api("/claim", {
+        method: "POST",
+        body: JSON.stringify({
+          wallet: solAddr,
+          kind,
+        }),
+      });
+
+      if (json?.ok) {
+        setToast(`Claimed ${fmtSol(json.amount)} SOL 🚀`);
+        loadProfile(solAddr);
+        loadBalance(solAddr);
+        loadCoins(0, false);
+      } else {
+        setToast(json?.error || "Claim failed");
+      }
+    } catch (e) {
+      setToast(e?.message || "Claim failed");
+    }
   }
-}
 
   const creatorCoin = selectedCoin || null;
   const creatorCoins = useMemo(() => {
@@ -3327,7 +3382,8 @@ async function handleTrade() {
   }, [coins, creatorProfileId, creatorCoin]);
 
   const creatorRewards = useMemo(() => {
-    return creatorCoins.reduce((sum, coin) => sum + Number(coin?.creatorRewardsSol || 0), 0);  }, [creatorCoins]);
+    return creatorCoins.reduce((sum, coin) => sum + Number(coin?.creatorRewardsSol || 0), 0);
+  }, [creatorCoins]);
 
   const creatorHoldings = useMemo(() => {
     const cid = creatorProfileId || creatorCoin?.creatorWallet || "";
@@ -3360,77 +3416,6 @@ async function handleTrade() {
   const isSelectedCoinCreator = Boolean(selectedCoin?.creatorWallet && solAddr && String(selectedCoin.creatorWallet).trim() === String(solAddr).trim());
   const dexLaunchReady = Boolean(selectedCoin && safeNum(selectedCoin.mc, 0) >= DEX_LAUNCH_MC_USD);
 
-
-
-const tradePreview = useMemo(() => {
-  const amount = Math.max(0, safeNum(tradeAmount, 0));
-  const feePct = 0.01;
-
-  if (!selectedCoin || amount <= 0) {
-    return {
-      ok: false,
-      estTokens: 0,
-      feeSol: 0,
-      netSol: 0,
-      grossSolNeeded: 0,
-      youReceiveSol: 0,
-      priceSol: Math.max(0, safeNum(selectedCoin?.priceSol, 0)),
-    };
-  }
-
-  const priceSol = Math.max(0.0000000001, safeNum(selectedCoin?.priceSol, 0));
-  const solReserve = Math.max(0, safeNum(selectedCoin?.solReserve, 0));
-  const tokenReserve = Math.max(1, safeNum(selectedCoin?.tokenReserve, 1));
-  const curveSupply = Math.max(1, safeNum(selectedCoin?.curveSupply, tokenReserve));
-  const vSol = Math.max(0.000000001, safeNum(selectedCoin?.vSol, 30));
-  const vTokens = Math.max(1, safeNum(selectedCoin?.vTokens, curveSupply * 0.02));
-
-  if (tradeMode === "BUY") {
-    const feeSol = amount * feePct;
-    const netSol = Math.max(0, amount - feeSol);
-
-    const x = solReserve + vSol;
-    const y = tokenReserve + vTokens;
-    const k = x * y;
-
-    const newX = x + netSol;
-    const newY = k / Math.max(0.000000001, newX);
-    const estTokens = Math.max(0, y - newY);
-
-    return {
-      ok: estTokens > 0,
-      estTokens,
-      feeSol,
-      netSol,
-      grossSolNeeded: amount,
-      youReceiveSol: 0,
-      priceSol,
-    };
-  }
-
-  const tokensIn = amount;
-  const x = solReserve + vSol;
-  const y = tokenReserve + vTokens;
-  const k = x * y;
-
-  const newY = y + tokensIn;
-  const newX = k / newY;
-  const solOut = Math.max(0, x - newX);
-
-  const feeSol = solOut * feePct;
-  const netSol = Math.max(0, solOut - feeSol);
-
-  return {
-    ok: netSol > 0,
-    estTokens: tokensIn,
-    feeSol,
-    netSol,
-    grossSolNeeded: 0,
-    youReceiveSol: netSol,
-    priceSol,
-  };
-}, [tradeAmount, tradeMode, selectedCoin]);
-
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
   return (
@@ -3438,70 +3423,67 @@ const tradePreview = useMemo(() => {
       <ThemeStyles />
 
       {withdrawOpen && (
-  <div className="modalBack">
-    <div className="modalCard">
-      <div className="modalHead">
-        <div className="modalTitle">Withdraw SOL</div>
+        <div className="modalBack">
+          <div className="modalCard">
+            <div className="modalHead">
+              <div className="modalTitle">Withdraw SOL</div>
+              <MiniBtn onClick={() => setWithdrawOpen(false)}>Close</MiniBtn>
+            </div>
 
-        <MiniBtn onClick={() => setWithdrawOpen(false)}>
-          Close
-        </MiniBtn>
-      </div>
+            <div className="modalBody">
+              <Input
+                value={withdrawAddr}
+                onChange={(e) => setWithdrawAddr(e.target.value)}
+                placeholder="Enter SOL address"
+              />
 
-      <div className="modalBody">
-        <Input
-          value={withdrawAddr}
-          onChange={(e) => setWithdrawAddr(e.target.value)}
-          placeholder="Enter SOL address"
-        />
+              <div style={{ height: 10 }} />
 
-        <div style={{ height: 10 }} />
+              <Input
+                value={withdrawAmt}
+                onChange={(e) => setWithdrawAmt(e.target.value)}
+                placeholder="Enter amount in SOL"
+                type="number"
+              />
 
-        <Input
-          value={withdrawAmt}
-          onChange={(e) => setWithdrawAmt(e.target.value)}
-          placeholder="Enter amount in SOL"
-          type="number"
-        />
+              <div style={{ height: 14 }} />
 
-        <div style={{ height: 14 }} />
+              <PrimaryButton
+                onClick={async () => {
+                  try {
+                    if (!withdrawAddr || !withdrawAmt) {
+                      setToast("Enter address & amount");
+                      return;
+                    }
 
-       <PrimaryButton
-  onClick={async () => {
-    try {
-      if (!withdrawAddr || !withdrawAmt) {
-        setToast("Enter address & amount");
-        return;
-      }
+                    const json = await api("/withdraw", {
+                      method: "POST",
+                      body: JSON.stringify({
+                        wallet: solAddr,
+                        to: withdrawAddr,
+                        amount: Number(withdrawAmt),
+                      }),
+                    });
 
-      const json = await api("/withdraw", {
-        method: "POST",
-        body: JSON.stringify({
-          wallet: solAddr,
-          to: withdrawAddr,
-          amount: Number(withdrawAmt),
-        }),
-      });
-
-      if (json?.ok) {
-        setToast(`Sent ${withdrawAmt} SOL 🚀`);
-        setWithdrawOpen(false);
-        setWithdrawAddr("");
-        setWithdrawAmt("");
-      } else {
-        setToast(json?.error || "Withdraw failed");
-      }
-    } catch (e) {
-      setToast(e.message || "Withdraw failed");
-    }
-  }}
->
-  Confirm Withdraw
-</PrimaryButton>
-      </div>
-    </div>
-  </div>
-)}
+                    if (json?.ok) {
+                      setToast(`Sent ${withdrawAmt} SOL 🚀`);
+                      setWithdrawOpen(false);
+                      setWithdrawAddr("");
+                      setWithdrawAmt("");
+                    } else {
+                      setToast(json?.error || "Withdraw failed");
+                    }
+                  } catch (e) {
+                    setToast(e.message || "Withdraw failed");
+                  }
+                }}
+              >
+                Confirm Withdraw
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       {dexModalOpen && selectedCoin ? (
         <div className="modalBack" onClick={() => setDexModalOpen(false)}>
@@ -3566,15 +3548,16 @@ const tradePreview = useMemo(() => {
           </div>
         </div>
       ) : null}
+
       <Toast text={toast} onClose={() => setToast("")} />
 
       {showIntro ? (
-  <IntroSplash
-    durationMs={5000}
-    logoUrl={APP_LOGO_URL}
-    onDone={() => setShowIntro(false)}
-  />
-) : null}
+        <IntroSplash
+          durationMs={5000}
+          logoUrl={APP_LOGO_URL}
+          onDone={() => setShowIntro(false)}
+        />
+      ) : null}
 
       <div className="topbar">
         <div className="topbarInner">
@@ -3635,12 +3618,9 @@ const tradePreview = useMemo(() => {
 
       <div className="appShell">
 
-
-
-
         {screen === "HOME" && (
           <ScreenShell>
-            <Card className="hero">
+            <Card style={{ position: "relative", overflow: "hidden" }}>
               <div className="heroGlow" />
               <div className="heroTitle">Launch fast. Trade smooth. Earn rewards.</div>
               <div className="heroText">
@@ -3654,16 +3634,15 @@ const tradePreview = useMemo(() => {
                 </MiniBtn>
                 <MiniBtn onClick={() => goScreen("SEARCH")}>Explore Coins</MiniBtn>
                 <button
-  className="ghostBtn"
-  onClick={() => setPage("info")}
->
-  Why Fun.Run
-</button>
+                  className="ghostBtn"
+                  onClick={() => goScreen("INFO")}
+                >
+                  Why Fun.Run
+                </button>
               </div>
             </Card>
 
             <NativeFunRunAd />
-
 
             <Card>
               <SectionHeader
@@ -3744,6 +3723,137 @@ const tradePreview = useMemo(() => {
             </Card>
           </ScreenShell>
         )}
+
+      {screen === "INFO" && (
+  <ScreenShell>
+    {renderBackButton()}
+
+    <NativeFunRunAd compact />
+
+    <Card>
+      <Title sub="Why creators and traders choose Fun.Run">
+        About Fun.Run
+      </Title>
+
+      <div
+        style={{
+          color: "var(--muted)",
+          fontSize: 14,
+          lineHeight: 1.7,
+        }}
+      >
+        Fun.Run is a mobile-first meme coin launchpad
+        built for the Solana community. Create your coin
+        in seconds, earn from every trade as the creator,
+        and grow your network with 50% affiliate rewards.
+        Built for speed, designed for fun.
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile
+            ? "1fr"
+            : "repeat(2, 1fr)",
+          gap: 14,
+          marginTop: 20,
+        }}
+      >
+        {[
+          {
+            icon: "🚀",
+            title: "Launch Fast",
+            text: "Create your meme coin instantly with automated launch mechanics.",
+          },
+
+          {
+            icon: "💰",
+            title: "Earn Rewards",
+            text: "Creators earn fees automatically from every buy and sell trade.",
+          },
+
+          {
+            icon: "⚡",
+            title: "50% Affiliate",
+            text: "Invite users with your referral link and earn platform rewards.",
+          },
+
+          {
+            icon: "📈",
+            title: "Trade Early",
+            text: "Discover and buy new meme coins before they trend.",
+          },
+        ].map((item) => (
+          <div
+            key={item.title}
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              padding: 16,
+              borderRadius: 22,
+              border:
+                "1px solid rgba(255,255,255,.08)",
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+              boxShadow:
+                "0 10px 30px rgba(0,0,0,.24)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -20,
+                right: -20,
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                background:
+                  "rgba(120,255,214,.15)",
+                filter: "blur(24px)",
+              }}
+            />
+
+            <div
+              style={{
+                fontSize: 28,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {item.icon}
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontWeight: 1000,
+                fontSize: 15,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {item.title}
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                color:
+                  "rgba(238,248,255,.74)",
+                fontSize: 13,
+                lineHeight: 1.5,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {item.text}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  </ScreenShell>
+)}
 
         {screen === "SEARCH" && (
           <ScreenShell>
@@ -3907,1153 +4017,1112 @@ const tradePreview = useMemo(() => {
           </ScreenShell>
         )}
 
+        {screen === "COIN" && (
+          <ScreenShell>
+            {renderBackButton()}
 
-
-
-{screen === "COIN" && (
-  <ScreenShell>
-    {renderBackButton()}
-
-    {!selectedCoin ? (
-      <Card>
-        <div className="miniMuted">Select a coin first.</div>
-      </Card>
-    ) : (
-      <>
-        <Card>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-            <CoinLogo c={selectedCoin} size={72} radius={20} />
-
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
-                {selectedCoin.name}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
-                {selectedCoin.symbol}
-              </div>
-
-          
-                <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
-                <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
-                
-              
-            </div>
-
-            <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
-              <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
-                Creator Profile
-              </MiniBtn>
-              <MiniBtn
-                onClick={async () => {
-                  const ok = await copyText(selectedCoin?.id || "");
-                  setToast(ok ? "Coin address copied" : "Copy failed");
-                }}
-              >
-                Copy Coin Address
-              </MiniBtn>
-
-              {isSelectedCoinCreator ? (
-                <MiniBtn tone="good" onClick={() => setDexModalOpen(true)}>
-                  Launch to DEX
-                </MiniBtn>
-              ) : null}
-
-
-            </div>
-          </div>
-
-          {selectedCoin.story ? (
-            <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
-              {selectedCoin.story}
-            </div>
-          ) : null}
-
-          
-          <PriceChart
-  coin={selectedCoin}
-  height={isMobile ? 300 : 420}
-  chartRange={chartRange}
-  setChartRange={setChartRange}
-  isMobile={isMobile}
-  reloadKey={chartReloadKey}
-/>
-        </Card>
-
-        <Card>
-          <SectionHeader title="Trade" sub="Instant swap • SOL only" />
-          <div className="tabs" style={{ marginBottom: 12 }}>
-            <button
-              className={`tabBtn ${tradeMode === "BUY" ? "active" : ""}`}
-              onClick={() => setTradeMode("BUY")}
-            >
-              Buy
-            </button>
-            <button
-              className={`tabBtn ${tradeMode === "SELL" ? "active" : ""}`}
-              onClick={() => setTradeMode("SELL")}
-            >
-              Sell
-            </button>
-          </div>
-
-          <div className="statsGrid" style={{ marginTop: 0, marginBottom: 12 }}>
-            <div className="stat">
-              <div className="statLabel">Coin Reward</div>
-              <div className="statValue">{fmtSol(selectedCoin?.creatorRewardsSol || 0)} SOL</div>
-            </div>
-
-            <div className="stat">
-              <div className="statLabel">Your Tokens</div>
-              <div className="statValue">{fmtNum(currentWalletTokens, 0)}</div>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 12 }}>
-            <Input
-              value={tradeAmount}
-              onChange={(e) => setTradeAmount(e.target.value)}
-              placeholder={tradeMode === "BUY" ? "SOL to spend" : "Sell token amount"}
-              type="number"
-              rightLabel={tradeMode === "SELL" ? "ALL" : undefined}
-              onRightLabelClick={() => {
-                if (tradeMode === "SELL" && selectedCoin && solAddr) {
-                  const allTokens = Math.max(0, currentWalletTokens);
-                  setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
-                }
-              }}
-            />
-
-            {tradePreview.ok ? (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 16,
-                  border: "1px solid rgba(255,255,255,.08)",
-                  background: "linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025))",
-                }}
-              >
-                <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>
-                  {tradeMode === "BUY" ? "Estimated receive" : "Tokens required for this sell"}
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 1000 }}>
-                  {fmtNum(tradePreview.estTokens, 0)} tokens
-                </div>
-              </div>
+            {!selectedCoin ? (
+              <Card>
+                <div className="miniMuted">Select a coin first.</div>
+              </Card>
             ) : (
-              <div className="miniMuted">
-                {tradeMode === "BUY"
-                  ? "Enter SOL to see estimated tokens."
-                  : "Enter token amount to see estimated SOL out."}
-              </div>
+              <>
+                <Card>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+                    <CoinLogo c={selectedCoin} size={72} radius={20} />
+
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 24, fontWeight: 1000, lineHeight: 1.05 }}>
+                        {selectedCoin.name}
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
+                        {selectedCoin.symbol}
+                      </div>
+
+                      <div className="pillRow" style={{ marginTop: 10 }}>
+                        <Pill>MC {fmtUsd(selectedCoin.mc || 0)}</Pill>
+                        <Pill>ATH {fmtUsd(selectedCoin.ath || 0)}</Pill>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8, width: isMobile ? "100%" : 190 }}>
+                      <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
+                        Creator Profile
+                      </MiniBtn>
+                      <MiniBtn
+                        onClick={async () => {
+                          const ok = await copyText(selectedCoin?.id || "");
+                          setToast(ok ? "Coin address copied" : "Copy failed");
+                        }}
+                      >
+                        Copy Coin Address
+                      </MiniBtn>
+
+                      {isSelectedCoinCreator ? (
+                        <MiniBtn tone="good" onClick={() => setDexModalOpen(true)}>
+                          Launch to DEX
+                        </MiniBtn>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {selectedCoin.story ? (
+                    <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
+                      {selectedCoin.story}
+                    </div>
+                  ) : null}
+
+                  <PriceChart
+                    coin={selectedCoin}
+                    height={isMobile ? 300 : 420}
+                    chartRange={chartRange}
+                    setChartRange={setChartRange}
+                    isMobile={isMobile}
+                    reloadKey={chartReloadKey}
+                  />
+                </Card>
+
+                <Card>
+                  <SectionHeader title="Trade" sub="Instant swap • SOL only" />
+                  <div className="tabs" style={{ marginBottom: 12 }}>
+                    <button
+                      className={`tabBtn ${tradeMode === "BUY" ? "active" : ""}`}
+                      onClick={() => setTradeMode("BUY")}
+                    >
+                      Buy
+                    </button>
+                    <button
+                      className={`tabBtn ${tradeMode === "SELL" ? "active" : ""}`}
+                      onClick={() => setTradeMode("SELL")}
+                    >
+                      Sell
+                    </button>
+                  </div>
+
+                  <div className="statsGrid" style={{ marginTop: 0, marginBottom: 12 }}>
+                    <div className="stat">
+                      <div className="statLabel">Coin Reward</div>
+                      <div className="statValue">{fmtSol(selectedCoin?.creatorRewardsSol || 0)} SOL</div>
+                    </div>
+
+                    <div className="stat">
+                      <div className="statLabel">Your Tokens</div>
+                      <div className="statValue">{fmtNum(currentWalletTokens, 0)}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <Input
+                      value={tradeAmount}
+                      onChange={(e) => setTradeAmount(e.target.value)}
+                      placeholder={tradeMode === "BUY" ? "SOL to spend" : "Sell token amount"}
+                      type="number"
+                      rightLabel={tradeMode === "SELL" ? "ALL" : undefined}
+                      onRightLabelClick={() => {
+                        if (tradeMode === "SELL" && selectedCoin && solAddr) {
+                          const allTokens = Math.max(0, currentWalletTokens);
+                          setTradeAmount(allTokens > 0 ? String(Math.floor(allTokens)) : "");
+                        }
+                      }}
+                    />
+
+                    {tradePreview.ok ? (
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,.08)",
+                          background: "linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025))",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>
+                          {tradeMode === "BUY" ? "Estimated receive" : "Tokens required for this sell"}
+                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 1000 }}>
+                          {fmtNum(tradePreview.estTokens, 0)} tokens
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="miniMuted">
+                        {tradeMode === "BUY"
+                          ? "Enter SOL to see estimated tokens."
+                          : "Enter token amount to see estimated SOL out."}
+                      </div>
+                    )}
+
+                    <PrimaryButton disabled={trading} onClick={handleTrade}>
+                      {trading
+                        ? tradeMode === "BUY"
+                          ? "Buying..."
+                          : "Selling..."
+                        : tradeMode === "BUY"
+                        ? "Buy Now"
+                        : "Sell Now"}
+                    </PrimaryButton>
+                  </div>
+                </Card>
+
+                <Card>
+                  <SectionHeader
+                    title="Holders / Activity"
+                    right={<Pill>{recentCoinActivity.length || Object.keys(selectedCoin.holders || {}).length}</Pill>}
+                  />
+
+                  <div className="scrollY">
+                    {recentCoinActivity.length > 0 ? (
+                      recentCoinActivity.map((tx, idx) => (
+                        <div
+                          key={tx.id || idx}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "11px 0",
+                            borderBottom: "1px solid rgba(255,255,255,.06)",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 900, fontSize: 13 }}>
+                              {shortWallet(tx.wallet || solAddr)} • {String(tx.type || tx.side || "TX").toUpperCase()}
+                            </div>
+                            <div className="miniMuted">{timeAgo(tx.ts || tx.t)}</div>
+                          </div>
+
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontWeight: 900, fontSize: 13 }}>
+                              {fmtNum(tx.tokens || 0, 0)} tokens
+                            </div>
+                            <div className="miniMuted">{fmtSol(tx.sol || 0)} SOL</div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      Object.entries(selectedCoin.holders || {})
+                        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+                        .slice(0, 50)
+                        .map(([wallet, amount]) => {
+                          const pct =
+                            selectedCoin.totalSupply > 0
+                              ? (Number(amount || 0) / Number(selectedCoin.totalSupply || 1)) * 100
+                              : 0;
+
+                          return (
+                            <div
+                              key={wallet}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                padding: "11px 0",
+                                borderBottom: "1px solid rgba(255,255,255,.06)",
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 900, fontSize: 13 }}>
+                                  {shortWallet(wallet)}
+                                </div>
+                                <div className="miniMuted">{pct.toFixed(4)}% supply</div>
+                              </div>
+
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontWeight: 900, fontSize: 13 }}>
+                                  {fmtNum(amount, 0)}
+                                </div>
+                                <div className="miniMuted">tokens</div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </Card>
+              </>
             )}
+          </ScreenShell>
+        )}
 
-            <PrimaryButton disabled={trading} onClick={handleTrade}>
-              {trading
-                ? tradeMode === "BUY"
-                  ? "Buying..."
-                  : "Selling..."
-                : tradeMode === "BUY"
-                ? "Buy Now"
-                : "Sell Now"}
-            </PrimaryButton>
-          </div>
-        </Card>
+        {screen === "CREATOR" && (
+          <ScreenShell>
+            {renderBackButton()}
 
-        <Card>
-          <SectionHeader
-            title="Holders / Activity"
-            right={<Pill>{recentCoinActivity.length || Object.keys(selectedCoin.holders || {}).length}</Pill>}
-          />
+            <NativeFunRunAd compact />
 
-          <div className="scrollY">
-            {recentCoinActivity.length > 0 ? (
-              recentCoinActivity.map((tx, idx) => (
-                <div
-                  key={tx.id || idx}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "11px 0",
-                    borderBottom: "1px solid rgba(255,255,255,.06)",
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 13 }}>
-                      {shortWallet(tx.wallet || solAddr)} • {String(tx.type || tx.side || "TX").toUpperCase()}
-                    </div>
-                    <div className="miniMuted">{timeAgo(tx.ts || tx.t)}</div>
-                  </div>
+            <Card>
+              <Title sub="Creator profile, rewards and holdings">
+                Creator Profile
+              </Title>
 
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 900, fontSize: 13 }}>
-                      {fmtNum(tx.tokens || 0, 0)} tokens
-                    </div>
-                    <div className="miniMuted">{fmtSol(tx.sol || 0)} SOL</div>
+              <div className="statsGrid" style={{ marginTop: 0 }}>
+                <div className="stat">
+                  <div className="statLabel">This Coin Reward</div>
+                  <div className="statValue">
+                    {fmtSol(
+                      creatorCoin && String(creatorCoin?.creatorWallet || "") === String(creatorProfileId || creatorCoin?.creatorWallet || "")
+                        ? creatorCoin?.creatorRewardsSol || 0
+                        : 0
+                    )} SOL
                   </div>
                 </div>
-              ))
-            ) : (
-              Object.entries(selectedCoin.holders || {})
-                .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
-                .slice(0, 50)
-                .map(([wallet, amount]) => {
-                  const pct =
-                    selectedCoin.totalSupply > 0
-                      ? (Number(amount || 0) / Number(selectedCoin.totalSupply || 1)) * 100
-                      : 0;
 
-                  return (
-                    <div
-                      key={wallet}
+                <div className="stat">
+                  <div className="statLabel">Lifetime All Coins Reward</div>
+                  <div className="statValue">{fmtSol(creatorRewards || 0)} SOL</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader title="Created Coins" right={<Pill>{creatorCoins.length}</Pill>} />
+              <div className="scrollY">
+                {creatorCoins.length === 0 ? (
+                  <div className="miniMuted">No created coins found.</div>
+                ) : (
+                  creatorCoins.map((coin) => (
+                    <button
+                      key={coin.id}
+                      onClick={() => openCoin(coin)}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "11px 0",
-                        borderBottom: "1px solid rgba(255,255,255,.06)",
+                        width: "100%",
+                        padding: 12,
+                        borderRadius: 16,
+                        border: "1px solid rgba(255,255,255,.08)",
+                        background: "rgba(255,255,255,.03)",
+                        color: "var(--text)",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        marginBottom: 10,
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 900, fontSize: 13 }}>
-                          {shortWallet(wallet)}
+                      <div className="coinRow">
+                        <CoinLogo c={coin} size={44} radius={15} />
+                        <div className="coinText">
+                          <div className="coinName">{coin.name}</div>
+                          <div className="coinMeta">
+                            Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL • {timeAgo(coin.createdAt || coin.created_at)}
+                          </div>
                         </div>
-                        <div className="miniMuted">{pct.toFixed(4)}% supply</div>
-                      </div>
-
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontWeight: 900, fontSize: 13 }}>
-                          {fmtNum(amount, 0)}
+                        <div className="rightNum">
+                          <div className="rightNumMain">{fmtUsd(coin.mc || 0)}</div>
+                          <div className="rightNumSub">MC</div>
                         </div>
-                        <div className="miniMuted">tokens</div>
                       </div>
-                    </div>
-                  );
-                })
-            )}
-          </div>
-        </Card>
-      </>
-    )}
-  </ScreenShell>
-)}
-{screen === "CREATOR" && (
-  <ScreenShell>
-    {renderBackButton()}
-
-    <NativeFunRunAd compact />
-
-    <Card>
-      <Title sub="Creator profile, rewards and holdings">
-        Creator Profile
-      </Title>
-
-      <div className="statsGrid" style={{ marginTop: 0 }}>
-        <div className="stat">
-          <div className="statLabel">This Coin Reward</div>
-          <div className="statValue">
-            {fmtSol(
-              creatorCoin && String(creatorCoin?.creatorWallet || "") === String(creatorProfileId || creatorCoin?.creatorWallet || "")
-                ? creatorCoin?.creatorRewardsSol || 0
-                : 0
-            )} SOL
-          </div>
-        </div>
-
-
-
-
-
-
-
-
-
-
-        <div className="stat">
-          <div className="statLabel">Lifetime All Coins Reward</div>
-          <div className="statValue">{fmtSol(creatorRewards || 0)} SOL</div>
-        </div>
-      </div>
-    </Card>
-
-    <Card>
-      <SectionHeader title="Created Coins" right={<Pill>{creatorCoins.length}</Pill>} />
-      <div className="scrollY">
-        {creatorCoins.length === 0 ? (
-          <div className="miniMuted">No created coins found.</div>
-        ) : (
-          creatorCoins.map((coin) => (
-            <button
-              key={coin.id}
-              onClick={() => openCoin(coin)}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,.08)",
-                background: "rgba(255,255,255,.03)",
-                color: "var(--text)",
-                textAlign: "left",
-                cursor: "pointer",
-                marginBottom: 10,
-              }}
-            >
-              <div className="coinRow">
-                <CoinLogo c={coin} size={44} radius={15} />
-                <div className="coinText">
-                  <div className="coinName">{coin.name}</div>
-                  <div className="coinMeta">
-                    Reward {fmtSol(coin.creatorRewardsSol || 0)} SOL • {timeAgo(coin.createdAt || coin.created_at)}
-                  </div>
-                </div>
-                <div className="rightNum">
-                  <div className="rightNumMain">{fmtUsd(coin.mc || 0)}</div>
-                  <div className="rightNumSub">MC</div>
-                </div>
+                    </button>
+                  ))
+                )}
               </div>
-            </button>
-          ))
-        )}
-      </div>
-    </Card>
+            </Card>
 
-    <Card>
-      <SectionHeader title="Creator Holdings" right={<Pill>{creatorHoldings.length}</Pill>} />
-      <div
-        className="creatorScroll"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          maxHeight: 320,
-          overflowY: "auto",
-          paddingRight: 4,
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-        }}
-      >
-        {creatorHoldings.length === 0 ? (
-          <div style={{ color: "var(--muted2)", fontSize: 13 }}>No holdings found.</div>
-        ) : (
-          creatorHoldings.map(({ coin, amt, pct }) => (
-            <button
-              key={coin.id}
-              onClick={() => {
-                setSelectedCoinId(coin.id);
-                setScreen("COIN");
-              }}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,.08)",
-                background:
-                  "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))",
-                color: "var(--text)",
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 1000 }}>{coin.name}</div>
-                  <div style={{ color: "var(--muted2)", fontSize: 12 }}>
-                    {fmtNum(amt, 0)} tokens
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 1000 }}>{pct.toFixed(4)}%</div>
-                  <div style={{ color: "var(--muted2)", fontSize: 12 }}>Supply</div>
-                </div>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
-    </Card>
-  </ScreenShell>
-)}
-{screen === "PROFILE" && (
-  <ScreenShell>
-    <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-    marginBottom: 14,
-  }}
->
-  {renderBackButton()}
-
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-      flexWrap: "wrap",
-      justifyContent: "flex-end",
-      flex: 1,
-    }}
-  >
-    <div
-      style={{
-        padding: "9px 12px",
-        borderRadius: 999,
-        background: "linear-gradient(135deg, rgba(99,245,200,.16), rgba(124,203,255,.10))",
-        border: "1px solid rgba(99,245,200,.22)",
-        color: "var(--text)",
-        fontSize: 12,
-        fontWeight: 1000,
-        lineHeight: 1,
-      }}
-    >
-      Affiliates: {profile?.referralCount || 0}
-    </div>
-
-    <MiniBtn
-      tone="good"
-      onClick={async () => {
-        const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
-        setToast(ok ? "Affiliate link copied" : "Copy failed");
-      }}
-      style={{ padding: "9px 12px", borderRadius: 999 }}
-    >
-      Copy Affiliate Link
-    </MiniBtn>
-  </div>
-</div>
-
-    <NativeFunRunAd compact />
-
-    <Card>
-  <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
-
-  <div className="statsGrid">
-  <div
-    className="stat"
-    style={{
-      gridColumn: "span 2",
-      minHeight: 210,
-      padding: 16,
-      position: "relative",
-      overflow: "hidden",
-      textAlign: "center",
-      background:
-        "radial-gradient(circle at 12% 0%, rgba(99,245,200,.40), transparent 35%), radial-gradient(circle at 96% 18%, rgba(124,203,255,.36), transparent 38%), linear-gradient(135deg, rgba(10,55,55,.96), rgba(10,25,62,.92))",
-      border: "1px solid rgba(99,245,200,.30)",
-      boxShadow:
-        "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(99,245,200,.16), inset 0 1px 0 rgba(255,255,255,.12)",
-    }}
-  >
-    <div className="statLabel">Main Wallet</div>
-    <div className="statValue">{fmtSol(walletSolBalance)} SOL</div>
-    <div className="miniMuted" style={{ marginTop: 6 }}>
-      {toUsdFromSol(walletSolBalance)}
-    </div>
-
-    <div
-      style={{
-        marginTop: 10,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--text)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          maxWidth: 120,
-        }}
-      >
-        {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
-      </span>
-
-      <div style={{ display: "flex", gap: 6 }}>
-        <MiniBtn
-          onClick={() => {
-            navigator.clipboard.writeText(solAddr || "");
-            setToast("Deposit address copied");
-          }}
-          style={{
-            padding: "7px 12px",
-            width: "auto",
-            background: "linear-gradient(135deg, rgba(99,245,200,.95), rgba(124,203,255,.92))",
-            color: "#03131A",
-            border: "1px solid rgba(255,255,255,.20)",
-            boxShadow: "0 8px 18px rgba(99,245,200,.20)",
-          }}
-        >
-          Deposit
-        </MiniBtn>
-
-        <MiniBtn
-          onClick={() => {
-            navigator.clipboard.writeText(solAddr || "");
-            setToast("Wallet copied");
-          }}
-          style={{
-            padding: "7px 12px",
-            width: "auto",
-            background: "linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.06))",
-            border: "1px solid rgba(255,255,255,.18)",
-            boxShadow: "0 8px 18px rgba(124,203,255,.12)",
-          }}
-        >
-          Copy
-        </MiniBtn>
-      </div>
-    </div>
-
-    <div style={{ marginTop: 8 }}>
-      <MiniBtn
-        onClick={() => setWithdrawOpen(true)}
-        style={{
-          width: "100%",
-          background: "linear-gradient(135deg, rgba(99,245,200,.22), rgba(124,203,255,.18))",
-          border: "1px solid rgba(99,245,200,.28)",
-          boxShadow: "0 12px 24px rgba(99,245,200,.14)",
-        }}
-      >
-        Withdraw
-      </MiniBtn>
-    </div>
-  </div>
-
-  <div
-    className="stat"
-    style={{
-      gridColumn: "span 2",
-      minHeight: 170,
-      padding: 16,
-      position: "relative",
-      overflow: "hidden",
-      textAlign: "center",
-      background:
-        "radial-gradient(circle at 15% 0%, rgba(255,143,177,.36), transparent 36%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.40), transparent 44%), linear-gradient(135deg, rgba(63,22,72,.95), rgba(20,27,78,.92))",
-      border: "1px solid rgba(255,143,177,.28)",
-      boxShadow:
-        "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(167,139,250,.16), inset 0 1px 0 rgba(255,255,255,.12)",
-    }}
-  >
-    <div className="statLabel">Coming Soon</div>
-    <div className="statValue" style={{ fontSize: 18 }}>BNB • Polygon</div>
-    <div className="miniMuted" style={{ marginTop: 6 }}>
-      Multi-chain support arriving soon
-    </div>
-  </div>
-
-  <div
-    className="stat"
-    style={{
-      minHeight: 158,
-      padding: 14,
-      textAlign: "left",
-      position: "relative",
-      overflow: "hidden",
-      background:
-        "radial-gradient(circle at 18% 0%, rgba(99,245,200,.38), transparent 38%), radial-gradient(circle at 100% 100%, rgba(124,203,255,.28), transparent 42%), linear-gradient(135deg, rgba(12,52,50,.92), rgba(6,30,47,.88))",
-      border: "1px solid rgba(99,245,200,.42)",
-      boxShadow:
-        "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(99,245,200,.18), inset 0 1px 0 rgba(255,255,255,.14)",
-    }}
-  >
-    <div
-      style={{
-        position: "absolute",
-        right: -34,
-        top: -34,
-        width: 108,
-        height: 108,
-        borderRadius: 999,
-        background: "rgba(99,245,200,.16)",
-        filter: "blur(2px)",
-      }}
-    />
-
-    <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-      <div>
-        <div className="statLabel" style={{ color: "rgba(228,255,248,.78)", fontWeight: 1000 }}>
-          Affiliate Reward
-        </div>
-        <div style={{ marginTop: 5, fontSize: 10, color: "rgba(228,255,248,.72)", fontWeight: 1000 }}>
-          Earn 50% from your link
-        </div>
-      </div>
-      <span
-        style={{
-          padding: "6px 10px",
-          borderRadius: 999,
-          fontSize: 10,
-          fontWeight: 1000,
-          color: "#022018",
-          background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
-          boxShadow: "0 0 18px rgba(99,245,200,.45)",
-        }}
-      >
-        50%
-      </span>
-    </div>
-
-    <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(99,245,200,.35)" }}>
-      {fmtSol(profile?.referralRewardsSol || 0)} SOL
-    </div>
-
-    <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 11 }}>
-      <MiniBtn
-        onClick={() => handleClaim("REF")}
-        style={{
-          padding: "8px 8px",
-          borderRadius: 13,
-          color: "#03110D",
-          background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
-          border: "1px solid rgba(255,255,255,.20)",
-          boxShadow: "0 10px 22px rgba(99,245,200,.24)",
-        }}
-      >
-        Claim
-      </MiniBtn>
-      <MiniBtn
-        onClick={async () => {
-          const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
-          setToast(ok ? "Affiliate link copied" : "Copy failed");
-        }}
-        style={{
-          padding: "8px 8px",
-          borderRadius: 13,
-          color: "#FFFFFF",
-          background: "linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06))",
-          border: "1px solid rgba(255,255,255,.18)",
-          boxShadow: "0 10px 22px rgba(0,0,0,.18)",
-        }}
-      >
-        Share
-      </MiniBtn>
-    </div>
-  </div>
-
-  <div
-    className="stat"
-    style={{
-      minHeight: 158,
-      padding: 14,
-      position: "relative",
-      overflow: "hidden",
-      background:
-        "radial-gradient(circle at 20% 0%, rgba(255,143,177,.34), transparent 38%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.32), transparent 42%), linear-gradient(135deg, rgba(51,20,57,.92), rgba(22,22,58,.88))",
-      border: "1px solid rgba(255,143,177,.36)",
-      boxShadow:
-        "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(167,139,250,.18), inset 0 1px 0 rgba(255,255,255,.14)",
-    }}
-  >
-    <div
-      style={{
-        position: "absolute",
-        left: -34,
-        bottom: -34,
-        width: 112,
-        height: 112,
-        borderRadius: 999,
-        background: "rgba(167,139,250,.15)",
-        filter: "blur(2px)",
-      }}
-    />
-    <div className="statLabel" style={{ position: "relative", zIndex: 1, color: "rgba(255,236,247,.76)", fontWeight: 1000 }}>
-      Creator Reward
-    </div>
-    <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(255,143,177,.32)" }}>
-      {fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL
-    </div>
-    <div style={{ position: "relative", zIndex: 1, marginTop: 11, display: "flex", justifyContent: "center" }}>
-     <MiniBtn
-       onClick={() => handleClaim("CREATOR")}
-       style={{
-         padding: "8px 18px",
-         borderRadius: 13,
-         color: "#FFFFFF",
-         background: "linear-gradient(135deg, #FF8FB1, #A78BFA)",
-         border: "1px solid rgba(255,255,255,.20)",
-         boxShadow: "0 10px 22px rgba(167,139,250,.25)",
-       }}
-     >
-  Claim
-</MiniBtn>
-    </div>
-  </div>
-</div>
-</Card>
-
-    <Card>
-      <SectionHeader title="My Creations" right={<Pill>{myCreations.length}</Pill>} />
-      <div className="scrollY">
-        {myCreations.length === 0 ? (
-          <div className="miniMuted">No created coins.</div>
-        ) : (
-          myCreations.map((coin) => (
-            <div key={coin.id} style={{ marginBottom: 10 }}>
-              <CoinMiniCard c={coin} onOpen={() => openCoin(coin)} />
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
-
-    <Card>
-      <SectionHeader title="Open Positions" right={<Pill>{profileHoldings.length}</Pill>} />
-      <div className="scrollY">
-        {profileHoldings.length === 0 ? (
-          <div className="miniMuted">No holdings yet.</div>
-        ) : (
-          profileHoldings.map((h, idx) => {
-            const coin =
-              (coins || []).find((x) => String(x.id) === String(h.coinId || h.id || h.coin?.id)) ||
-              normalizeCoin({
-                id: h.coinId || h.id || h.coin?.id || `holding-${idx}`,
-                name: h.name || h.coin?.name || h.symbol || "Unknown coin",
-                symbol: h.symbol || h.coin?.symbol || "??",
-                logo: h.logo || h.coin?.logo || "",
-              });
-            const amt = Math.max(0, safeNum(h.amount, h.tokens || h.balance || 0));
-            const pct = coin?.totalSupply ? (amt / Math.max(1, safeNum(coin.totalSupply, 1))) * 100 : 0;
-            return (
-              <ProfileCoinRow
-                key={`${h.coinId || coin?.id || idx}`}
-                coin={coin}
-                secondary={`${fmtNum(amt, 0)} tokens`}
-                rightMain={`${pct.toFixed(4)}%`}
-                rightSub="supply"
-                onClick={coin ? () => openCoin(coin) : undefined}
-              />
-            );
-          })
-        )}
-      </div>
-    </Card>
-
-    <Card>
-      <SectionHeader title="Last Transactions" right={<Pill>{profileTxs.length}</Pill>} />
-      <div className="scrollY">
-        {profileTxs.length === 0 ? (
-          <div className="miniMuted">No recent activity.</div>
-        ) : (
-          profileTxs.map((tx, idx) => {
-            const txCoin =
-              (coins || []).find((x) => String(x.id) === String(tx.coinId || tx.id || tx.coin?.id)) ||
-              normalizeCoin({
-                id: tx.coinId || tx.id || `tx-${idx}`,
-                name: tx.coinName || tx.name || tx.symbol || "Unknown coin",
-                symbol: tx.symbol || tx.coin?.symbol || "??",
-                logo: tx.logo || tx.coin?.logo || "",
-              });
-
-            return (
+            <Card>
+              <SectionHeader title="Creator Holdings" right={<Pill>{creatorHoldings.length}</Pill>} />
               <div
-                key={tx.id || idx}
+                className="creatorScroll"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  maxHeight: 320,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                }}
+              >
+                {creatorHoldings.length === 0 ? (
+                  <div style={{ color: "var(--muted2)", fontSize: 13 }}>No holdings found.</div>
+                ) : (
+                  creatorHoldings.map(({ coin, amt, pct }) => (
+                    <button
+                      key={coin.id}
+                      onClick={() => {
+                        setSelectedCoinId(coin.id);
+                        setScreen("COIN");
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: 12,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,.08)",
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))",
+                        color: "var(--text)",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <div style={{ fontWeight: 1000 }}>{coin.name}</div>
+                          <div style={{ color: "var(--muted2)", fontSize: 12 }}>
+                            {fmtNum(amt, 0)} tokens
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 1000 }}>{pct.toFixed(4)}%</div>
+                          <div style={{ color: "var(--muted2)", fontSize: 12 }}>Supply</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </Card>
+          </ScreenShell>
+        )}
+
+        {screen === "PROFILE" && (
+          <ScreenShell>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 14,
+              }}
+            >
+              {renderBackButton()}
+
+              <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  padding: "11px 0",
-                  borderBottom: "1px solid rgba(255,255,255,.06)",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                  flex: 1,
                 }}
               >
-                <div className="coinRow" style={{ minWidth: 0, flex: 1 }}>
-                  <CoinLogo c={txCoin} size={42} radius={14} />
-                  <div className="coinText">
-                    <div className="coinName">
-                      {String(tx.type || tx.side || "TRADE").toUpperCase()}
+                <div
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 999,
+                    background: "linear-gradient(135deg, rgba(99,245,200,.16), rgba(124,203,255,.10))",
+                    border: "1px solid rgba(99,245,200,.22)",
+                    color: "var(--text)",
+                    fontSize: 12,
+                    fontWeight: 1000,
+                    lineHeight: 1,
+                  }}
+                >
+                  Affiliates: {profile?.referralCount || 0}
+                </div>
+
+                <MiniBtn
+                  tone="good"
+                  onClick={async () => {
+                    const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
+                    setToast(ok ? "Affiliate link copied" : "Copy failed");
+                  }}
+                  style={{ padding: "9px 12px", borderRadius: 999 }}
+                >
+                  Copy Affiliate Link
+                </MiniBtn>
+              </div>
+            </div>
+
+            <NativeFunRunAd compact />
+
+            <Card>
+              <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
+
+              <div className="statsGrid">
+                <div
+                  className="stat"
+                  style={{
+                    gridColumn: "span 2",
+                    minHeight: 210,
+                    padding: 16,
+                    position: "relative",
+                    overflow: "hidden",
+                    textAlign: "center",
+                    background:
+                      "radial-gradient(circle at 12% 0%, rgba(99,245,200,.40), transparent 35%), radial-gradient(circle at 96% 18%, rgba(124,203,255,.36), transparent 38%), linear-gradient(135deg, rgba(10,55,55,.96), rgba(10,25,62,.92))",
+                    border: "1px solid rgba(99,245,200,.30)",
+                    boxShadow:
+                      "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(99,245,200,.16), inset 0 1px 0 rgba(255,255,255,.12)",
+                  }}
+                >
+                  <div className="statLabel">Main Wallet</div>
+                  <div className="statValue">{fmtSol(walletSolBalance)} SOL</div>
+                  <div className="miniMuted" style={{ marginTop: 6 }}>
+                    {toUsdFromSol(walletSolBalance)}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "var(--text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: 120,
+                      }}
+                    >
+                      {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
+                    </span>
+
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <MiniBtn
+                        onClick={() => {
+                          navigator.clipboard.writeText(solAddr || "");
+                          setToast("Deposit address copied");
+                        }}
+                        style={{
+                          padding: "7px 12px",
+                          width: "auto",
+                          background: "linear-gradient(135deg, rgba(99,245,200,.95), rgba(124,203,255,.92))",
+                          color: "#03131A",
+                          border: "1px solid rgba(255,255,255,.20)",
+                          boxShadow: "0 8px 18px rgba(99,245,200,.20)",
+                        }}
+                      >
+                        Deposit
+                      </MiniBtn>
+
+                      <MiniBtn
+                        onClick={() => {
+                          navigator.clipboard.writeText(solAddr || "");
+                          setToast("Wallet copied");
+                        }}
+                        style={{
+                          padding: "7px 12px",
+                          width: "auto",
+                          background: "linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.06))",
+                          border: "1px solid rgba(255,255,255,.18)",
+                          boxShadow: "0 8px 18px rgba(124,203,255,.12)",
+                        }}
+                      >
+                        Copy
+                      </MiniBtn>
                     </div>
-                    <div className="coinMeta">
-                      {txCoin?.name || shortWallet(tx.wallet || solAddr)}
-                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 8 }}>
+                    <MiniBtn
+                      onClick={() => setWithdrawOpen(true)}
+                      style={{
+                        width: "100%",
+                        background: "linear-gradient(135deg, rgba(99,245,200,.22), rgba(124,203,255,.18))",
+                        border: "1px solid rgba(99,245,200,.28)",
+                        boxShadow: "0 12px 24px rgba(99,245,200,.14)",
+                      }}
+                    >
+                      Withdraw
+                    </MiniBtn>
                   </div>
                 </div>
 
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 900, fontSize: 13 }}>{fmtSol(tx.sol || 0)} SOL</div>
-                  <div className="miniMuted">{fmtNum(tx.tokens || 0, 0)} tokens</div>
+                <div
+                  className="stat"
+                  style={{
+                    gridColumn: "span 2",
+                    minHeight: 170,
+                    padding: 16,
+                    position: "relative",
+                    overflow: "hidden",
+                    textAlign: "center",
+                    background:
+                      "radial-gradient(circle at 15% 0%, rgba(255,143,177,.36), transparent 36%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.40), transparent 44%), linear-gradient(135deg, rgba(63,22,72,.95), rgba(20,27,78,.92))",
+                    border: "1px solid rgba(255,143,177,.28)",
+                    boxShadow:
+                      "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(167,139,250,.16), inset 0 1px 0 rgba(255,255,255,.12)",
+                  }}
+                >
+                  <div className="statLabel">Coming Soon</div>
+                  <div className="statValue" style={{ fontSize: 18 }}>BNB • Polygon</div>
+                  <div className="miniMuted" style={{ marginTop: 6 }}>
+                    Multi-chain support arriving soon
+                  </div>
+                </div>
+
+                <div
+                  className="stat"
+                  style={{
+                    minHeight: 158,
+                    padding: 14,
+                    textAlign: "left",
+                    position: "relative",
+                    overflow: "hidden",
+                    background:
+                      "radial-gradient(circle at 18% 0%, rgba(99,245,200,.38), transparent 38%), radial-gradient(circle at 100% 100%, rgba(124,203,255,.28), transparent 42%), linear-gradient(135deg, rgba(12,52,50,.92), rgba(6,30,47,.88))",
+                    border: "1px solid rgba(99,245,200,.42)",
+                    boxShadow:
+                      "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(99,245,200,.18), inset 0 1px 0 rgba(255,255,255,.14)",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: -34,
+                      top: -34,
+                      width: 108,
+                      height: 108,
+                      borderRadius: 999,
+                      background: "rgba(99,245,200,.16)",
+                      filter: "blur(2px)",
+                    }}
+                  />
+
+                  <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div>
+                      <div className="statLabel" style={{ color: "rgba(228,255,248,.78)", fontWeight: 1000 }}>
+                        Affiliate Reward
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 10, color: "rgba(228,255,248,.72)", fontWeight: 1000 }}>
+                        Earn 50% from your link
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 1000,
+                        color: "#022018",
+                        background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
+                        boxShadow: "0 0 18px rgba(99,245,200,.45)",
+                      }}
+                    >
+                      50%
+                    </span>
+                  </div>
+
+                  <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(99,245,200,.35)" }}>
+                    {fmtSol(profile?.referralRewardsSol || 0)} SOL
+                  </div>
+
+                  <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 11 }}>
+                    <MiniBtn
+                      onClick={() => handleClaim("REF")}
+                      style={{
+                        padding: "8px 8px",
+                        borderRadius: 13,
+                        color: "#03110D",
+                        background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
+                        border: "1px solid rgba(255,255,255,.20)",
+                        boxShadow: "0 10px 22px rgba(99,245,200,.24)",
+                      }}
+                    >
+                      Claim
+                    </MiniBtn>
+                    <MiniBtn
+                      onClick={async () => {
+                        const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
+                        setToast(ok ? "Affiliate link copied" : "Copy failed");
+                      }}
+                      style={{
+                        padding: "8px 8px",
+                        borderRadius: 13,
+                        color: "#FFFFFF",
+                        background: "linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06))",
+                        border: "1px solid rgba(255,255,255,.18)",
+                        boxShadow: "0 10px 22px rgba(0,0,0,.18)",
+                      }}
+                    >
+                      Share
+                    </MiniBtn>
+                  </div>
+                </div>
+
+                <div
+                  className="stat"
+                  style={{
+                    minHeight: 158,
+                    padding: 14,
+                    position: "relative",
+                    overflow: "hidden",
+                    background:
+                      "radial-gradient(circle at 20% 0%, rgba(255,143,177,.34), transparent 38%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.32), transparent 42%), linear-gradient(135deg, rgba(51,20,57,.92), rgba(22,22,58,.88))",
+                    border: "1px solid rgba(255,143,177,.36)",
+                    boxShadow:
+                      "0 18px 44px rgba(0,0,0,.32), 0 0 28px rgba(167,139,250,.18), inset 0 1px 0 rgba(255,255,255,.14)",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: -34,
+                      bottom: -34,
+                      width: 112,
+                      height: 112,
+                      borderRadius: 999,
+                      background: "rgba(167,139,250,.15)",
+                      filter: "blur(2px)",
+                    }}
+                  />
+                  <div className="statLabel" style={{ position: "relative", zIndex: 1, color: "rgba(255,236,247,.76)", fontWeight: 1000 }}>
+                    Creator Reward
+                  </div>
+                  <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(255,143,177,.32)" }}>
+                    {fmtSol(profile?.creatorRewardsSol || creatorRewards || 0)} SOL
+                  </div>
+                  <div style={{ position: "relative", zIndex: 1, marginTop: 11, display: "flex", justifyContent: "center" }}>
+                    <MiniBtn
+                      onClick={() => handleClaim("CREATOR")}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: 13,
+                        color: "#FFFFFF",
+                        background: "linear-gradient(135deg, #FF8FB1, #A78BFA)",
+                        border: "1px solid rgba(255,255,255,.20)",
+                        boxShadow: "0 10px 22px rgba(167,139,250,.25)",
+                      }}
+                    >
+                      Claim
+                    </MiniBtn>
+                  </div>
                 </div>
               </div>
-            );
-          })
+            </Card>
+
+            <Card>
+              <SectionHeader title="My Creations" right={<Pill>{myCreations.length}</Pill>} />
+              <div className="scrollY">
+                {myCreations.length === 0 ? (
+                  <div className="miniMuted">No created coins.</div>
+                ) : (
+                  myCreations.map((coin) => (
+                    <div key={coin.id} style={{ marginBottom: 10 }}>
+                      <CoinMiniCard c={coin} onOpen={() => openCoin(coin)} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader title="Open Positions" right={<Pill>{profileHoldings.length}</Pill>} />
+              <div className="scrollY">
+                {profileHoldings.length === 0 ? (
+                  <div className="miniMuted">No holdings yet.</div>
+                ) : (
+                  profileHoldings.map((h, idx) => {
+                    const coin =
+                      (coins || []).find((x) => String(x.id) === String(h.coinId || h.id || h.coin?.id)) ||
+                      normalizeCoin({
+                        id: h.coinId || h.id || h.coin?.id || `holding-${idx}`,
+                        name: h.name || h.coin?.name || h.symbol || "Unknown coin",
+                        symbol: h.symbol || h.coin?.symbol || "??",
+                        logo: h.logo || h.coin?.logo || "",
+                      });
+                    const amt = Math.max(0, safeNum(h.amount, h.tokens || h.balance || 0));
+                    const pct = coin?.totalSupply ? (amt / Math.max(1, safeNum(coin.totalSupply, 1))) * 100 : 0;
+                    return (
+                      <ProfileCoinRow
+                        key={`${h.coinId || coin?.id || idx}`}
+                        coin={coin}
+                        secondary={`${fmtNum(amt, 0)} tokens`}
+                        rightMain={`${pct.toFixed(4)}%`}
+                        rightSub="supply"
+                        onClick={coin ? () => openCoin(coin) : undefined}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader title="Last Transactions" right={<Pill>{profileTxs.length}</Pill>} />
+              <div className="scrollY">
+                {profileTxs.length === 0 ? (
+                  <div className="miniMuted">No recent activity.</div>
+                ) : (
+                  profileTxs.map((tx, idx) => {
+                    const txCoin =
+                      (coins || []).find((x) => String(x.id) === String(tx.coinId || tx.id || tx.coin?.id)) ||
+                      normalizeCoin({
+                        id: tx.coinId || tx.id || `tx-${idx}`,
+                        name: tx.coinName || tx.name || tx.symbol || "Unknown coin",
+                        symbol: tx.symbol || tx.coin?.symbol || "??",
+                        logo: tx.logo || tx.coin?.logo || "",
+                      });
+
+                    return (
+                      <div
+                        key={tx.id || idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          padding: "11px 0",
+                          borderBottom: "1px solid rgba(255,255,255,.06)",
+                        }}
+                      >
+                        <div className="coinRow" style={{ minWidth: 0, flex: 1 }}>
+                          <CoinLogo c={txCoin} size={42} radius={14} />
+                          <div className="coinText">
+                            <div className="coinName">
+                              {String(tx.type || tx.side || "TRADE").toUpperCase()}
+                            </div>
+                            <div className="coinMeta">
+                              {txCoin?.name || shortWallet(tx.wallet || solAddr)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 900, fontSize: 13 }}>{fmtSol(tx.sol || 0)} SOL</div>
+                          <div className="miniMuted">{fmtNum(tx.tokens || 0, 0)} tokens</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+          </ScreenShell>
+        )}
+
+        {screen === "SETTINGS" && (
+          <ScreenShell>
+            {renderBackButton()}
+
+            <Card>
+              <Title sub="Theme, appearance and quick actions">Settings</Title>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
+                    Profile Logo
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 18,
+                        overflow: "hidden",
+                        border: "1px solid rgba(255,255,255,.10)",
+                        background: "rgba(255,255,255,.04)",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <img
+                        src={profileAvatar}
+                        alt="profile avatar"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    </div>
+                    <label
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,.10)",
+                        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+                        fontSize: 12,
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Upload From Gallery
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > MAX_LOGO_BYTES) {
+                            setToast("Logo too large");
+                            return;
+                          }
+                          try {
+                            const data = await fileToDataUrl(file);
+                            setProfileAvatar(data);
+                            setToast("Profile logo updated");
+                          } catch {
+                            setToast("Image read failed");
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {PROFILE_PRESET_LOGOS.map((logo, idx) => (
+                      <button
+                        key={logo}
+                        onClick={() => {
+                          setProfileAvatar(logo);
+                          setToast("Profile logo selected");
+                        }}
+                        style={{
+                          height: 78,
+                          borderRadius: 18,
+                          overflow: "hidden",
+                          border:
+                            profileAvatar === logo
+                              ? "1px solid rgba(50,230,255,.42)"
+                              : "1px solid rgba(255,255,255,.08)",
+                          background: "rgba(255,255,255,.03)",
+                          padding: 0,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img
+                          src={logo}
+                          alt={`preset ${idx + 1}`}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="hr" />
+
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
+                    Theme
+                  </div>
+
+                  <div className="themeGrid">
+                    <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Obsidian" />
+                    <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Deep Blue" />
+                    <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean Glass" />
+                    <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Velvet Rose" />
+                    <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal Night" />
+                  </div>
+                </div>
+
+                <div className="hr" />
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <MiniBtn
+                    onClick={async () => {
+                      if (!solAddr) {
+                        setToast("No wallet connected");
+                        return;
+                      }
+                      const ok = await copyText(solAddr);
+                      setToast(ok ? "Wallet copied" : "Copy failed");
+                    }}
+                  >
+                    Copy Wallet Address
+                  </MiniBtn>
+
+                  <MiniBtn
+                    onClick={async () => {
+                      if (!solAddr) {
+                        setToast("No wallet connected");
+                        return;
+                      }
+                      const ok = await copyText(getReferralLink(solAddr));
+                      setToast(ok ? "Referral link copied" : "Copy failed");
+                    }}
+                  >
+                    Copy Referral Link
+                  </MiniBtn>
+
+                  <MiniBtn
+                    onClick={async () => {
+                      try {
+                        await exportWallet?.();
+                        setToast("Wallet export opened");
+                      } catch (e) {
+                        setToast(e?.message || "Export failed");
+                      }
+                    }}
+                  >
+                    Export Wallet
+                  </MiniBtn>
+
+                  {phantomWallet ? (
+                    <MiniBtn tone="danger" onClick={disconnectPhantom}>
+                      Disconnect Phantom
+                    </MiniBtn>
+                  ) : null}
+
+                  {authenticated ? (
+                    <MiniBtn
+                      tone="danger"
+                      onClick={async () => {
+                        try {
+                          await logout?.();
+                          setToast("Google logged out");
+                          goScreen("HOME");
+                        } catch (e) {
+                          setToast(e?.message || "Logout failed");
+                        }
+                      }}
+                    >
+                      Google Logout
+                    </MiniBtn>
+                  ) : null}
+                </div>
+              </div>
+            </Card>
+          </ScreenShell>
         )}
       </div>
-    </Card>
-  </ScreenShell>
-)}
 
-
-
-{screen === "SETTINGS" && (
-  <ScreenShell>
-    {renderBackButton()}
-
-    <Card>
-      <Title sub="Theme, appearance and quick actions">Settings</Title>
-
-      <div style={{ display: "grid", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
-            Profile Logo
+      <div className="footerNav">
+        <button
+          className={`footerBtn ${screen === "HOME" ? "active" : ""}`}
+          onClick={() => goScreen("HOME")}
+        >
+          <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+            <HomeIcon />
+            <span>Home</span>
           </div>
+        </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 18,
-                overflow: "hidden",
-                border: "1px solid rgba(255,255,255,.10)",
-                background: "rgba(255,255,255,.04)",
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              <img
-                src={profileAvatar}
-                alt="profile avatar"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
+        <button
+          className={`footerBtn ${screen === "SEARCH" ? "active" : ""}`}
+          onClick={() => goScreen("SEARCH")}
+        >
+          <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+            <SearchIcon />
+            <span>Search</span>
+          </div>
+        </button>
+
+        <button
+          className={`footerBtn ${screen === "CREATE" ? "active" : ""}`}
+          onClick={() => goScreen("CREATE")}
+        >
+          <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+            <PlusIcon />
+            <span>Create</span>
+          </div>
+        </button>
+
+        <button
+          className={`footerBtn ${screen === "PROFILE" ? "active" : ""}`}
+          onClick={() => goScreen("PROFILE")}
+        >
+          <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+            <UserIcon />
+            <span>Profile</span>
+          </div>
+        </button>
+
+        <button
+          className={`footerBtn ${screen === "SETTINGS" ? "active" : ""}`}
+          onClick={() => goScreen("SETTINGS")}
+        >
+          <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
+            <CogIcon />
+            <span>Settings</span>
+          </div>
+        </button>
+      </div>
+
+      {settingsOpen ? (
+        <div className="modalBack" onClick={() => setSettingsOpen(false)}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHead">
+              <div className="modalTitle">Quick Settings</div>
+              <MiniBtn onClick={() => setSettingsOpen(false)}>Close</MiniBtn>
             </div>
-            <label
-              style={{
-                padding: "10px 14px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,.10)",
-                background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
-                fontSize: 12,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Upload From Gallery
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.size > MAX_LOGO_BYTES) {
-                    setToast("Logo too large");
-                    return;
-                  }
-                  try {
-                    const data = await fileToDataUrl(file);
-                    setProfileAvatar(data);
-                    setToast("Profile logo updated");
-                  } catch {
-                    setToast("Image read failed");
-                  }
-                }}
-              />
-            </label>
-          </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            {PROFILE_PRESET_LOGOS.map((logo, idx) => (
-              <button
-                key={logo}
-                onClick={() => {
-                  setProfileAvatar(logo);
-                  setToast("Profile logo selected");
-                }}
-                style={{
-                  height: 78,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  border:
-                    profileAvatar === logo
-                      ? "1px solid rgba(50,230,255,.42)"
-                      : "1px solid rgba(255,255,255,.08)",
-                  background: "rgba(255,255,255,.03)",
-                  padding: 0,
-                  cursor: "pointer",
-                }}
-              >
-                <img
-                  src={logo}
-                  alt={`preset ${idx + 1}`}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
+            <div className="modalBody">
+              <div className="themeGrid">
+                <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Obsidian" />
+                <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Deep Blue" />
+                <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean Glass" />
+                <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Velvet Rose" />
+                <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal Night" />
+              </div>
 
-        <div className="hr" />
+              <div className="hr" />
 
-        <div>
-          <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
-            Theme
-          </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                <MiniBtn
+                  onClick={async () => {
+                    if (!solAddr) {
+                      setToast("No wallet connected");
+                      return;
+                    }
+                    const ok = await copyText(solAddr);
+                    setToast(ok ? "Wallet copied" : "Copy failed");
+                  }}
+                >
+                  Copy Wallet
+                </MiniBtn>
 
-          <div className="themeGrid">
-            <ThemeOption theme="calm" current={theme} setTheme={setTheme} />
-            <ThemeOption theme="neon" current={theme} setTheme={setTheme} />
-            <ThemeOption theme="ocean" current={theme} setTheme={setTheme} />
-            <ThemeOption theme="rose" current={theme} setTheme={setTheme} />
-            <ThemeOption theme="royal" current={theme} setTheme={setTheme} />
+                <MiniBtn
+                  onClick={async () => {
+                    if (!solAddr) {
+                      setToast("No wallet connected");
+                      return;
+                    }
+                    const ok = await copyText(getReferralLink(solAddr));
+                    setToast(ok ? "Referral link copied" : "Copy failed");
+                  }}
+                >
+                  Copy Referral Link
+                </MiniBtn>
+
+                {!authenticated ? (
+                  <MiniBtn
+                    tone="good"
+                    onClick={async () => {
+                      try {
+                        if (ready) await login?.();
+                        setSettingsOpen(false);
+                      } catch (e) {
+                        setToast(e?.message || "Google login failed");
+                      }
+                    }}
+                  >
+                    Google Login
+                  </MiniBtn>
+                ) : (
+                  <MiniBtn
+                    tone="danger"
+                    onClick={async () => {
+                      try {
+                        await logout?.();
+                        setSettingsOpen(false);
+                        setToast("Google logged out");
+                        goScreen("HOME");
+                      } catch (e) {
+                        setToast(e?.message || "Logout failed");
+                      }
+                    }}
+                  >
+                    Google Logout
+                  </MiniBtn>
+                )}
+
+                {phantomWallet ? (
+                  <MiniBtn tone="danger" onClick={disconnectPhantom}>
+                    Disconnect Phantom
+                  </MiniBtn>
+                ) : (
+                  <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
+                    {connectingPhantom ? "Connecting" : "Connect Phantom"}
+                  </MiniBtn>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="hr" />
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <MiniBtn
-            onClick={async () => {
-              if (!solAddr) {
-                setToast("No wallet connected");
-                return;
-              }
-              const ok = await copyText(solAddr);
-              setToast(ok ? "Wallet copied" : "Copy failed");
-            }}
-          >
-            Copy Wallet Address
-          </MiniBtn>
-
-          <MiniBtn
-            onClick={async () => {
-              if (!solAddr) {
-                setToast("No wallet connected");
-                return;
-              }
-              const ok = await copyText(getReferralLink(solAddr));
-              setToast(ok ? "Referral link copied" : "Copy failed");
-            }}
-          >
-            Copy Referral Link
-          </MiniBtn>
-
-          <MiniBtn
-            onClick={async () => {
-              try {
-                await exportWallet?.();
-                setToast("Wallet export opened");
-              } catch (e) {
-                setToast(e?.message || "Export failed");
-              }
-            }}
-          >
-            Export Wallet
-          </MiniBtn>
-
-          {phantomWallet ? (
-            <MiniBtn tone="danger" onClick={disconnectPhantom}>
-              Disconnect Phantom
-            </MiniBtn>
-          ) : null}
-
-          {authenticated ? (
-            <MiniBtn
-              tone="danger"
-              onClick={async () => {
-                try {
-                  await logout?.();
-                  setToast("Google logged out");
-                  goScreen("HOME");
-                } catch (e) {
-                  setToast(e?.message || "Logout failed");
-                }
-              }}
-            >
-              Google Logout
-            </MiniBtn>
-          ) : null}
-        </div>
-      </div>
-    </Card>
-  </ScreenShell>
-)}
-</div>
-
-<div className="footerNav">
-  <button
-    className={`footerBtn ${screen === "HOME" ? "active" : ""}`}
-    onClick={() => goScreen("HOME")}
-  >
-    <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-      <HomeIcon />
-      <span>Home</span>
-    </div>
-  </button>
-
-  <button
-    className={`footerBtn ${screen === "SEARCH" ? "active" : ""}`}
-    onClick={() => goScreen("SEARCH")}
-  >
-    <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-      <SearchIcon />
-      <span>Search</span>
-    </div>
-  </button>
-
-  <button
-    className={`footerBtn ${screen === "CREATE" ? "active" : ""}`}
-    onClick={() => goScreen("CREATE")}
-  >
-    <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-      <PlusIcon />
-      <span>Create</span>
-    </div>
-  </button>
-
-  <button
-    className={`footerBtn ${screen === "PROFILE" ? "active" : ""}`}
-    onClick={() => goScreen("PROFILE")}
-  >
-    <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-      <UserIcon />
-      <span>Profile</span>
-    </div>
-  </button>
-
-  <button
-    className={`footerBtn ${screen === "SETTINGS" ? "active" : ""}`}
-    onClick={() => goScreen("SETTINGS")}
-  >
-    <div style={{ display: "grid", placeItems: "center", gap: 6 }}>
-      <CogIcon />
-      <span>Settings</span>
-    </div>
-  </button>
-</div>
-
-{settingsOpen ? (
-  <div className="modalBack" onClick={() => setSettingsOpen(false)}>
-    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-      <div className="modalHead">
-        <div className="modalTitle">Quick Settings</div>
-        <MiniBtn onClick={() => setSettingsOpen(false)}>Close</MiniBtn>
-      </div>
-
-      <div className="modalBody">
-        <div className="themeGrid">
-          <ThemeOption
-            theme="calm"
-            current={theme}
-            setTheme={setTheme}
-            label="Obsidian"
-          />
-          <ThemeOption
-            theme="neon"
-            current={theme}
-            setTheme={setTheme}
-            label="Deep Blue"
-          />
-          <ThemeOption
-            theme="ocean"
-            current={theme}
-            setTheme={setTheme}
-            label="Ocean Glass"
-          />
-          <ThemeOption
-            theme="rose"
-            current={theme}
-            setTheme={setTheme}
-            label="Velvet Rose"
-          />
-          <ThemeOption
-            theme="royal"
-            current={theme}
-            setTheme={setTheme}
-            label="Royal Night"
-          />
-        </div>
-
-        <div className="hr" />
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <MiniBtn
-            onClick={async () => {
-              if (!solAddr) {
-                setToast("No wallet connected");
-                return;
-              }
-              const ok = await copyText(solAddr);
-              setToast(ok ? "Wallet copied" : "Copy failed");
-            }}
-          >
-            Copy Wallet
-          </MiniBtn>
-
-          <MiniBtn
-            onClick={async () => {
-              if (!solAddr) {
-                setToast("No wallet connected");
-                return;
-              }
-              const ok = await copyText(getReferralLink(solAddr));
-              setToast(ok ? "Referral link copied" : "Copy failed");
-            }}
-          >
-            Copy Referral Link
-          </MiniBtn>
-
-          {!authenticated ? (
-            <MiniBtn
-              tone="good"
-              onClick={async () => {
-                try {
-                  if (ready) await login?.();
-                  setSettingsOpen(false);
-                } catch (e) {
-                  setToast(e?.message || "Google login failed");
-                }
-              }}
-            >
-              Google Login
-            </MiniBtn>
-          ) : (
-            <MiniBtn
-              tone="danger"
-              onClick={async () => {
-                try {
-                  await logout?.();
-                  setSettingsOpen(false);
-                  setToast("Google logged out");
-                  goScreen("HOME");
-                } catch (e) {
-                  setToast(e?.message || "Logout failed");
-                }
-              }}
-            >
-              Google Logout
-            </MiniBtn>
-          )}
-
-          {phantomWallet ? (
-            <MiniBtn tone="danger" onClick={disconnectPhantom}>
-              Disconnect Phantom
-            </MiniBtn>
-          ) : (
-            <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
-              {connectingPhantom ? "Connecting" : "Connect Phantom"}
-            </MiniBtn>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-) : null}
-</>
-);
+      ) : null}
+    </>
+  );
 }

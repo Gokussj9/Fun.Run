@@ -1805,6 +1805,54 @@ app.post("/coin/create", async (req, res) => {
   priceUsd: coin.priceUsd,
 });
 
+app.get("/api/coin/list", async (req, res) => {
+  try {
+    console.log("🔥 /api/coin/list hit");
+
+    const page = Math.max(
+      0,
+      parseInt(req.query.page || "0", 10)
+    );
+
+    const limit = Math.min(
+      50,
+      Math.max(
+        1,
+        parseInt(req.query.limit || "50", 10)
+      )
+    );
+
+    console.log("👉 query params:", {
+      page,
+      limit,
+    });
+
+    const rows = await sql`
+      select *
+      from coins
+      order by created_at desc
+      limit ${limit}
+      offset ${page * limit}
+    `;
+
+    const list = rows
+      .map((r) => mapDbCoinToApi(r))
+      .filter(Boolean);
+
+    res.json({
+      ok: true,
+      coins: list,
+    });
+  } catch (err) {
+    console.error("coin/list error:", err);
+
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
+  }
+});
+
         await upsertCandlesForTrade(
           latestCoin.id,
           Math.max(0, safeNum(latestCoin?.priceUsd || latestCoin?.price || 0)),
