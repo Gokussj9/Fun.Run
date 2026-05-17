@@ -1805,6 +1805,25 @@ app.post("/coin/create", async (req, res) => {
   priceUsd: coin.priceUsd,
 });
 
+
+        await upsertCandlesForTrade(
+          latestCoin.id,
+          Math.max(0, safeNum(latestCoin?.priceUsd || latestCoin?.price || 0)),
+          Math.max(0, safeNum(initialSol, 0))
+        );
+
+        return { ok: true, coin: latestCoin };
+      });
+
+      if (!result.ok) {
+        return res.json(result);
+      }
+
+      coin = result.coin;
+    }
+
+    return res.json({ ok: true, coin, imageUri, metadataUri });
+
 app.get("/api/coin/list", async (req, res) => {
   try {
     console.log("🔥 /api/coin/list hit");
@@ -1853,23 +1872,7 @@ app.get("/api/coin/list", async (req, res) => {
   }
 });
 
-        await upsertCandlesForTrade(
-          latestCoin.id,
-          Math.max(0, safeNum(latestCoin?.priceUsd || latestCoin?.price || 0)),
-          Math.max(0, safeNum(initialSol, 0))
-        );
 
-        return { ok: true, coin: latestCoin };
-      });
-
-      if (!result.ok) {
-        return res.json(result);
-      }
-
-      coin = result.coin;
-    }
-
-    return res.json({ ok: true, coin, imageUri, metadataUri });
   } catch (e) {
     console.log("coin/create error:", e?.message || e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
