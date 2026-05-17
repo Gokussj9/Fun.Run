@@ -10,8 +10,12 @@ import postgres from "postgres";
 import { WebSocketServer } from "ws";
 import NodeCache from "node-cache";
 import { Connection, PublicKey } from "@solana/web3.js";
+import walletRoutes from "./routes/wallet.js";
+import morgan from "morgan";
 
 const app = express();
+
+app.use("/wallet", walletRoutes);
 
 
 

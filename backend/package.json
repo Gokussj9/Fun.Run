@@ -7,14 +7,16 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "express-rate-limit": "^8.3.2",
     "helmet": "^7.0.0",
-    "morgan": "^1.10.0",
+    "morgan": "^1.10.1",
     "node-cache": "^5.1.2",
     "postgres": "^3.4.9",
     "utf-8-validate": "6.0.6",
