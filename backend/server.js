@@ -19,6 +19,7 @@ app.use("/wallet", walletRoutes);
 
 
 
+
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
 });
@@ -556,18 +557,20 @@ async function ensureSchema() {
       holders jsonb default '{}'::jsonb
     )`;
 
-  await sql`
-    create table if not exists profiles (
-      wallet text primary key,
-      referrer text,
-      referral_rewards numeric default 0,
-      creator_rewards numeric default 0,
-      owner_rewards numeric default 0,
-      referral_code text,
-      referral_count integer default 0,
-      created_at timestamptz default now(),
-      updated_at timestamptz default now()
-    )`;
+ await sql`
+  create table if not exists profiles (
+    wallet text primary key,
+    referrer text,
+    referral_rewards numeric default 0,
+    creator_rewards numeric default 0,
+    owner_rewards numeric default 0,
+    referral_code text,
+    referral_count integer default 0,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    wallet_address text,
+    encrypted_mnemonic text
+  )`;
 
   await sql`
     create table if not exists transactions (
@@ -1950,6 +1953,10 @@ async function doTrade(req, res, side) {
 
       if (sideLower === "buy") {
         tradeResult = ammBuy(coin, wallet, sol);
+
+        console.log("REAL BLOCKCHAIN BUY");
+console.log(wallet);
+console.log(tradeResult.tokensOut);
       } else if (sideLower === "sell") {
         tradeResult = ammSellByTokensIn(coin, wallet, tokens);
       } else {

@@ -3,6 +3,9 @@ import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import bip39 from "bip39";
+import { derivePath } from "ed25519-hd-key";
+import nacl from "tweetnacl";
 
 dotenv.config();
 
@@ -36,21 +39,38 @@ function encrypt(text) {
 
 router.get("/create", async (req, res) => {
   try {
-    const wallet = Keypair.generate();
+    const mnemonic =
+      bip39.generateMnemonic();
 
-    const privateKey = bs58.encode(
-      wallet.secretKey
-    );
+    const seed =
+      await bip39.mnemonicToSeed(
+        mnemonic
+      );
 
-    const encryptedKey =
-      encrypt(privateKey);
+    const path =
+      "m/44'/501'/0'/0'";
+
+    const derivedSeed =
+      derivePath(
+        path,
+        seed.toString("hex")
+      ).key;
+
+    const keypair =
+      Keypair.fromSeed(
+        derivedSeed
+      );
+
+    const encryptedMnemonic =
+      encrypt(mnemonic);
 
     res.json({
       success: true,
+
       address:
-        wallet.publicKey.toBase58(),
-      encryptedPrivateKey:
-        encryptedKey,
+        keypair.publicKey.toBase58(),
+
+      encryptedMnemonic,
     });
   } catch (error) {
     console.log(error);
