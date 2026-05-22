@@ -643,6 +643,8 @@ async function getProfile(wallet, createIfMissing = true) {
 
   const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
 
+
+  console.log("PROFILE DB ROW:", rows[0]);
   if (rows[0]) {
     return ensureProfileShape(rows[0], w);
   }
