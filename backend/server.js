@@ -13,6 +13,8 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import walletRoutes from "./routes/wallet.js";
 import morgan from "morgan";
 
+console.log("SERVER UPDATED");
+
 const app = express();
 
 app.use("/wallet", walletRoutes);
