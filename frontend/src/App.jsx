@@ -2609,10 +2609,17 @@ export default function App() {
 
   const solAddr = useMemo(() => {
     const phantom = String(phantomWallet || "").trim();
-    if (phantom) return phantom;
+ // if (phantom) {
+//   console.log("PHANTOM WALLET ACTIVE:", phantom);
+//   return phantom;
+// }
 
     const primary = String(user?.wallet?.address || "").trim();
-    if (primary) return primary;
+    console.log("FULL USER:", user);
+    if (primary) {
+  console.log("PRIMARY WALLET:", primary);
+  return primary;
+}
 
     const solLinked =
       user?.linkedAccounts?.find(
@@ -2631,32 +2638,23 @@ export default function App() {
 
   const isWalletConnected = useMemo(() => Boolean(solAddr), [solAddr]);
 
-  useEffect(() => {
-    const provider = getPhantomProvider();
-    if (!provider) return;
+  // useEffect(() => {
+//   const provider = getPhantomProvider();
+//   if (!provider) return;
 
-    provider
-      .connect({ onlyIfTrusted: true })
-      .then((resp) => {
-        const addr = String(resp?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
-        if (addr) setPhantomWallet(addr);
-      })
-      .catch(() => {});
+//   provider
+//     .connect({ onlyIfTrusted: true })
+//     .then((resp) => {
+//       const addr = String(
+//         resp?.publicKey?.toString?.() ||
+//         provider?.publicKey?.toString?.() ||
+//         ""
+//       ).trim();
 
-    const onConnect = (publicKey) => {
-      const addr = String(publicKey?.toString?.() || provider?.publicKey?.toString?.() || "").trim();
-      if (addr) setPhantomWallet(addr);
-    };
-    const onDisconnect = () => setPhantomWallet("");
-
-    provider.on?.("connect", onConnect);
-    provider.on?.("disconnect", onDisconnect);
-
-    return () => {
-      provider.off?.("connect", onConnect);
-      provider.off?.("disconnect", onDisconnect);
-    };
-  }, []);
+//       if (addr) setPhantomWallet(addr);
+//     })
+//     .catch(() => {});
+// }, []);
 
   const selectedCoin = useMemo(() => {
     return (coins || []).find((c) => String(c.id) === String(selectedCoinId)) || null;

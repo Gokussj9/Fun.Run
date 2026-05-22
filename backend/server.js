@@ -459,8 +459,9 @@ function coinToDbUpdate(coin = {}) {
 
 function ensureProfileShape(row = {}, wallet = "") {
   const w = String(wallet || row.wallet || "").trim();
+
   return {
-    wallet: w,
+    wallet: String(row.wallet_address || w).trim(),
     referrer: String(row.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
     creator_rewards: Math.max(0, safeNum(row.creator_rewards, 0)),
@@ -641,14 +642,54 @@ async function getProfile(wallet, createIfMissing = true) {
   await requireDb();
 
   const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
-  if (rows[0]) return ensureProfileShape(rows[0], w);
+
+  if (rows[0]) {
+    return ensureProfileShape(rows[0], w);
+  }
+
   if (!createIfMissing) return null;
 
-  const payload = profileToDbRow(ensureProfileShape({ wallet: w }, w));
+  const payload = profileToDbRow(
+    ensureProfileShape({ wallet: w }, w)
+  );
+
+  const walletResponse = await fetch(
+    "http://localhost:5000/wallet/create"
+  );
+
+  const walletData =
+    await walletResponse.json();
+
   const inserted = await sql`
-    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
-    values (${payload.wallet}, ${payload.referrer}, ${payload.referral_rewards}, ${payload.creator_rewards}, ${payload.owner_rewards}, ${payload.referral_code}, ${payload.referral_count}, ${payload.created_at}, ${payload.updated_at})
-    on conflict (wallet) do update set updated_at = excluded.updated_at
+    insert into profiles (
+      wallet,
+      referrer,
+      referral_rewards,
+      creator_rewards,
+      owner_rewards,
+      referral_code,
+      referral_count,
+      wallet_address,
+      encrypted_mnemonic,
+      created_at,
+      updated_at
+    )
+    values (
+      ${payload.wallet},
+      ${payload.referrer},
+      ${payload.referral_rewards},
+      ${payload.creator_rewards},
+      ${payload.owner_rewards},
+      ${payload.referral_code},
+      ${payload.referral_count},
+      ${walletData.address},
+      ${walletData.encryptedMnemonic},
+      ${payload.created_at},
+      ${payload.updated_at}
+    )
+    on conflict (wallet)
+    do update set
+      updated_at = excluded.updated_at
     returning *`;
 
   return ensureProfileShape(inserted[0], w);
