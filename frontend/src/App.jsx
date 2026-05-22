@@ -2820,7 +2820,8 @@ export default function App() {
     try {
       setLoadingProfile(true);
       const json = await api(`/profile/${wallet}`);
-      setProfile(json?.profile || null);
+      console.log("PROFILE RESPONSE:", json?.profile);
+setProfile(json?.profile || null);
     } catch (e) {
       setToast(e?.message || "Failed to load profile");
     } finally {
