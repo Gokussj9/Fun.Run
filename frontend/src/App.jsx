@@ -1,4 +1,5 @@
 import IntroSplash from "./IntroSplash";
+import "./App.css";
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
@@ -223,7 +224,7 @@ function ThemeStyles() {
       .appShell{
         position:relative;
         z-index:1;
-        width:min(100%, 560px);
+        width:100%;
         margin:0 auto;
         padding:16px 12px 126px;
       }
@@ -4808,6 +4809,24 @@ return walletAddress
       </div>
 
       <div
+  style={{
+    marginTop: 6,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    borderRadius: 999,
+    background: "rgba(124,203,255,.06)",
+    border: "1px solid rgba(124,203,255,.10)",
+    fontSize: 12,
+    color: "#7CCBFF",
+    fontWeight: 800,
+  }}
+>
+  👥 Referral: {Math.max(0, (profile?.run_balance || 700000) - 700000).toLocaleString()} RUN
+</div>
+
+      <div
         style={{
           marginTop: 8,
           fontSize: 12,
@@ -4819,34 +4838,48 @@ return walletAddress
     </div>
 
 
-<div
-  style={{
-    width: 85,
-    height: 85,
-    borderRadius: "50%",
-   background:
-  "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
-    border: "5px solid rgba(255,255,255,.28)",
-outline: "2px solid rgba(255,215,0,.65)",
-outlineOffset: "-8px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 24,
-    fontWeight: 1000,
-    color: "#2B2B2B",
-textShadow:
-  "0 1px 0 #fff, 0 2px 0 rgba(255,215,0,.55), 0 4px 8px rgba(0,0,0,.35)",
-letterSpacing: 1,
-    textShadow: "0 1px 2px rgba(255,255,255,.35)",
- boxShadow:
-  "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
-    animation: "spinRunCoin 4s linear infinite",
-    transformStyle: "preserve-3d",
-  }}
->
-  RUN
-</div>
+
+    <div
+      style={{
+        width: 85,
+        height: 85,
+        borderRadius: "50%",
+        background:
+          "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
+        border: "5px solid rgba(255,255,255,.28)",
+        outline: "2px solid rgba(255,215,0,.65)",
+        outlineOffset: "-8px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 24,
+        fontWeight: 800,
+        color: "#2B2B2B",
+        letterSpacing: 1,
+        textShadow: "0 1px 2px rgba(255,255,255,.35)",
+        boxShadow:
+          "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
+        animation: "flipRunCoin 10s ease-in-out infinite",
+        willChange: "transform",
+        transformStyle: "preserve-3d",
+      }}
+    >
+      <span style={{ position: "absolute", backfaceVisibility: "hidden" }}>
+        RUN
+      </span>
+      <span
+        style={{
+          position: "absolute",
+          transform: "rotateY(180deg)",
+          backfaceVisibility: "hidden",
+        }}
+      >
+        RUN
+      </span>
+    </div>
+  
+
+
 
 
     <div style={{ textAlign: "center" }}>

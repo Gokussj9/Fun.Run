@@ -28,17 +28,17 @@
   }
 }
 
-@keyframes spinRunCoin {
+@keyframes flipRunCoin {
   0% {
-    transform: perspective(800px) rotateY(0deg) scale(1);
+    transform: rotateY(0deg);
   }
 
   50% {
-    transform: perspective(800px) rotateY(180deg) scale(1.15);
+    transform: rotateY(180deg);
   }
 
   100% {
-    transform: perspective(800px) rotateY(360deg) scale(1);
+    transform: rotateY(360deg);
   }
 }
 
