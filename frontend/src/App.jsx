@@ -267,7 +267,7 @@ function ThemeStyles() {
       .cardBody{
         position:relative;
         z-index:1;
-        padding:16px;
+        padding:8px;
       }
 
       .sectionHeader{
