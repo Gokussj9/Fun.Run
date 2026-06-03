@@ -9,18 +9,21 @@ import rateLimit from "express-rate-limit";
 import postgres from "postgres";
 import { WebSocketServer } from "ws";
 import NodeCache from "node-cache";
-import { Connection, PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  sendAndConfirmTransaction,
+  Keypair,
+} from "@solana/web3.js";
 import walletRoutes from "./routes/wallet.js";
+import treasury from "./solana/treasury.js";
 import morgan from "morgan";
 
 console.log("SERVER UPDATED");
 
 const app = express();
-
-app.use("/wallet", walletRoutes);
-
-
-
 
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
@@ -50,7 +53,7 @@ const TRUST_PROXY = String(process.env.TRUST_PROXY || "") === "1";
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 
-const SOLANA_RPC = process.env.SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+const SOLANA_RPC = process.env.SOLANA_RPC || "https://rpc.ankr.com/solana";
 const JSON_LIMIT = process.env.JSON_LIMIT || "15mb";
 
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5173")
@@ -66,7 +69,7 @@ const REFERRAL_PCT_OF_FEE = clampNum(Number(process.env.REFERRAL_PCT_OF_FEE || 2
 const APP_OWNER_WALLET = String(process.env.APP_OWNER_WALLET || "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji").trim();
 const SOL_USD = clampNum(Number(process.env.SOL_USD || 80), 1, 100000);
 
-const VIRTUAL_SOL = clampNum(Number(process.env.VIRTUAL_SOL || 30), 0, 1000000);
+const VIRTUAL_SOL = clampNum(Number(process.env.VIRTUAL_SOL || 15), 0, 1000000);
 const VIRTUAL_TOKEN_PCT = clampNum(Number(process.env.VIRTUAL_TOKEN_PCT || 30), 0.1, 95);
 const SALE_SUPPLY_PCT = clampNum(Number(process.env.SALE_SUPPLY_PCT || 80), 1, 100);
 
@@ -82,11 +85,10 @@ if (TRUST_PROXY) app.set("trust proxy", 1);
 
 app.use(cors({
   origin: CORS_ORIGINS,
-credentials: true
+  credentials: true
 }));
 app.options("*", cors());
 app.use(compression());
-
 
 app.use(
   rateLimit({
@@ -101,6 +103,11 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("tiny"));
 }
 
+// IMPORTANT: walletRoutes sirf /wallet pe mount karo
+// /api/profile pe NAHI - kyunke us pe wallet.js ka GET /:wallet
+// hamare proper /profile/:wallet route ko override kar deta tha
+app.use("/wallet", walletRoutes);
+
 // -------------------- CLIENTS --------------------
 const sql = DATABASE_URL
   ? postgres(DATABASE_URL, {
@@ -108,29 +115,22 @@ const sql = DATABASE_URL
       max: Math.max(5, Math.min(30, Number(process.env.PG_MAX_CONNECTIONS || 12))),
       idle_timeout: 20,
       connect_timeout: 15,
-      prepare: true,
-    
+      prepare: false,
     })
   : null;
 
-const connection = new Connection(SOLANA_RPC, "confirmed");
+const connection = new Connection(
+  SOLANA_RPC,
+  {
+    commitment: "confirmed",
+    disableRetryOnRateLimit: false,
+    confirmTransactionInitialTimeout: 60000,
+  }
+);
 
 // -------------------- HELPERS --------------------
 function nowMS() {
   return Date.now();
-}
-
-function broadcast(event, payload) {
-  const msg = JSON.stringify({
-    event,
-    payload,
-  });
-
-  wsClients.forEach((ws) => {
-    if (ws.readyState === 1) {
-      ws.send(msg);
-    }
-  });
 }
 
 function clampNum(n, min, max) {
@@ -142,6 +142,247 @@ function clampNum(n, min, max) {
 function safeNum(v, d = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
+}
+
+function broadcast(event, payload) {
+  const msg = JSON.stringify({
+    event,
+    payload,
+  });
+
+  if (typeof wsClients !== "undefined") {
+    wsClients.forEach((ws) => {
+      if (ws.readyState === 1) {
+        ws.send(msg);
+      }
+    });
+  }
+}
+
+// -------------------- CUSTODIAL WALLET CREATION HELPER --------------------
+// Direct function call - no HTTP fetch needed
+async function createCustodialWallet() {
+  try {
+    const bip39 = (await import("bip39")).default;
+    const { derivePath } = await import("ed25519-hd-key");
+    const crypto = (await import("crypto")).default;
+
+    const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+    if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+      throw new Error("ENCRYPTION_KEY must be exactly 32 characters in .env");
+    }
+
+    const mnemonic = bip39.generateMnemonic();
+    const seed = await bip39.mnemonicToSeed(mnemonic);
+    const path = "m/44'/501'/0'/0'";
+    const derivedSeed = derivePath(path, seed.toString("hex")).key;
+    const keypair = Keypair.fromSeed(derivedSeed);
+
+    // Encrypt mnemonic
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(
+      "aes-256-cbc",
+      Buffer.from(ENCRYPTION_KEY),
+      iv
+    );
+    let encrypted = cipher.update(mnemonic);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    const encryptedMnemonic =
+      iv.toString("hex") + ":" + encrypted.toString("hex");
+
+    const address = keypair.publicKey.toBase58();
+    console.log("✅ CUSTODIAL WALLET GENERATED:", address);
+
+    return { address, encryptedMnemonic };
+  } catch (err) {
+    console.log("❌ createCustodialWallet failed:", err?.message || err);
+    throw err;
+  }
+}
+
+async function scanWalletDeposits(wallet) {
+  try {
+    const w = String(wallet || "").trim();
+    if (!w) return;
+
+    const pub = new PublicKey(w);
+
+    const lastSignature = await getLastDepositSignature(w);
+
+    const signatures = await connection.getSignaturesForAddress(pub, { limit: 2 });
+
+    if (!signatures?.length) return;
+
+    for (const sig of signatures) {
+      const signature = String(sig?.signature || "").trim();
+      if (!signature) continue;
+
+      if (lastSignature && signature === lastSignature) {
+        break;
+      }
+
+      const tx = await connection.getParsedTransaction(signature, {
+        maxSupportedTransactionVersion: 0,
+      });
+
+      const accountKeys = tx?.transaction?.message?.accountKeys || [];
+
+      const walletIndex = accountKeys.findIndex(
+        (k) => String(k?.pubkey?.toString?.() || "") === w
+      );
+
+      if (walletIndex === -1) continue;
+
+      const pre = safeNum(tx?.meta?.preBalances?.[walletIndex], 0) / 1_000_000_000;
+      const post = safeNum(tx?.meta?.postBalances?.[walletIndex], 0) / 1_000_000_000;
+
+      const instructions = tx?.transaction?.message?.instructions || [];
+
+      let diff = 0;
+
+      for (const ix of instructions) {
+        const parsed = ix?.parsed;
+
+        if (parsed?.type === "transfer" && parsed?.info?.destination === w) {
+          diff = safeNum(parsed?.info?.lamports, 0) / 1_000_000_000;
+          break;
+        }
+      }
+
+      if (diff <= 0) continue;
+
+      await creditDeposit({
+        wallet: w,
+        txHash: signature,
+        amount: diff,
+      });
+    }
+
+    if (signatures?.[0]?.signature) {
+      await setLastDepositSignature(w, signatures[0].signature);
+    }
+  } catch (e) {
+    console.log("scanWalletDeposits error:", e?.message || e);
+  }
+}
+
+async function getBalance(wallet) {
+  const w = String(wallet || "").trim();
+  if (!w) return 0;
+
+  const rows = await sql`
+    select * from balances
+    where wallet = ${w}
+    limit 1
+  `;
+
+  return Math.max(0, safeNum(rows?.[0]?.sol, 0));
+}
+
+async function setBalance(wallet, amount) {
+  const w = String(wallet || "").trim();
+
+  await sql`
+    insert into balances (wallet, sol, updated_at)
+    values (${w}, ${Math.max(0, safeNum(amount, 0))}, now())
+    on conflict (wallet)
+    do update set
+      sol = excluded.sol,
+      updated_at = now()
+  `;
+}
+
+async function decreaseBalance(wallet, amount) {
+  const w = String(wallet || "").trim();
+  const current = await getBalance(w);
+  const next = current - Math.max(0, safeNum(amount, 0));
+
+  if (next < 0) {
+    throw new Error("Insufficient balance");
+  }
+
+  await setBalance(w, next);
+  return next;
+}
+
+async function hasDeposit(txHash) {
+  const hash = String(txHash || "").trim();
+  if (!hash) return true;
+
+  const rows = await sql`
+    select id from deposits where tx_hash = ${hash} limit 1
+  `;
+
+  return !!rows?.[0];
+}
+
+async function saveDeposit({ wallet, txHash, amount, token = "SOL" }) {
+  await sql`
+    insert into deposits (id, wallet, tx_hash, amount, token, status, created_at)
+    values (
+      ${crypto.randomUUID()},
+      ${wallet},
+      ${txHash},
+      ${Math.max(0, safeNum(amount, 0))},
+      ${token},
+      'confirmed',
+      now()
+    )
+  `;
+}
+
+async function saveWithdrawal({ wallet, destination, amount, txHash, status = "confirmed" }) {
+  await sql`
+    insert into withdrawals (id, wallet, destination, amount, tx_hash, status)
+    values (
+      ${crypto.randomUUID()},
+      ${wallet},
+      ${destination},
+      ${amount},
+      ${txHash},
+      ${status}
+    )
+  `;
+}
+
+async function creditDeposit({ wallet, txHash, amount }) {
+  const w = String(wallet || "").trim();
+  if (!w) return false;
+
+  if (await hasDeposit(txHash)) {
+    return false;
+  }
+
+  const currentBalance = await getBalance(w);
+  const nextBalance = currentBalance + Math.max(0, safeNum(amount, 0));
+
+  await saveDeposit({ wallet: w, txHash, amount, token: "SOL" });
+  await setBalance(w, nextBalance);
+
+  return true;
+}
+
+async function getLastDepositSignature(wallet) {
+  const w = String(wallet || "").trim();
+
+  const rows = await sql`
+    select last_signature from deposit_scans where wallet = ${w} limit 1
+  `;
+
+  return String(rows?.[0]?.last_signature || "").trim();
+}
+
+async function setLastDepositSignature(wallet, signature) {
+  const w = String(wallet || "").trim();
+
+  await sql`
+    insert into deposit_scans (wallet, last_signature, updated_at)
+    values (${w}, ${signature}, now())
+    on conflict (wallet)
+    do update set
+      last_signature = excluded.last_signature,
+      updated_at = now()
+  `;
 }
 
 function uid() {
@@ -189,31 +430,11 @@ function calcPricing(input) {
 
 function mapDbCoinToApi(row = {}) {
   const totalSupply = Math.max(1, safeNum(row.total_supply, TOTAL_SUPPLY));
-
-  const curveSupply = Math.max(
-    1,
-    safeNum(row.curve_supply, saleSupplyFromTotal(totalSupply))
-  );
-
-  const tokenReserve = clampNum(
-    safeNum(row.reserve_token, curveSupply),
-    1,
-    curveSupply
-  );
-
-  const curveSold = clampNum(
-    safeNum(row.curve_sold, curveSupply - tokenReserve),
-    0,
-    curveSupply
-  );
-
+  const curveSupply = Math.max(1, safeNum(row.curve_supply, saleSupplyFromTotal(totalSupply)));
+  const tokenReserve = clampNum(safeNum(row.reserve_token, curveSupply), 1, curveSupply);
+  const curveSold = clampNum(safeNum(row.curve_sold, curveSupply - tokenReserve), 0, curveSupply);
   const vSol = Math.max(1e-9, safeNum(row.v_sol, VIRTUAL_SOL));
-
-  const vTokens = calcVirtualTokens(
-    totalSupply,
-    curveSupply,
-    row.v_tokens
-  );
+  const vTokens = calcVirtualTokens(totalSupply, curveSupply, row.v_tokens);
 
   const pricing = calcPricing({
     totalSupply,
@@ -225,253 +446,159 @@ function mapDbCoinToApi(row = {}) {
   });
 
   const chartInput = Array.isArray(row.chart)
-    ? row.chart
-        .filter((n) => Number.isFinite(Number(n)))
-        .map(Number)
+    ? row.chart.filter((n) => Number.isFinite(Number(n))).map(Number)
     : [];
 
-  const seedPrice = Math.max(
-    0,
-    safeNum(pricing.priceUsd, 0)
-  );
+  const seedPrice = Math.max(0, safeNum(pricing.priceUsd, 0));
 
   const chart =
     chartInput.length > 0
       ? chartInput.slice(-MAX_CHART_POINTS)
-      : [
-          seedPrice,
-          seedPrice,
-          seedPrice,
-          seedPrice,
-          seedPrice,
-        ];
+      : [seedPrice, seedPrice, seedPrice, seedPrice, seedPrice];
 
-  const safeId = String(
-    row.id || row.coin_id || ""
-  ).trim();
-
+  const safeId = String(row.id || row.coin_id || "").trim();
   if (!safeId) return null;
 
   return {
     id: safeId,
-
     name: String(row.name || "").trim(),
-
-    symbol: String(row.symbol || "")
-      .trim()
-      .toUpperCase(),
-
+    symbol: String(row.symbol || "").trim().toUpperCase(),
     story: String(row.story || "").trim(),
-
     logo: String(row.logo || ""),
-
-    metadataUri: String(
-      row.metadata_uri || ""
-    ),
-
-    creatorWallet: String(
-      row.creator_wallet || ""
-    ).trim(),
-
-    owner: String(
-      row.creator_wallet || ""
-    ).trim(),
-
-    createdAt: row.created_at
-      ? new Date(row.created_at).getTime()
-      : nowMS(),
-
+    metadataUri: String(row.metadata_uri || ""),
+    creatorWallet: String(row.creator_wallet || "").trim(),
+    owner: String(row.creator_wallet || "").trim(),
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : nowMS(),
     status: "LIVE",
-
     totalSupply,
-
     curveSupply,
-
     curveSold,
-
     vTokens,
-
     vSol,
-
-    solReserve: Math.max(
-      0,
-      safeNum(row.reserve_sol, 0)
-    ),
-
+    solReserve: Math.max(0, safeNum(row.reserve_sol, 0)),
     tokenReserve,
-
-    volumeSol: Math.max(
-      0,
-      safeNum(row.volume_sol, 0)
-    ),
-
-    lastTradeAt: safeNum(
-      row.last_trade_at,
-      0
-    ),
-
+    volumeSol: Math.max(0, safeNum(row.volume_sol, 0)),
+    lastTradeAt: safeNum(row.last_trade_at, 0),
     priceSol: pricing.priceSol,
-
     priceUsd: pricing.priceUsd,
-
     price: pricing.priceUsd,
-
     lastPriceUsd: pricing.priceUsd,
-
-    mc: Math.max(
-      0,
-      safeNum(row.market_cap, pricing.mcUsd)
-    ),
-
+    mc: Math.max(0, safeNum(row.market_cap, pricing.mcUsd)),
     ath: Math.max(
-      Math.max(
-        0,
-        safeNum(row.ath_market_cap, 0)
-      ),
-      Math.max(
-        0,
-        safeNum(row.market_cap, pricing.mcUsd)
-      ),
+      Math.max(0, safeNum(row.ath_market_cap, 0)),
+      Math.max(0, safeNum(row.market_cap, pricing.mcUsd)),
       pricing.mcUsd
     ),
-
     chart,
-
     holders: asObj(row.holders, {}),
-
-    creatorRewardsSol: Math.max(
-      0,
-      safeNum(row.creator_rewards, 0)
-    ),
+    creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
   };
 }
 
 function coinToDbUpdate(coin = {}) {
-  const rawMarketCap = Math.max(
-    0,
-    safeNum(coin.mc, 0)
-  );
+  const rawMarketCap = Math.max(0, safeNum(coin.mc, 0));
 
-  // fake launch floor for better visual momentum
   const boostedMarketCap =
     rawMarketCap > 0
-      ? Math.max(
-          rawMarketCap,
-          5000 + Math.random() * 3000
-        )
+      ? Math.max(rawMarketCap, 5000 + Math.random() * 3000)
       : 5000 + Math.random() * 3000;
 
   return {
     name: coin.name || "",
-
     symbol: coin.symbol || "",
-
     story: coin.story || "",
-
     logo: coin.logo || "",
-
     metadata_uri: coin.metadataUri || "",
-
-    creator_wallet:
-      coin.creatorWallet ||
-      coin.owner ||
-      "",
-
-    created_at: new Date(
-      coin.createdAt || Date.now()
-    ).toISOString(),
-
-    total_supply:
-      coin.totalSupply ||
-      TOTAL_SUPPLY,
-
+    creator_wallet: coin.creatorWallet || coin.owner || "",
+    created_at: new Date(coin.createdAt || Date.now()).toISOString(),
+    total_supply: coin.totalSupply || TOTAL_SUPPLY,
     curve_supply:
-      coin.curveSupply ||
-      saleSupplyFromTotal(
-        coin.totalSupply ||
-          TOTAL_SUPPLY
-      ),
-
-    curve_sold:
-      coin.curveSold || 0,
-
-    v_sol:
-      coin.vSol || VIRTUAL_SOL,
-
+      coin.curveSupply || saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
+    curve_sold: coin.curveSold || 0,
+    v_sol: coin.vSol || VIRTUAL_SOL,
     v_tokens:
       coin.vTokens ||
       calcVirtualTokens(
-        coin.totalSupply ||
-          TOTAL_SUPPLY,
-
-        coin.curveSupply ||
-          saleSupplyFromTotal(
-            coin.totalSupply ||
-              TOTAL_SUPPLY
-          ),
-
+        coin.totalSupply || TOTAL_SUPPLY,
+        coin.curveSupply || saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
         coin.vTokens
       ),
-
-    reserve_sol:
-      coin.solReserve || 0,
-
+    reserve_sol: coin.solReserve || 0,
     reserve_token:
-      coin.tokenReserve ||
-      coin.curveSupply ||
-      saleSupplyFromTotal(
-        coin.totalSupply ||
-          TOTAL_SUPPLY
-      ),
-
-    market_cap:
-      boostedMarketCap,
-
-    last_price:
-      coin.priceSol || 0,
-
-    ath_market_cap: Math.max(
-      boostedMarketCap,
-      safeNum(coin.ath, 0)
-    ),
-
-    volume_sol:
-      coin.volumeSol || 0,
-
-    last_trade_at:
-      coin.lastTradeAt || 0,
-
-    creator_rewards:
-      coin.creatorRewardsSol || 0,
-
-    holders: asObj(
-      coin.holders,
-      {}
-    ),
-
-    chart: Array.isArray(
-      coin.chart
-    )
-      ? coin.chart.slice(
-          -MAX_CHART_POINTS
-        )
-      : [],
+      coin.tokenReserve || coin.curveSupply || saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY),
+    market_cap: boostedMarketCap,
+    last_price: coin.priceSol || 0,
+    ath_market_cap: Math.max(boostedMarketCap, safeNum(coin.ath, 0)),
+    volume_sol: coin.volumeSol || 0,
+    last_trade_at: coin.lastTradeAt || 0,
+    creator_rewards: coin.creatorRewardsSol || 0,
+    holders: asObj(coin.holders, {}),
+    chart: Array.isArray(coin.chart) ? coin.chart.slice(-MAX_CHART_POINTS) : [],
   };
 }
 
 function ensureProfileShape(row = {}, wallet = "") {
-  const w = String(wallet || row.wallet || "").trim();
+  const primaryWallet = String(
+    row.wallet ||
+    wallet ||
+    ""
+  ).trim();
+
+  const custodialWallet = String(
+    row.wallet_address ||
+    row.connectedWallet ||
+    ""
+  ).trim();
 
   return {
-    wallet: String(row.wallet_address || w).trim(),
+    wallet: primaryWallet,
+
+    // IMPORTANT
+    wallet_address: custodialWallet,
+
+    // frontend compatibility
+    connectedWallet: custodialWallet,
+
+    encrypted_mnemonic: String(
+      row.encrypted_mnemonic || ""
+    ).trim(),
+
     referrer: String(row.referrer || "").trim(),
-    referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
-    creator_rewards: Math.max(0, safeNum(row.creator_rewards, 0)),
-    owner_rewards: Math.max(0, safeNum(row.owner_rewards, 0)),
-    referral_code: String(row.referral_code || w.slice(0, 6)),
-    referral_count: Math.max(0, safeNum(row.referral_count, 0)),
-    created_at: row.created_at || new Date().toISOString(),
-    updated_at: row.updated_at || new Date().toISOString(),
+
+    referral_rewards: Math.max(
+      0,
+      safeNum(row.referral_rewards, 0)
+    ),
+
+    run_balance: Math.max(
+  0,
+  safeNum(row.run_balance, 700000)
+),
+
+    creator_rewards: Math.max(
+      0,
+      safeNum(row.creator_rewards, 0)
+    ),
+
+    owner_rewards: Math.max(
+      0,
+      safeNum(row.owner_rewards, 0)
+    ),
+
+    referral_code: String(
+      row.referral_code || primaryWallet.slice(0, 6)
+    ),
+
+    referral_count: Math.max(
+      0,
+      safeNum(row.referral_count, 0)
+    ),
+
+    created_at:
+      row.created_at || new Date().toISOString(),
+
+    updated_at:
+      row.updated_at || new Date().toISOString(),
   };
 }
 
@@ -560,20 +687,25 @@ async function ensureSchema() {
       holders jsonb default '{}'::jsonb
     )`;
 
- await sql`
-  create table if not exists profiles (
-    wallet text primary key,
-    referrer text,
-    referral_rewards numeric default 0,
-    creator_rewards numeric default 0,
-    owner_rewards numeric default 0,
-    referral_code text,
-    referral_count integer default 0,
-    created_at timestamptz default now(),
-    updated_at timestamptz default now(),
-    wallet_address text,
-    encrypted_mnemonic text
-  )`;
+  await sql`
+    create table if not exists profiles (
+      wallet text primary key,
+      referrer text,
+      referral_rewards numeric default 0,
+      creator_rewards numeric default 0,
+      owner_rewards numeric default 0,
+      referral_code text,
+      referral_count integer default 0,
+      created_at timestamptz default now(),
+      updated_at timestamptz default now(),
+      wallet_address text,
+run_balance numeric default 700000,
+encrypted_mnemonic text
+    )`;
+
+  await sql`alter table profiles add column if not exists wallet_address text`;
+  await sql`alter table profiles add column if not exists encrypted_mnemonic text`;
+  await sql`alter table profiles add column if not exists run_balance numeric default 700000`;
 
   await sql`
     create table if not exists transactions (
@@ -597,6 +729,42 @@ async function ensureSchema() {
     )`;
 
   await sql`
+    create table if not exists deposits (
+      id text primary key,
+      wallet text not null,
+      tx_hash text unique not null,
+      amount numeric not null default 0,
+      token text not null default 'SOL',
+      status text not null default 'confirmed',
+      created_at timestamptz not null default now()
+    )`;
+
+  await sql`
+    create table if not exists withdrawals (
+      id text primary key,
+      wallet text not null,
+      destination text not null,
+      amount numeric not null default 0,
+      tx_hash text,
+      status text not null default 'pending',
+      created_at timestamptz not null default now()
+    )`;
+
+  await sql`
+    create table if not exists balances (
+      wallet text primary key,
+      sol numeric not null default 0,
+      updated_at timestamptz not null default now()
+    )`;
+
+  await sql`
+    create table if not exists deposit_scans (
+      wallet text primary key,
+      last_signature text,
+      updated_at timestamptz not null default now()
+    )`;
+
+  await sql`
     create table if not exists candles (
       coin_id text not null,
       timeframe text not null,
@@ -611,8 +779,6 @@ async function ensureSchema() {
       primary key (coin_id, timeframe, bucket_time)
     )`;
 
-
-
   await sql`create index if not exists coins_created_at_idx on coins (created_at desc)`;
   await sql`create index if not exists coins_creator_wallet_idx on coins (creator_wallet)`;
   await sql`create index if not exists tx_coin_id_created_at_idx on transactions (coin_id, created_at desc)`;
@@ -621,6 +787,7 @@ async function ensureSchema() {
   await sql`create index if not exists holdings_wallet_idx on holdings (wallet)`;
   await sql`create index if not exists holdings_coin_id_idx on holdings (coin_id)`;
   await sql`create index if not exists candles_coin_tf_bucket_idx on candles (coin_id, timeframe, bucket_time desc)`;
+  await sql`create index if not exists profiles_wallet_address_idx on profiles (wallet_address)`;
 }
 
 function profileToDbRow(profile = {}) {
@@ -628,10 +795,13 @@ function profileToDbRow(profile = {}) {
     wallet: String(profile.wallet || "").trim(),
     referrer: String(profile.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(profile.referral_rewards, 0)),
+    run_balance: Math.max(0, safeNum(profile.run_balance, 700000)),
     creator_rewards: Math.max(0, safeNum(profile.creator_rewards, 0)),
     owner_rewards: Math.max(0, safeNum(profile.owner_rewards, 0)),
     referral_code: String(profile.referral_code || ""),
     referral_count: Math.max(0, safeNum(profile.referral_count, 0)),
+    wallet_address: String(profile.wallet_address || "").trim(),
+    encrypted_mnemonic: String(profile.encrypted_mnemonic || "").trim(),
     created_at: profile.created_at || new Date().toISOString(),
     updated_at: profile.updated_at || new Date().toISOString(),
   };
@@ -645,49 +815,78 @@ async function getProfile(wallet, createIfMissing = true) {
 
   const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
 
-
-  console.log("PROFILE DB ROW:", rows[0]);
+  // Existing profile mil gayi
   if (rows[0]) {
-    return ensureProfileShape(rows[0], w);
+    const profile = rows[0];
+
+    // Agar custodial wallet nahi he, abhi banao
+    if (!profile.wallet_address) {
+      console.log("⚠️ Profile exists but no custodial wallet. Generating now for:", w);
+
+      try {
+        const walletData = await createCustodialWallet();
+
+        await sql`
+          update profiles
+          set
+            wallet_address = ${walletData.address},
+            encrypted_mnemonic = ${walletData.encryptedMnemonic},
+            updated_at = now()
+          where wallet = ${w}
+        `;
+
+        profile.wallet_address = walletData.address;
+        profile.encrypted_mnemonic = walletData.encryptedMnemonic;
+
+        console.log("✅ Custodial wallet attached to profile:", w, "→", walletData.address);
+      } catch (err) {
+        console.log("❌ Failed to generate custodial wallet:", err?.message || err);
+      }
+    }
+
+    return ensureProfileShape(profile, w);
   }
 
+  // Profile nahi mili
   if (!createIfMissing) return null;
 
+  // Nayi profile + custodial wallet ek saath banao
+  let walletData = { address: "", encryptedMnemonic: "" };
+
+  try {
+    walletData = await createCustodialWallet();
+  } catch (err) {
+    console.log("❌ Custodial wallet creation failed during new profile:", err?.message || err);
+  }
+
   const payload = profileToDbRow(
-    ensureProfileShape({ wallet: w }, w)
+    ensureProfileShape(
+      {
+        wallet: w,
+        wallet_address: walletData.address,
+        encrypted_mnemonic: walletData.encryptedMnemonic,
+      },
+      w
+    )
   );
-
-  const walletResponse = await fetch(
-    "http://localhost:5000/wallet/create"
-  );
-
-  const walletData =
-    await walletResponse.json();
 
   const inserted = await sql`
     insert into profiles (
-      wallet,
-      referrer,
-      referral_rewards,
-      creator_rewards,
-      owner_rewards,
-      referral_code,
-      referral_count,
-      wallet_address,
-      encrypted_mnemonic,
-      created_at,
-      updated_at
+      wallet, referrer, referral_rewards, run_balance, creator_rewards, owner_rewards,
+      referral_code, referral_count, wallet_address, encrypted_mnemonic,
+      created_at, updated_at
     )
     values (
       ${payload.wallet},
       ${payload.referrer},
       ${payload.referral_rewards},
+      ${payload.run_balance},
       ${payload.creator_rewards},
       ${payload.owner_rewards},
       ${payload.referral_code},
       ${payload.referral_count},
-      ${walletData.address},
-      ${walletData.encryptedMnemonic},
+      ${payload.wallet_address},
+      ${payload.encrypted_mnemonic},
       ${payload.created_at},
       ${payload.updated_at}
     )
@@ -695,6 +894,8 @@ async function getProfile(wallet, createIfMissing = true) {
     do update set
       updated_at = excluded.updated_at
     returning *`;
+
+  console.log("✅ New profile created for:", w, "| Custodial wallet:", walletData.address);
 
   return ensureProfileShape(inserted[0], w);
 }
@@ -704,23 +905,41 @@ async function patchProfile(wallet, patch = {}) {
   if (!w) throw new Error("wallet required");
 
   const current = await getProfile(w, true);
-  const next = profileToDbRow(ensureProfileShape({
-    ...current,
-    ...patch,
-    wallet: w,
-    updated_at: new Date().toISOString(),
-  }, w));
+  const next = profileToDbRow(
+    ensureProfileShape(
+      {
+        ...current,
+        ...patch,
+        wallet: w,
+        updated_at: new Date().toISOString(),
+      },
+      w
+    )
+  );
 
   const rows = await sql`
-    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
-    values (${next.wallet}, ${next.referrer}, ${next.referral_rewards}, ${next.creator_rewards}, ${next.owner_rewards}, ${next.referral_code}, ${next.referral_count}, ${next.created_at}, ${next.updated_at})
+    insert into profiles (
+      wallet, referrer, referral_rewards, run_balance, creator_rewards, owner_rewards,
+      referral_code, referral_count, wallet_address, encrypted_mnemonic,
+      created_at, updated_at
+    )
+    values (
+      ${next.wallet}, ${next.referrer}, ${next.referral_rewards},
+      ${next.run_balance},
+      ${next.creator_rewards}, ${next.owner_rewards}, ${next.referral_code},
+      ${next.referral_count}, ${next.wallet_address}, ${next.encrypted_mnemonic},
+      ${next.created_at}, ${next.updated_at}
+    )
     on conflict (wallet) do update set
       referrer = excluded.referrer,
       referral_rewards = excluded.referral_rewards,
+      run_balance = excluded.run_balance,
       creator_rewards = excluded.creator_rewards,
       owner_rewards = excluded.owner_rewards,
       referral_code = excluded.referral_code,
       referral_count = excluded.referral_count,
+      wallet_address = coalesce(nullif(excluded.wallet_address, ''), profiles.wallet_address),
+      encrypted_mnemonic = coalesce(nullif(excluded.encrypted_mnemonic, ''), profiles.encrypted_mnemonic),
       updated_at = excluded.updated_at
     returning *`;
 
@@ -737,12 +956,15 @@ async function addProfileReward(wallet, column, amount) {
   const allowed = new Set(["referral_rewards", "creator_rewards", "owner_rewards"]);
   if (!allowed.has(col)) throw new Error("invalid rewards column");
 
+  // Ensure profile exists with custodial wallet
+  await getProfile(w, true);
+
   const rows = await sql`
-    insert into profiles (wallet, referrer, referral_rewards, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at)
-    values (${w}, '', ${col === "referral_rewards" ? delta : 0}, ${col === "creator_rewards" ? delta : 0}, ${col === "owner_rewards" ? delta : 0}, ${w.slice(0, 6)}, 0, now(), now())
-    on conflict (wallet) do update set
+    update profiles
+    set
       ${sql(col)} = profiles.${sql(col)} + ${delta},
       updated_at = now()
+    where wallet = ${w}
     returning *
   `;
 
@@ -777,27 +999,25 @@ async function insertTransaction(tx = {}) {
   };
 
   const cachedCoin = coinCache.get(row.coin_id);
-
-if (cachedCoin) {
-  cachedCoin.last_trade_at = Date.now();
-}
+  if (cachedCoin) {
+    cachedCoin.last_trade_at = Date.now();
+  }
 
   await sql`
     insert into transactions (id, wallet, coin_id, type, sol, tokens, fee, created_at)
     values (${row.id}, ${row.wallet}, ${row.coin_id}, ${row.type}, ${row.sol}, ${row.tokens}, ${row.fee}, ${row.created_at})`;
-broadcast("trade:new", {
-  coinId: row.coin_id,
-  type: row.type,
-  sol: row.sol,
-  tokens: row.tokens,
-  price: row.price,
-  ts: Date.now(),
-});
+
+  broadcast("trade:new", {
+    coinId: row.coin_id,
+    type: row.type,
+    sol: row.sol,
+    tokens: row.tokens,
+    price: row.price,
+    ts: Date.now(),
+  });
 
   return row;
 }
-
-
 
 async function upsertHolding(wallet, coinId, mode = "set", amount = 0) {
   const w = String(wallet || "").trim();
@@ -809,10 +1029,8 @@ async function upsertHolding(wallet, coinId, mode = "set", amount = 0) {
 
   const rows = await sql.begin(async (tx) => {
     const current = await tx`
-      SELECT tokens
-      FROM holdings
-      WHERE wallet = ${w}
-      AND coin_id = ${c}
+      SELECT tokens FROM holdings
+      WHERE wallet = ${w} AND coin_id = ${c}
       FOR UPDATE
     `;
 
@@ -829,18 +1047,8 @@ async function upsertHolding(wallet, coinId, mode = "set", amount = 0) {
     }
 
     await tx`
-      INSERT INTO holdings (
-        wallet,
-        coin_id,
-        tokens,
-        updated_at
-      )
-      VALUES (
-        ${w},
-        ${c},
-        ${next},
-        NOW()
-      )
+      INSERT INTO holdings (wallet, coin_id, tokens, updated_at)
+      VALUES (${w}, ${c}, ${next}, NOW())
       ON CONFLICT (wallet, coin_id)
       DO UPDATE SET
         tokens = EXCLUDED.tokens,
@@ -855,21 +1063,14 @@ async function upsertHolding(wallet, coinId, mode = "set", amount = 0) {
 
 async function getCoinRowById(coinId) {
   const id = String(coinId || "").trim();
-
   if (!id) return null;
 
   const cached = coinCache.get(id);
-
   if (cached) return cached;
 
   await requireDb();
 
-  const rows = await sql`
-    select * from coins
-    where id = ${id}
-    limit 1
-  `;
-
+  const rows = await sql`select * from coins where id = ${id} limit 1`;
   const row = rows[0] || null;
 
   if (row) {
@@ -881,39 +1082,38 @@ async function getCoinRowById(coinId) {
 
 async function getRecentCoinActivity(coinId, limit = 50) {
   const id = String(coinId || "").trim();
-
   const cacheKey = `activity_${id}_${limit}`;
+  const cached = coinCache.get(cacheKey);
+  if (cached) return cached;
 
-const cached = coinCache.get(cacheKey);
-
-if (cached) {
-  return cached;
-}
   if (!id) return [];
   await requireDb();
   const safeLimit = Math.max(1, Math.min(120, safeNum(limit, 50)));
-  const rows = await sql`select id, coin_id, type, sol, tokens, fee, created_at, wallet from transactions where coin_id = ${id} order by created_at desc limit ${safeLimit}`;
- const activity = Array.isArray(rows)
-  ? rows.map((t) => ({
-      id: t.id,
-      coinId: t.coinId || t.coin_id,
-      side: String(t.type || "TX").toUpperCase(),
-      type: String(t.type || "TX").toUpperCase(),
-      sol: safeNum(t.sol, 0),
-      tokens: safeNum(t.tokens, 0),
-      fee: safeNum(t.fee, 0),
-      ts: t.createdAt
-        ? new Date(t.createdAt).getTime()
-        : t.created_at
-        ? new Date(t.created_at).getTime()
-        : nowMS(),
-      wallet: t.wallet,
-    }))
-  : [];
+  const rows = await sql`
+    select id, coin_id, type, sol, tokens, fee, created_at, wallet
+    from transactions where coin_id = ${id} order by created_at desc limit ${safeLimit}
+  `;
 
-coinCache.set(cacheKey, activity);
+  const activity = Array.isArray(rows)
+    ? rows.map((t) => ({
+        id: t.id,
+        coinId: t.coinId || t.coin_id,
+        side: String(t.type || "TX").toUpperCase(),
+        type: String(t.type || "TX").toUpperCase(),
+        sol: safeNum(t.sol, 0),
+        tokens: safeNum(t.tokens, 0),
+        fee: safeNum(t.fee, 0),
+        ts: t.createdAt
+          ? new Date(t.createdAt).getTime()
+          : t.created_at
+          ? new Date(t.created_at).getTime()
+          : nowMS(),
+        wallet: t.wallet,
+      }))
+    : [];
 
-return activity;
+  coinCache.set(cacheKey, activity);
+  return activity;
 }
 
 async function saveCoin(coin) {
@@ -923,114 +1123,57 @@ async function saveCoin(coin) {
     ...coinToDbUpdate(coin),
   };
 
- 
-const rows = await sql`
-  insert into coins (
-    id,
-    name,
-    symbol,
-    story,
-    logo,
-    metadata_uri,
-    creator_wallet,
-    created_at,
-    total_supply,
-    curve_supply,
-    curve_sold,
-    v_sol,
-    v_tokens,
-    reserve_sol,
-    reserve_token,
-    market_cap,
-    last_price,
-    ath_market_cap,
-    volume_sol,
-    last_trade_at,
-    creator_rewards,
-    chart,
-    holders
-  )
+  const rows = await sql`
+    insert into coins (
+      id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at,
+      total_supply, curve_supply, curve_sold, v_sol, v_tokens,
+      reserve_sol, reserve_token, market_cap, last_price, ath_market_cap,
+      volume_sol, last_trade_at, creator_rewards, chart, holders
+    )
+    values (
+      ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story},
+      ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
+      ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold},
+      ${payload.v_sol}, ${payload.v_tokens},
+      ${payload.reserve_sol}, ${payload.reserve_token},
+      ${payload.market_cap}, ${payload.last_price}, ${payload.ath_market_cap},
+      ${payload.volume_sol}, ${payload.last_trade_at},
+      ${payload.creator_rewards}, ${payload.chart || []}, ${payload.holders || {}}
+    )
+    on conflict (id) do update set
+      name = excluded.name,
+      symbol = excluded.symbol,
+      story = excluded.story,
+      logo = excluded.logo,
+      metadata_uri = excluded.metadata_uri,
+      creator_wallet = excluded.creator_wallet,
+      created_at = excluded.created_at,
+      total_supply = excluded.total_supply,
+      curve_supply = excluded.curve_supply,
+      curve_sold = excluded.curve_sold,
+      v_sol = excluded.v_sol,
+      v_tokens = excluded.v_tokens,
+      reserve_sol = excluded.reserve_sol,
+      reserve_token = excluded.reserve_token,
+      market_cap = excluded.market_cap,
+      last_price = excluded.last_price,
+      ath_market_cap = excluded.ath_market_cap,
+      volume_sol = excluded.volume_sol,
+      last_trade_at = excluded.last_trade_at,
+      creator_rewards = excluded.creator_rewards,
+      chart = excluded.chart,
+      holders = excluded.holders
+    returning *`;
 
-  values (
-    ${payload.id},
-    ${payload.name},
-    ${payload.symbol},
-    ${payload.story},
-    ${payload.logo},
-    ${payload.metadata_uri},
-    ${payload.creator_wallet},
-    ${payload.created_at},
+  coinCache.set(payload.id, rows[0]);
+  broadcast("coin:update", mapDbCoinToApi(rows[0]));
 
-    ${payload.total_supply},
-    ${payload.curve_supply},
-    ${payload.curve_sold},
-    ${payload.v_sol},
-    ${payload.v_tokens},
-
-    ${payload.reserve_sol},
-    ${payload.reserve_token},
-
-    ${payload.market_cap},
-    ${payload.last_price},
-    ${payload.ath_market_cap},
-
-    ${payload.volume_sol},
-    ${payload.last_trade_at},
-
-    ${payload.creator_rewards},
-
-    ${payload.chart || []},
-
-    ${payload.holders || {}}
-  )
-
-  on conflict (id) do update set
-    name = excluded.name,
-    symbol = excluded.symbol,
-    story = excluded.story,
-    logo = excluded.logo,
-    metadata_uri = excluded.metadata_uri,
-    creator_wallet = excluded.creator_wallet,
-    created_at = excluded.created_at,
-
-    total_supply = excluded.total_supply,
-    curve_supply = excluded.curve_supply,
-    curve_sold = excluded.curve_sold,
-
-    v_sol = excluded.v_sol,
-    v_tokens = excluded.v_tokens,
-
-    reserve_sol = excluded.reserve_sol,
-    reserve_token = excluded.reserve_token,
-
-    market_cap = excluded.market_cap,
-    last_price = excluded.last_price,
-    ath_market_cap = excluded.ath_market_cap,
-
-    volume_sol = excluded.volume_sol,
-    last_trade_at = excluded.last_trade_at,
-
-    creator_rewards = excluded.creator_rewards,
-
-    chart = excluded.chart,
-
-    holders = excluded.holders
-
-  returning *`;
-
-coinCache.set(payload.id, rows[0]);
-
-broadcast("coin:update", mapDbCoinToApi(rows[0]));
-
-return mapDbCoinToApi(rows[0]);
-
+  return mapDbCoinToApi(rows[0]);
 }
 
 function buildChartTrail(prevChart, nextPoint, sideHint = "") {
   const history = Array.isArray(prevChart)
-    ? prevChart
-        .map((x) => Math.max(0, safeNum(x, 0)))
-        .filter((x) => Number.isFinite(x) && x > 0)
+    ? prevChart.map((x) => Math.max(0, safeNum(x, 0))).filter((x) => Number.isFinite(x) && x > 0)
     : [];
 
   const point = Math.max(0, safeNum(nextPoint, 0));
@@ -1039,25 +1182,15 @@ function buildChartTrail(prevChart, nextPoint, sideHint = "") {
     return history.length ? history.slice(-MAX_CHART_POINTS) : [0];
   }
 
-  // Launch pump effect
   if (!history.length) {
-    return [
-      point * 0.78,
-      point * 0.92,
-      point * 1.06,
-      point * 1.22,
-      point * 1.12,
-      point
-    ];
+    return [point * 0.78, point * 0.92, point * 1.06, point * 1.22, point * 1.12, point];
   }
 
   const last = Math.max(1e-9, safeNum(history[history.length - 1], point));
-
   const isSell = String(sideHint || "").toLowerCase() === "sell";
 
   let finalPoint = point;
 
-  // smoother movement
   if (!isSell && finalPoint <= last) {
     finalPoint = last * (1 + Math.random() * 0.04);
   }
@@ -1066,34 +1199,18 @@ function buildChartTrail(prevChart, nextPoint, sideHint = "") {
     finalPoint = last * (1 - Math.random() * 0.03);
   }
 
-  // slight volatility
-  const volatility =
-    finalPoint * (0.01 + Math.random() * 0.025);
+  const volatility = finalPoint * (0.01 + Math.random() * 0.025);
+  const noisyPoint = finalPoint + (Math.random() > 0.5 ? volatility : -volatility);
 
-  const noisyPoint =
-    finalPoint +
-    (Math.random() > 0.5 ? volatility : -volatility);
-
-  return history
-    .slice(-(MAX_CHART_POINTS - 1))
-    .concat([Math.max(0.00000001, noisyPoint)]);
+  return history.slice(-(MAX_CHART_POINTS - 1)).concat([Math.max(0.00000001, noisyPoint)]);
 }
 
 function recalcCoin(coin, opts = {}) {
   const fixed = {
     ...coin,
     totalSupply: Math.max(1, safeNum(coin.totalSupply, TOTAL_SUPPLY)),
-    curveSupply: Math.max(
-      1,
-      safeNum(coin.curveSupply, saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY))
-    ),
-    tokenReserve: Math.max(
-      1,
-      safeNum(
-        coin.tokenReserve,
-        saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY)
-      )
-    ),
+    curveSupply: Math.max(1, safeNum(coin.curveSupply, saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY))),
+    tokenReserve: Math.max(1, safeNum(coin.tokenReserve, saleSupplyFromTotal(coin.totalSupply || TOTAL_SUPPLY))),
     solReserve: Math.max(0, safeNum(coin.solReserve, 0)),
     vSol: Math.max(1e-9, safeNum(coin.vSol, VIRTUAL_SOL)),
     vTokens: calcVirtualTokens(
@@ -1167,21 +1284,15 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
     const existing = await sql`
       select open, high, low, close
       from candles
-      where coin_id = ${id}
-        and timeframe = ${tf}
-        and bucket_time = ${bucket}
+      where coin_id = ${id} and timeframe = ${tf} and bucket_time = ${bucket}
       limit 1
     `;
 
     if (existing.length === 0) {
       const prev = await sql`
-        select close
-        from candles
-        where coin_id = ${id}
-          and timeframe = ${tf}
-          and bucket_time < ${bucket}
-        order by bucket_time desc
-        limit 1
+        select close from candles
+        where coin_id = ${id} and timeframe = ${tf} and bucket_time < ${bucket}
+        order by bucket_time desc limit 1
       `;
 
       const openPrice = Math.max(0.00000001, safeNum(prev?.[0]?.close, p));
@@ -1218,9 +1329,7 @@ async function upsertCandlesForTrade(coinId, price, volumeSol) {
           volume_sol = volume_sol + ${vol},
           trades_count = trades_count + 1,
           updated_at = now()
-        where coin_id = ${id}
-          and timeframe = ${tf}
-          and bucket_time = ${bucket}
+        where coin_id = ${id} and timeframe = ${tf} and bucket_time = ${bucket}
       `;
     }
   }
@@ -1232,8 +1341,6 @@ function applyFee(solAmount) {
   const net = Math.max(0, gross - fee);
   return { fee, net };
 }
-
-// ================= TRUE BONDING CURVE VERSION =================
 
 async function distributeFeeDirect(coin, traderWallet, feeSol) {
   const fee = Math.max(0, safeNum(feeSol, 0));
@@ -1299,23 +1406,13 @@ function ammBuy(coin, wallet, solInGross) {
   coin.solReserve += net;
   coin.tokenReserve -= tokensOut;
 
-  coin.holders[wallet] = Math.max(
-    0,
-    safeNum(coin.holders[wallet], 0) + tokensOut
-  );
+  coin.holders[wallet] = Math.max(0, safeNum(coin.holders[wallet], 0) + tokensOut);
 
   coin.volumeSol += solInGross;
   coin.lastTradeAt = nowMS();
 
-  return {
-    ok: true,
-    tokensOut,
-    feeSol: fee,
-    netSol: net,
-  };
+  return { ok: true, tokensOut, feeSol: fee, netSol: net };
 }
-
-// ================= SELL (TRUE CURVE) =================
 
 function ammSellByTokensIn(coin, wallet, tokensInRequested) {
   const tokensInRequestedNum = Math.max(0, safeNum(tokensInRequested, 0));
@@ -1432,20 +1529,168 @@ app.get("/health", async (req, res) => {
 app.get("/balance/:wallet", async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();
-    if (!wallet) return res.json({ ok: false, error: "wallet required" });
 
-    const pub = new PublicKey(wallet);
-    const lamports = await connection.getBalance(pub);
-    return res.json({ ok: true, sol: lamports / 1_000_000_000 });
-  } catch {
+    if (!wallet) {
+      return res.json({ ok: false, error: "wallet required" });
+    }
+
+    // Try custodial wallet first
+    const profile = await getProfile(wallet, false);
+    const lookupWallet = profile?.wallet_address || wallet;
+
+    const sol = await getBalance(lookupWallet);
+
+    return res.json({ ok: true, sol });
+  } catch (e) {
     return res.json({ ok: true, sol: 0 });
   }
 });
 
+app.post("/debug/deposit", async (req, res) => {
+  try {
+    const wallet = String(req.body?.wallet || "").trim();
+    const amount = Math.max(0, safeNum(req.body?.amount, 0));
+    const txHash = String(req.body?.txHash || crypto.randomUUID()).trim();
+
+    if (!wallet) {
+      return res.status(400).json({ ok: false, error: "wallet required" });
+    }
+
+    await creditDeposit({ wallet, txHash, amount });
+    const balance = await getBalance(wallet);
+
+    return res.json({ ok: true, wallet, balance });
+ } catch (e) {
+  console.error("WITHDRAW ERROR:", e);
+
+  return res.status(500).json({
+    ok: false,
+    error: e?.message || String(e),
+  });
+}
+});
+
+app.post("/withdraw", async (req, res) => {
+
+  try {
+
+
+
+
+    const wallet = String(req.body?.wallet || "").trim();
+    const destination = String(req.body?.destination || "").trim();
+    const amount = Math.max(0, safeNum(req.body?.amount, 0));
+    const kind = String(req.body?.kind || "").trim().toUpperCase();
+
+    if (!wallet) {
+      return res.status(400).json({ ok: false, error: "wallet required" });
+    }
+
+    // Reward-based withdrawal (no on-chain transfer)
+    if (kind === "REF" || kind === "REFERRAL" || kind === "CREATOR" || kind === "OWNER") {
+      return handleRewardWithdraw(req, res, kind);
+    }
+
+    if (!destination) {
+      return res.status(400).json({ ok: false, error: "destination required" });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid amount" });
+    }
+
+    
+
+    
+
+    
+
+
+    
+ 
+
+
+
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: treasury.publicKey,
+        toPubkey: new PublicKey(destination),
+        lamports: Math.floor(amount * 1_000_000_000),
+      })
+    );
+
+    const signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
+
+    const nextBalance = await decreaseBalance(wallet, amount);
+
+    await saveWithdrawal({
+      wallet,
+      destination,
+      amount,
+      txHash: signature,
+      status: "confirmed",
+    });
+
+    return res.json({ ok: true, balance: nextBalance, txHash: signature });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+async function handleRewardWithdraw(req, res, forcedKind = "") {
+  try {
+    await requireDb();
+
+    const wallet = String(req.body?.wallet || "").trim();
+    const kindRaw = String(forcedKind || req.body?.kind || "").trim().toUpperCase();
+
+    const kind =
+      kindRaw === "REFERRAL" ? "REF" :
+      kindRaw === "REF" ? "REF" :
+      kindRaw === "CREATOR" ? "CREATOR" :
+      kindRaw === "OWNER" ? "OWNER" : "";
+
+    if (!["REF", "CREATOR", "OWNER"].includes(kind)) {
+      return res.json({ ok: false, error: "Unsupported kind" });
+    }
+
+    const p = await getProfile(wallet, true);
+
+    if (kind === "REF") {
+      const amt = Math.max(0, safeNum(p.referral_rewards, 0));
+      if (amt <= 0) return res.json({ ok: false, error: "No referral rewards" });
+      await patchProfile(wallet, { referral_rewards: 0 });
+      return res.json({ ok: true, kind: "REF", amountSol: amt, to: wallet });
+    }
+
+    if (kind === "CREATOR") {
+      const amt = Math.max(0, safeNum(p.creator_rewards, 0));
+      if (amt <= 0) return res.json({ ok: false, error: "No creator rewards" });
+      await patchProfile(wallet, { creator_rewards: 0 });
+      return res.json({ ok: true, kind: "CREATOR", amountSol: amt, to: wallet });
+    }
+
+    if (kind === "OWNER") {
+      const amt = Math.max(0, safeNum(p.owner_rewards, 0));
+      if (amt <= 0) return res.json({ ok: false, error: "No wallet balance" });
+      await patchProfile(wallet, { owner_rewards: 0 });
+      return res.json({ ok: true, kind: "OWNER", amountSol: amt, to: wallet });
+    }
+
+    return res.json({ ok: false, error: "Unsupported kind" });
+  } catch (e) {
+    console.log("reward withdraw error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+}
+
+app.post("/withdraw/creator", (req, res) => handleRewardWithdraw(req, res, "CREATOR"));
+app.post("/withdraw/referral", (req, res) => handleRewardWithdraw(req, res, "REF"));
+
 app.get("/coin/list*", async (req, res) => {
   try {
-    console.log("🔥 /api/coin/list hit");
-console.log("👉 query params:", req.query);
+    console.log("🔥 /coin/list hit");
+    console.log("👉 query params:", req.query);
     await requireDb();
 
     const page = Math.max(0, Number(req.query.page || 0));
@@ -1453,15 +1698,12 @@ console.log("👉 query params:", req.query);
     const offset = page * limit;
 
     const rows = await sql`
-      select *
-      from coins
+      select * from coins
       order by created_at desc
       limit ${limit} offset ${offset}
     `;
 
-    const coins = Array.isArray(rows)
-      ? rows.map(mapDbCoinToApi).filter(Boolean)
-      : [];
+    const coins = Array.isArray(rows) ? rows.map(mapDbCoinToApi).filter(Boolean) : [];
 
     return res.json({
       ok: true,
@@ -1472,13 +1714,9 @@ console.log("👉 query params:", req.query);
       hot15m: [],
     });
   } catch (e) {
-    return res.status(500).json({
-      ok: false,
-      error: e?.message || "coin list failed",
-    });
+    return res.status(500).json({ ok: false, error: e?.message || "coin list failed" });
   }
 });
-
 
 app.get("/coin/:id/dex-preview", async (req, res) => {
   try {
@@ -1531,7 +1769,6 @@ app.get("/coin/:id/activity", async (req, res) => {
   }
 });
 
-
 app.get("/coin/:id/candles", async (req, res) => {
   try {
     await requireDb();
@@ -1551,33 +1788,16 @@ app.get("/coin/:id/candles", async (req, res) => {
     };
 
     const tfMap = {
-      "5m": "5m",
-      "15m": "15m",
-      "1h": "1h",
-      "4h": "4h",
-      "1d": "1d",
-      "1w": "1w",
-      "1m": "1m",
-      "5M": "5m",
-      "15M": "15m",
-      "1H": "1h",
-      "4H": "4h",
-      "1D": "1d",
-      "1W": "1w",
-      "1M": "1m",
+      "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h",
+      "1d": "1d", "1w": "1w", "1m": "1m",
+      "5M": "5m", "15M": "15m", "1H": "1h", "4H": "4h",
+      "1D": "1d", "1W": "1w", "1M": "1m",
     };
 
     const tf = tfMap[tfRaw] || "5m";
     const bucketMs = TF_MS[tf] || TF_MS["5m"];
 
-    const coinRows = await sql`
-      select
-        *
-      from coins
-      where id = ${coinId}
-      limit 1
-    `;
-
+    const coinRows = await sql`select * from coins where id = ${coinId} limit 1`;
     const coin = Array.isArray(coinRows) && coinRows[0] ? coinRows[0] : null;
     if (!coin) {
       return res.status(404).json({ ok: false, error: "Coin not found" });
@@ -1588,46 +1808,28 @@ app.get("/coin/:id/candles", async (req, res) => {
     const now = Date.now();
 
     let rows = await sql`
-      select
-        coin_id,
-        timeframe,
-        bucket_time,
-        open,
-        high,
-        low,
-        close,
-        volume_sol,
-        trades_count
+      select coin_id, timeframe, bucket_time, open, high, low, close, volume_sol, trades_count
       from candles
-      where coin_id = ${coinId}
-        and timeframe = ${tf}
-      order by bucket_time desc
-      limit ${limit}
+      where coin_id = ${coinId} and timeframe = ${tf}
+      order by bucket_time desc limit ${limit}
     `;
 
     let candles = Array.isArray(rows)
-      ? rows
-          .slice()
-          .reverse()
-          .map((r) => ({
-            time: safeNum(r.bucket_time, 0),
-            open: safeNum(r.open, 0),
-            high: safeNum(r.high, 0),
-            low: safeNum(r.low, 0),
-            close: safeNum(r.close, 0),
-            volumeSol: safeNum(r.volume_sol, 0),
-            tradesCount: safeNum(r.trades_count, 0),
-          }))
-          .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
+      ? rows.slice().reverse().map((r) => ({
+          time: safeNum(r.bucket_time, 0),
+          open: safeNum(r.open, 0),
+          high: safeNum(r.high, 0),
+          low: safeNum(r.low, 0),
+          close: safeNum(r.close, 0),
+          volumeSol: safeNum(r.volume_sol, 0),
+          tradesCount: safeNum(r.trades_count, 0),
+        }))
+        .filter((c) => c.time > 0 && c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)
       : [];
 
     if (!candles.length) {
       const txRows = await sql`
-        select
-          created_at,
-          sol,
-          tokens,
-          type
+        select created_at, sol, tokens, type
         from transactions
         where coin_id = ${coinId}
         order by created_at desc
@@ -1642,7 +1844,9 @@ app.get("/coin/:id/candles", async (req, res) => {
           0.00000001,
           safeNum(coinApi.priceUsd, 0),
           safeNum(coinApi.lastPriceUsd, 0),
-          safeNum(coin.market_cap, 0) > 0 ? safeNum(coin.market_cap, 0) / Math.max(1, safeNum(coin.total_supply, TOTAL_SUPPLY)) : 0,
+          safeNum(coin.market_cap, 0) > 0
+            ? safeNum(coin.market_cap, 0) / Math.max(1, safeNum(coin.total_supply, TOTAL_SUPPLY))
+            : 0,
           Array.isArray(coin.chart) && coin.chart.length
             ? safeNum(coin.chart[coin.chart.length - 1], 0)
             : 0.000001
@@ -1662,45 +1866,30 @@ app.get("/coin/:id/candles", async (req, res) => {
 
         if (!prev) {
           map.set(bucket, {
-            time: bucket,
-            open: px,
-            high: px,
-            low: px,
-            close: px,
-            volumeSol: sol,
-            tradesCount: 1,
+            time: bucket, open: px, high: px, low: px, close: px,
+            volumeSol: sol, tradesCount: 1,
           });
         } else {
-  prev.high = Math.max(prev.high, px);
-  prev.low = Math.min(prev.low, px);
-  prev.close = px;
-
-  prev.color = px >= prev.open ? "green" : "red";
-
-  prev.volumeSol += sol;
-  prev.tradesCount += 1;
-}
+          prev.high = Math.max(prev.high, px);
+          prev.low = Math.min(prev.low, px);
+          prev.close = px;
+          prev.color = px >= prev.open ? "green" : "red";
+          prev.volumeSol += sol;
+          prev.tradesCount += 1;
+        }
       }
 
       candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
 
       if (!candles.length) {
-        const start =
-          Math.floor(
-            Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
-          ) * bucketMs;
+        const start = Math.floor(
+          Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
+        ) * bucketMs;
 
-        candles = [
-          {
-            time: start,
-            open: fallbackPrice,
-            high: fallbackPrice,
-            low: fallbackPrice,
-            close: fallbackPrice,
-            volumeSol: 0,
-            tradesCount: 0,
-          },
-        ];
+        candles = [{
+          time: start, open: fallbackPrice, high: fallbackPrice,
+          low: fallbackPrice, close: fallbackPrice, volumeSol: 0, tradesCount: 0,
+        }];
       }
 
       const first = candles[0];
@@ -1709,10 +1898,9 @@ app.get("/coin/:id/candles", async (req, res) => {
       if (first) {
         const filled = [];
         const byTime = new Map(candles.map((c) => [c.time, c]));
-        const fillStart =
-          Math.floor(
-            Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
-          ) * bucketMs;
+        const fillStart = Math.floor(
+          Math.max(createdAtMs, now - bucketMs * Math.max(30, limit - 1)) / bucketMs
+        ) * bucketMs;
 
         let cursor = fillStart;
         let prevClose = first.close;
@@ -1725,13 +1913,8 @@ app.get("/coin/:id/candles", async (req, res) => {
             prevClose = existing.close;
           } else {
             filled.push({
-              time: cursor,
-              open: prevClose,
-              high: prevClose,
-              low: prevClose,
-              close: prevClose,
-              volumeSol: 0,
-              tradesCount: 0,
+              time: cursor, open: prevClose, high: prevClose,
+              low: prevClose, close: prevClose, volumeSol: 0, tradesCount: 0,
             });
           }
 
@@ -1797,33 +1980,16 @@ app.post("/coin/create", async (req, res) => {
 
     let coin = {
       id: uid(),
-      name,
-      symbol,
-      story,
-      logo: finalLogo,
-      metadataUri,
-      creatorWallet,
-      owner: creatorWallet,
-      createdAt: nowMS(),
-      status: "LIVE",
-      totalSupply,
-      curveSupply,
-      curveSold: 0,
+      name, symbol, story, logo: finalLogo,
+      metadataUri, creatorWallet, owner: creatorWallet,
+      createdAt: nowMS(), status: "LIVE",
+      totalSupply, curveSupply, curveSold: 0,
       vTokens: calcVirtualTokens(totalSupply, curveSupply),
       vSol: VIRTUAL_SOL,
-      solReserve: 0,
-      tokenReserve: curveSupply,
-      holders: {},
-      volumeSol: 0,
-      lastTradeAt: 0,
-      priceSol: 0,
-      priceUsd: 0,
-      price: 0,
-      lastPriceUsd: 0,
-      mc: 0,
-      ath: 0,
-      creatorRewardsSol: 0,
-      chart: [],
+      solReserve: 0, tokenReserve: curveSupply,
+      holders: {}, volumeSol: 0, lastTradeAt: 0,
+      priceSol: 0, priceUsd: 0, price: 0, lastPriceUsd: 0,
+      mc: 0, ath: 0, creatorRewardsSol: 0, chart: [],
     };
 
     coin = recalcCoin(coin, { appendChart: false });
@@ -1846,17 +2012,16 @@ app.post("/coin/create", async (req, res) => {
         latestCoin = await saveCoin(latestCoin);
 
         await insertTransaction({
-  id: uid(),
-  type: "BUY",
-  side: "BUY",
-  coinId: latestCoin.id,
-  wallet: creatorWallet,
-  sol: initialSol,
-  tokens: Math.max(0, safeNum(buyRes.tokensOut, 0)),
-  fee: Math.max(0, safeNum(buyRes.feeSol, 0)),
-  priceUsd: coin.priceUsd,
-});
-
+          id: uid(),
+          type: "BUY",
+          side: "BUY",
+          coinId: latestCoin.id,
+          wallet: creatorWallet,
+          sol: initialSol,
+          tokens: Math.max(0, safeNum(buyRes.tokensOut, 0)),
+          fee: Math.max(0, safeNum(buyRes.feeSol, 0)),
+          priceUsd: latestCoin.priceUsd,
+        });
 
         await upsertCandlesForTrade(
           latestCoin.id,
@@ -1875,56 +2040,6 @@ app.post("/coin/create", async (req, res) => {
     }
 
     return res.json({ ok: true, coin, imageUri, metadataUri });
-
-app.get("/api/coin/list", async (req, res) => {
-  try {
-    console.log("🔥 /api/coin/list hit");
-
-    const page = Math.max(
-      0,
-      parseInt(req.query.page || "0", 10)
-    );
-
-    const limit = Math.min(
-      50,
-      Math.max(
-        1,
-        parseInt(req.query.limit || "50", 10)
-      )
-    );
-
-    console.log("👉 query params:", {
-      page,
-      limit,
-    });
-
-    const rows = await sql`
-      select *
-      from coins
-      order by created_at desc
-      limit ${limit}
-      offset ${page * limit}
-    `;
-
-    const list = rows
-      .map((r) => mapDbCoinToApi(r))
-      .filter(Boolean);
-
-    res.json({
-      ok: true,
-      coins: list,
-    });
-  } catch (err) {
-    console.error("coin/list error:", err);
-
-    res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
-  }
-});
-
-
   } catch (e) {
     console.log("coin/create error:", e?.message || e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -1998,10 +2113,6 @@ async function doTrade(req, res, side) {
 
       if (sideLower === "buy") {
         tradeResult = ammBuy(coin, wallet, sol);
-
-        console.log("REAL BLOCKCHAIN BUY");
-console.log(wallet);
-console.log(tradeResult.tokensOut);
       } else if (sideLower === "sell") {
         tradeResult = ammSellByTokensIn(coin, wallet, tokens);
       } else {
@@ -2030,22 +2141,17 @@ console.log(tradeResult.tokensOut);
         side: sideLower.toUpperCase(),
         coinId: coin.id,
         wallet,
-        sol:
-          sideLower === "buy"
-            ? Math.max(0, sol)
-            : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
-        tokens:
-          sideLower === "buy"
-            ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
-            : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
+        sol: sideLower === "buy" ? Math.max(0, sol) : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
+        tokens: sideLower === "buy"
+          ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
+          : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: tradeFeeSol,
         priceUsd: coin.priceUsd,
       };
 
-      const candleVolumeSol =
-        sideLower === "buy"
-          ? Math.max(0, safeNum(sol, 0))
-          : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0));
+      const candleVolumeSol = sideLower === "buy"
+        ? Math.max(0, safeNum(sol, 0))
+        : Math.max(0, safeNum(tradeResult?.solOutGross || tradeResult?.solOutNet || 0, 0));
 
       await Promise.all([
         upsertHolding(wallet, coin.id, "set", Math.max(0, safeNum(coin?.holders?.[wallet], 0))),
@@ -2067,19 +2173,16 @@ console.log(tradeResult.tokensOut);
       return {
         ok: true,
         coin,
-        tokens:
-          sideLower === "buy"
-            ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
-            : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
+        tokens: sideLower === "buy"
+          ? Math.max(0, safeNum(tradeResult.tokensOut, 0))
+          : Math.max(0, safeNum(tradeResult.tokensIn, 0)),
         fee: Math.max(0, safeNum(tradeResult.feeSol, 0)),
-        netSol:
-          sideLower === "buy"
-            ? Math.max(0, safeNum(tradeResult.netSol, 0))
-            : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
-        grossSol:
-          sideLower === "buy"
-            ? Math.max(0, sol)
-            : Math.max(0, safeNum(tradeResult.solOutGross, 0)),
+        netSol: sideLower === "buy"
+          ? Math.max(0, safeNum(tradeResult.netSol, 0))
+          : Math.max(0, safeNum(tradeResult.solOutNet, 0)),
+        grossSol: sideLower === "buy"
+          ? Math.max(0, sol)
+          : Math.max(0, safeNum(tradeResult.solOutGross, 0)),
       };
     });
 
@@ -2110,126 +2213,26 @@ app.post("/claim", async (req, res) => {
     if (kind === "CREATOR") {
       amount = Math.max(0, safeNum(profile.creator_rewards, 0));
       if (amount <= 0) return res.json({ ok: true, amount: 0 });
-
       await patchProfile(wallet, { creator_rewards: 0 });
     } else if (kind === "REF") {
       amount = Math.max(0, safeNum(profile.referral_rewards, 0));
       if (amount <= 0) return res.json({ ok: true, amount: 0 });
-
       await patchProfile(wallet, { referral_rewards: 0 });
     } else if (kind === "OWNER") {
       amount = Math.max(0, safeNum(profile.owner_rewards, 0));
       if (amount <= 0) return res.json({ ok: true, amount: 0 });
-
       await patchProfile(wallet, { owner_rewards: 0 });
     } else {
       return res.status(400).json({ error: "Unsupported kind" });
     }
 
-    return res.json({
-      ok: true,
-      amount,
-    });
+    return res.json({ ok: true, amount });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-async function handleWithdraw(req, res, forcedKind = "") {
-  try {
-    await requireDb();
-
-    const wallet = String(req.body?.wallet || "").trim();
-    const to = String(req.body?.to || "").trim();
-    const amount = Math.max(0, safeNum(req.body?.amount, 0));
-    const kindRaw = String(forcedKind || req.body?.kind || "")
-      .trim()
-      .toUpperCase();
-
-    if (!wallet) {
-      return res.json({ ok: false, error: "wallet required" });
-    }
-
-    if (to && amount > 0 && !kindRaw) {
-      return res.json({
-        ok: true,
-        kind: "MANUAL",
-        amountSol: amount,
-        to,
-        note: "Demo/manual withdraw request accepted by backend",
-      });
-    }
-
-    const kind =
-      kindRaw === "REFERRAL"
-        ? "REF"
-        : kindRaw === "REF"
-        ? "REF"
-        : kindRaw === "CREATOR"
-        ? "CREATOR"
-        : kindRaw === "OWNER"
-        ? "OWNER"
-        : kindRaw === "MANUAL"
-        ? "MANUAL"
-        : "";
-
-    if (kind === "MANUAL") {
-      return res.json({
-        ok: true,
-        kind: "MANUAL",
-        amountSol: amount,
-        to: to || wallet,
-        note: "Demo/manual withdraw request accepted by backend",
-      });
-    }
-
-    if (!["REF", "CREATOR", "OWNER"].includes(kind)) {
-      return res.json({ ok: false, error: "Unsupported kind" });
-    }
-
-    const p = await getProfile(wallet, true);
-
-    if (kind === "REF") {
-      const amt = Math.max(0, safeNum(p.referral_rewards, 0));
-      if (amt <= 0) {
-        return res.json({ ok: false, error: "No referral rewards" });
-      }
-
-      await patchProfile(wallet, { referral_rewards: 0 });
-      return res.json({ ok: true, kind: "REF", amountSol: amt, to: wallet });
-    }
-
-    if (kind === "CREATOR") {
-      const amt = Math.max(0, safeNum(p.creator_rewards, 0));
-      if (amt <= 0) {
-        return res.json({ ok: false, error: "No creator rewards" });
-      }
-
-      await patchProfile(wallet, { creator_rewards: 0 });
-      return res.json({ ok: true, kind: "CREATOR", amountSol: amt, to: wallet });
-    }
-
-    if (kind === "OWNER") {
-      const amt = Math.max(0, safeNum(p.owner_rewards, 0));
-      if (amt <= 0) {
-        return res.json({ ok: false, error: "No wallet balance" });
-      }
-
-      await patchProfile(wallet, { owner_rewards: 0 });
-      return res.json({ ok: true, kind: "OWNER", amountSol: amt, to: wallet });
-    }
-
-    return res.json({ ok: false, error: "Unsupported kind" });
-  } catch (e) {
-    console.log("withdraw error:", e?.message || e);
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-}
-
-app.post("/withdraw", (req, res) => handleWithdraw(req, res));
-app.post("/withdraw/creator", (req, res) => handleWithdraw(req, res, "CREATOR"));
-app.post("/withdraw/referral", (req, res) => handleWithdraw(req, res, "REF"));
-
+// -------------------- PROFILE ENDPOINT (THE BIG FIX) --------------------
 app.get("/profile/:wallet", async (req, res) => {
   try {
     await requireDb();
@@ -2237,6 +2240,7 @@ app.get("/profile/:wallet", async (req, res) => {
     const wallet = String(req.params.wallet || "").trim();
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
 
+    // Ye call custodial wallet bhi auto-create karta he agar nahi he
     const p = await getProfile(wallet, true);
     const referralCount = await countReferrals(wallet);
 
@@ -2244,10 +2248,24 @@ app.get("/profile/:wallet", async (req, res) => {
       await patchProfile(wallet, { referral_count: referralCount });
     }
 
-    const creationRows = await sql`select * from coins where creator_wallet = ${wallet} order by created_at desc limit 1000`;
-    const myCreations = Array.isArray(creationRows) ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
+    // Custodial wallet (deposit ke liye real wallet)
+    const custodialWallet = String(p?.wallet_address || "").trim();
 
-      const txArr = await sql`
+    // Agar abhi bhi nahi he (bahut rare case), error log karo
+    if (!custodialWallet) {
+      console.log("⚠️ WARNING: profile has no custodial wallet for:", wallet);
+    } else {
+      console.log("✅ Returning custodial wallet:", custodialWallet, "for primary:", wallet);
+    }
+
+    const creationRows = await sql`
+      select * from coins where creator_wallet = ${wallet}
+      order by created_at desc limit 1000
+    `;
+    const myCreations = Array.isArray(creationRows)
+      ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
+
+    const txArr = await sql`
       select * from transactions
       where wallet = ${wallet}
       order by created_at desc
@@ -2263,8 +2281,10 @@ app.get("/profile/:wallet", async (req, res) => {
       sol: safeNum(t.sol, 0),
       tokens: safeNum(t.tokens, 0),
       fee: safeNum(t.fee, 0),
-      ts: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-      t: t.createdAt ? new Date(t.createdAt).getTime() : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      ts: t.createdAt ? new Date(t.createdAt).getTime()
+        : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      t: t.createdAt ? new Date(t.createdAt).getTime()
+        : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
       wallet: t.wallet,
     }));
 
@@ -2282,10 +2302,7 @@ app.get("/profile/:wallet", async (req, res) => {
 
     let holdingRows = [];
     if (holdingCoinIds.length) {
-      holdingRows = await sql`
-        select * from coins
-        where id = any(${holdingCoinIds})
-      `;
+      holdingRows = await sql`select * from coins where id = any(${holdingCoinIds})`;
     }
 
     const holdingMap = new Map(
@@ -2307,13 +2324,9 @@ app.get("/profile/:wallet", async (req, res) => {
           logo: c.logo,
           amount,
           totalSupply: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)),
-          pct:
-            Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0
-              ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100
-              : 0,
-          lastAt: h?.updated_at
-            ? new Date(h.updated_at).getTime()
-            : safeNum(c.lastTradeAt, 0),
+          pct: Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY)) > 0
+            ? (amount / Math.max(1, safeNum(c.totalSupply, TOTAL_SUPPLY))) * 100 : 0,
+          lastAt: h?.updated_at ? new Date(h.updated_at).getTime() : safeNum(c.lastTradeAt, 0),
         };
       })
       .filter(Boolean)
@@ -2328,10 +2341,37 @@ app.get("/profile/:wallet", async (req, res) => {
       };
     }
 
+    const deposits = await sql`
+  select *
+  from deposits
+  where wallet = ${wallet}
+  order by created_at desc
+  limit 50
+`;
+
+const withdrawals = await sql`
+  select *
+  from withdrawals
+  where wallet = ${wallet}
+  order by created_at desc
+  limit 50
+`;
+
+    // ============= FIXED RESPONSE =============
+    // wallet = CUSTODIAL wallet (real wallet for deposits)
+    // primaryWallet = USER'S CONNECTED wallet (for referral / identity)
     return res.json({
       ok: true,
       profile: {
-        wallet,
+        // ⭐ MAIN FIX: wallet field me custodial address jata he
+        wallet: custodialWallet || wallet,
+
+        // Extra clarity fields - frontend in me se koi bhi use kar sakta he
+        custodialWallet: custodialWallet,
+        depositAddress: custodialWallet,
+        primaryWallet: wallet,
+        connectedWallet: wallet,
+
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
         referralCount,
@@ -2340,10 +2380,16 @@ app.get("/profile/:wallet", async (req, res) => {
         ownerRewardsSol: Math.max(0, safeNum(p?.owner_rewards, 0)),
         referralRewards: { totalSol: Math.max(0, safeNum(p?.referral_rewards, 0)) },
         ownerRewards: { totalSol: Math.max(0, safeNum(p?.owner_rewards, 0)) },
-        rewards: { totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)), byCoin: rewardsByCoin },
-        holdings,
-        txs: lastTx,
-        creations: myCreations,
+       rewards: {
+  totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)),
+  byCoin: rewardsByCoin,
+},
+holdings,
+txs: lastTx,
+creations: myCreations,
+
+depositHistory: deposits || [],
+withdrawHistory: withdrawals || [],
       },
       myCreations,
       lastTx,
@@ -2351,7 +2397,11 @@ app.get("/profile/:wallet", async (req, res) => {
     });
   } catch (e) {
     console.log("profile error:", e?.message || e);
-    console.error("❌ coin list error:", e);
+    console.error("❌ profile error:", e);
+
+
+
+
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
@@ -2365,51 +2415,6 @@ try {
   process.exit(1);
 }
 
-
-
-app.get("/profile/:wallet", async (req, res) => {
-  try {
-    const profile = await getProfile(req.params.wallet, true);
-    res.json(profile);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "failed" });
-  }
-});
-
-app.post("/referral/set", async (req, res) => {
-  try {
-    const { wallet, referrer } = req.body;
-
-    if (!wallet || !referrer) {
-      return res.status(400).json({ error: "missing fields" });
-    }
-
-    const profile = await patchProfile(wallet, { referrer });
-
-    res.json({
-      ok: true,
-      profile,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "failed" });
-  }
-});
-
-app.get("/balance/:wallet", async (req, res) => {
-  try {
-    res.json({
-      balance: 0,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "failed" });
-  }
-});
-
-
-
 process.on("SIGINT", async () => {
   process.exit(0);
 });
@@ -2418,13 +2423,34 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
+// -------------------- DEPOSIT SCANNER --------------------
+// Har 45 sec me sab custodial wallets pe deposits check karta he
+setInterval(async () => {
+  try {
+    const rows = await sql`
+      select wallet_address from profiles
+      where wallet_address is not null
+        and wallet_address != ''
+      limit 200
+    `;
 
+    for (const row of rows || []) {
+      const wallet = String(row?.wallet_address || "").trim();
+      if (!wallet) continue;
+
+      await scanWalletDeposits(wallet);
+    }
+  } catch (e) {
+    console.log("deposit scanner error:", e?.message || e);
+  }
+}, 45000);
+
+// -------------------- HTTP + WEBSOCKET SERVER --------------------
 const server = app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`🚀 Server running on ${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });
-
 const wsClients = new Set();
 
 wss.on("connection", (ws) => {

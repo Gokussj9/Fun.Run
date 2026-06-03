@@ -6,9 +6,7 @@ import { createChart, ColorType } from "lightweight-charts";
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
-const API_BASE =
-  (import.meta.env.VITE_API_BASE ||
-    "https://zooming-solace-production-c360.up.railway.app").trim();
+const API_BASE = "https://zooming-solace-production-c360.up.railway.app";
 
 const WS_BASE = API_BASE
   .replace("https://", "wss://")
@@ -1528,7 +1526,7 @@ function getCoin24hMovePct(c) {
   const start = Math.max(0.00000001, safeNum(chart[chart.length - 1 - lookback], chart[0]));
   const end = Math.max(0.00000001, safeNum(chart[chart.length - 1], start));
   const pct = ((end - start) / start) * 100;
-  return Number.isFinite(pct) ? Math.max(-9999, Math.min(9999, pct)) : 0;
+  return Number.isFinite(pct) ? Math.max(-99.99, Math.min(199.99, pct)) : 0;
 }
 
 function getCoinAgeLabel(c) {
@@ -2449,6 +2447,30 @@ export default function App() {
   const [screenHistory, setScreenHistory] = useState(["HOME"]);
   const [selectedCoinId, setSelectedCoinId] = useState(null);
   const [creatorProfileId, setCreatorProfileId] = useState("");
+  const [favoriteCoinIds, setFavoriteCoinIds] = useState(() => {
+  try {
+    return JSON.parse(localStorage.getItem("favorite_coins_v1") || "[]");
+  } catch {
+    return [];
+  }
+});
+
+function toggleFavoriteCoin(coinId) {
+  if (!coinId) return;
+
+  setFavoriteCoinIds((prev) => {
+    const next = prev.includes(coinId)
+      ? prev.filter((id) => id !== coinId)
+      : [...prev, coinId];
+
+    localStorage.setItem(
+      "favorite_coins_v1",
+      JSON.stringify(next)
+    );
+
+    return next;
+  });
+}
 
   const [coins, setCoins] = useState([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
@@ -2457,16 +2479,36 @@ export default function App() {
   const [hot15m, setHot15m] = useState([]);
   const [homeFeedMode, setHomeFeedMode] = useState("ALL");
 
+
+  
+
   const [searchQ, setSearchQ] = useState("");
-  const [searchMode, setSearchMode] = useState("SEARCH");
+const [searchMode, setSearchMode] = useState("SEARCH");
 
-  const [profile, setProfile] = useState(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-  const [walletSolBalance, setWalletSolBalance] = useState(0);
+const [profile, setProfile] = useState(null);
+const [loadingProfile, setLoadingProfile] = useState(false);
+const [walletSolBalance, setWalletSolBalance] = useState(0);
+const [unlockNow, setUnlockNow] = useState(Date.now());
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [phantomWallet, setPhantomWallet] = useState("");
-  const [connectingPhantom, setConnectingPhantom] = useState(false);
+useEffect(() => {
+  const timer = setInterval(() => {
+    setUnlockNow(Date.now());
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, []);
+
+const unlockDate = new Date("2027-01-01T00:00:00Z").getTime();
+const unlockDiff = Math.max(0, unlockDate - unlockNow);
+
+const unlockDays = Math.floor(unlockDiff / (1000 * 60 * 60 * 24));
+const unlockHours = Math.floor((unlockDiff / (1000 * 60 * 60)) % 24);
+const unlockMinutes = Math.floor((unlockDiff / (1000 * 60)) % 60);
+const unlockSeconds = Math.floor((unlockDiff / 1000) % 60);
+
+const [settingsOpen, setSettingsOpen] = useState(false);
+const [phantomWallet, setPhantomWallet] = useState("");
+const [connectingPhantom, setConnectingPhantom] = useState(false);
 
   const [tokenName, setTokenName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -2618,6 +2660,7 @@ export default function App() {
     console.log("FULL USER:", user);
     if (primary) {
   console.log("PRIMARY WALLET:", primary);
+  
   return primary;
 }
 
@@ -2820,8 +2863,14 @@ export default function App() {
     try {
       setLoadingProfile(true);
       const json = await api(`/profile/${wallet}`);
-      console.log("PROFILE RESPONSE:", json?.profile);
-setProfile(json?.profile || null);
+
+ 
+      
+      console.log(json);
+      console.log(json.profile);
+      console.log("ALL TXS:", json.profile?.txs);
+      setProfile(json?.profile || null);
+
     } catch (e) {
       setToast(e?.message || "Failed to load profile");
     } finally {
@@ -3401,6 +3450,33 @@ setProfile(json?.profile || null);
   const profileHoldings = Array.isArray(profile?.holdings) ? profile.holdings : [];
   const profileTxs = Array.isArray(profile?.txs) ? profile.txs : [];
 
+  const depositHistory = Array.isArray(profile?.depositHistory)
+  ? profile.depositHistory
+  : [];
+
+const withdrawHistory = Array.isArray(profile?.withdrawHistory)
+  ? profile.withdrawHistory
+  : [];
+
+const walletHistory = [
+  ...depositHistory.map((d) => ({
+    type: "DEPOSIT",
+    amount: d.amount,
+    txHash: d.tx_hash,
+    createdAt: d.created_at,
+  })),
+  ...withdrawHistory.map((w) => ({
+    type: "WITHDRAW",
+    amount: w.amount,
+    txHash: w.tx_hash,
+    createdAt: w.created_at,
+  })),
+].sort(
+  (a, b) =>
+    new Date(b.createdAt).getTime() -
+    new Date(a.createdAt).getTime()
+);
+
   const recentCoinActivity = useMemo(() => {
     if (!selectedCoin?.id) return [];
     return (profileTxs || [])
@@ -3416,6 +3492,19 @@ setProfile(json?.profile || null);
   const dexLaunchReady = Boolean(selectedCoin && safeNum(selectedCoin.mc, 0) >= DEX_LAUNCH_MC_USD);
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
+
+  const portfolioWalletUsd = Number(walletSolBalance || 0) * 80;
+
+  const portfolioHoldingsUsd = profileHoldings.reduce((sum, h) => {
+  const coin =
+    (coins || []).find(
+      (x) => String(x.id) === String(h.coinId || h.id || h.coin?.id)
+    ) || {};
+
+  const amt = Math.max(0, safeNum(h.amount, h.tokens || h.balance || 0));
+
+  return sum + amt * getCoinPriceUsd(coin);
+}, 0);
 
   return (
     <>
@@ -3455,21 +3544,26 @@ setProfile(json?.profile || null);
                       return;
                     }
 
-                    const json = await api("/withdraw", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        wallet: solAddr,
-                        to: withdrawAddr,
-                        amount: Number(withdrawAmt),
-                      }),
-                    });
+                   const json = await api("/withdraw", {
+  method: "POST",
+  body: JSON.stringify({
+    wallet: profile?.wallet,
+    destination: withdrawAddr,
+    amount: Number(withdrawAmt),
+  }),
+});
 
                     if (json?.ok) {
-                      setToast(`Sent ${withdrawAmt} SOL 🚀`);
-                      setWithdrawOpen(false);
-                      setWithdrawAddr("");
-                      setWithdrawAmt("");
-                    } else {
+  setToast(`Sent ${withdrawAmt} SOL 🚀`);
+  setWithdrawOpen(false);
+  setWithdrawAddr("");
+  setWithdrawAmt("");
+
+  loadProfile(solAddr);
+  loadBalance(solAddr);
+}
+                    
+                    else {
                       setToast(json?.error || "Withdraw failed");
                     }
                   } catch (e) {
@@ -3644,6 +3738,57 @@ setProfile(json?.profile || null);
             <NativeFunRunAd />
 
             <Card>
+
+{favoriteCoinIds.length > 0 && (
+  <div style={{ marginBottom: 14 }}>
+    <div
+      style={{
+        fontSize: 13,
+        fontWeight: 900,
+        marginBottom: 10,
+        color: "var(--muted)",
+      }}
+    >
+      ⭐ Favorites ({favoriteCoinIds.length})
+    </div>
+
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {(coins || [])
+        .filter((c) => favoriteCoinIds.includes(c.id))
+        .slice(0, 10)
+        .map((coin) => (
+          <MiniBtn
+            key={coin.id}
+            onClick={() => openCoin(coin)}
+          >
+            <div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    lineHeight: 1.1,
+  }}
+>
+  <span>{coin.symbol || coin.name}</span>
+
+  <span
+    style={{
+      fontSize: 11,
+      color: getCoin24hMovePct(coin) >= 0 ? "#22c55e" : "#ef4444",
+      fontWeight: 900,
+      marginTop: 3,
+    }}
+  >
+    24h {getCoin24hMovePct(coin) >= 0 ? "+" : ""}
+{getCoin24hMovePct(coin).toFixed(2)}%
+  </span>
+</div>
+          </MiniBtn>
+        ))}
+    </div>
+  </div>
+)}
+              
               <SectionHeader
                 title="Feed"
                 right={
@@ -3720,6 +3865,10 @@ setProfile(json?.profile || null);
                 ))}
               </div>
             </Card>
+
+
+
+
           </ScreenShell>
         )}
 
@@ -4048,6 +4197,25 @@ setProfile(json?.profile || null);
                       <MiniBtn onClick={() => openCreatorFromCoin(selectedCoin)}>
                         Creator Profile
                       </MiniBtn>
+
+<MiniBtn
+  onClick={() => toggleFavoriteCoin(selectedCoin?.id)}
+>
+  <span
+  style={{
+    color: favoriteCoinIds.includes(selectedCoin?.id)
+      ? "#22c55e"
+      : undefined,
+    fontWeight: 900,
+  }}
+>
+  {favoriteCoinIds.includes(selectedCoin?.id)
+    ? "★ Remove Favorite"
+    : "☆ Add Favorite"}
+</span>
+
+</MiniBtn>
+
                       <MiniBtn
                         onClick={async () => {
                           const ok = await copyText(selectedCoin?.id || "");
@@ -4370,6 +4538,8 @@ setProfile(json?.profile || null);
           </ScreenShell>
         )}
 
+        
+
         {screen === "PROFILE" && (
           <ScreenShell>
             <div
@@ -4428,6 +4598,8 @@ setProfile(json?.profile || null);
               <Title sub="Wallet, creator income and affiliate earnings">Profile</Title>
 
               <div className="statsGrid">
+
+                
                 <div
                   className="stat"
                   style={{
@@ -4444,6 +4616,33 @@ setProfile(json?.profile || null);
                       "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(99,245,200,.16), inset 0 1px 0 rgba(255,255,255,.12)",
                   }}
                 >
+<div
+  style={{
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 14,
+    background:
+      "linear-gradient(135deg, rgba(99,245,200,.18), rgba(124,203,255,.12))",
+    border: "1px solid rgba(99,245,200,.25)",
+  }}
+>
+  <div className="statLabel">Portfolio Value</div>
+
+  <div
+    style={{
+      fontSize: 28,
+      fontWeight: 1000,
+      marginTop: 4,
+    }}
+  >
+    {fmtUsd(portfolioWalletUsd + portfolioHoldingsUsd)}
+  </div>
+
+  
+</div>
+
+
+
                   <div className="statLabel">Main Wallet</div>
                   <div className="statValue">{fmtSol(walletSolBalance)} SOL</div>
                   <div className="miniMuted" style={{ marginTop: 6 }}>
@@ -4459,26 +4658,56 @@ setProfile(json?.profile || null);
                       gap: 10,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "var(--text)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: 120,
-                      }}
-                    >
-                      {solAddr ? `${solAddr.slice(0, 4)}...${solAddr.slice(-4)}` : "No wallet"}
-                    </span>
+                 
+
+    <span
+  style={{
+    fontSize: 12,
+    fontWeight: 700,
+    color: "var(--text)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 120,
+  }}
+>
+  {(() => {
+
+    
+    
+    const walletAddress =
+  profile?.wallet ||
+  profile?.wallet_address ||
+  profile?.custodialWallet ||
+  profile?.depositAddress;
+
+
+
+
+return walletAddress
+  ? `${String(walletAddress).slice(0, 4)}...${String(walletAddress).slice(-4)}`
+  : "No wallet";
+  })()}
+</span>
+                    
 
                     <div style={{ display: "flex", gap: 6 }}>
                       <MiniBtn
-                        onClick={() => {
-                          navigator.clipboard.writeText(solAddr || "");
-                          setToast("Deposit address copied");
-                        }}
+
+
+
+          onClick={() => {
+  navigator.clipboard.writeText(
+    profile?.wallet
+  );
+
+  setToast("Deposit address copied");
+}}
+
+
+
+
+
                         style={{
                           padding: "7px 12px",
                           width: "auto",
@@ -4493,7 +4722,9 @@ setProfile(json?.profile || null);
 
                       <MiniBtn
                         onClick={() => {
-                          navigator.clipboard.writeText(solAddr || "");
+                          navigator.clipboard.writeText(
+  profile?.wallet
+);
                           setToast("Wallet copied");
                         }}
                         style={{
@@ -4525,27 +4756,125 @@ setProfile(json?.profile || null);
                 </div>
 
                 <div
-                  className="stat"
-                  style={{
-                    gridColumn: "span 2",
-                    minHeight: 170,
-                    padding: 16,
-                    position: "relative",
-                    overflow: "hidden",
-                    textAlign: "center",
-                    background:
-                      "radial-gradient(circle at 15% 0%, rgba(255,143,177,.36), transparent 36%), radial-gradient(circle at 100% 100%, rgba(167,139,250,.40), transparent 44%), linear-gradient(135deg, rgba(63,22,72,.95), rgba(20,27,78,.92))",
-                    border: "1px solid rgba(255,143,177,.28)",
-                    boxShadow:
-                      "0 18px 42px rgba(0,0,0,.26), 0 0 30px rgba(167,139,250,.16), inset 0 1px 0 rgba(255,255,255,.12)",
-                  }}
-                >
-                  <div className="statLabel">Coming Soon</div>
-                  <div className="statValue" style={{ fontSize: 18 }}>BNB • Polygon</div>
-                  <div className="miniMuted" style={{ marginTop: 6 }}>
-                    Multi-chain support arriving soon
-                  </div>
-                </div>
+  className="stat"
+  style={{
+    gridColumn: "span 2",
+    minHeight: 190,
+    padding: 18,
+    position: "relative",
+    overflow: "hidden",
+    background:
+      "radial-gradient(circle at 15% 0%, rgba(99,245,200,.25), transparent 36%), radial-gradient(circle at 100% 100%, rgba(124,203,255,.25), transparent 44%), linear-gradient(135deg, rgba(8,32,56,.96), rgba(5,20,40,.95))",
+    border: "1px solid rgba(99,245,200,.25)",
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 20,
+    }}
+  >
+    <div>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 900,
+          color: "var(--muted)",
+        }}
+      >
+        RUN REWARDS
+      </div>
+
+      <div
+        style={{
+          fontSize: 34,
+          fontWeight: 1000,
+          marginTop: 6,
+        }}
+      >
+        {fmtUsd((profile?.run_balance || 700000) * 0.000002)}
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#63F5C8",
+          fontWeight: 900,
+        }}
+      >
+        {(profile?.run_balance || 700000).toLocaleString()} RUN
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 12,
+          opacity: 0.8,
+        }}
+      >
+        Unlocks on 01 Jan 2027
+      </div>
+    </div>
+
+
+<div
+  style={{
+    width: 85,
+    height: 85,
+    borderRadius: "50%",
+   background:
+  "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
+    border: "5px solid rgba(255,255,255,.28)",
+outline: "2px solid rgba(255,215,0,.65)",
+outlineOffset: "-8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 24,
+    fontWeight: 1000,
+    color: "#2B2B2B",
+textShadow:
+  "0 1px 0 #fff, 0 2px 0 rgba(255,215,0,.55), 0 4px 8px rgba(0,0,0,.35)",
+letterSpacing: 1,
+    textShadow: "0 1px 2px rgba(255,255,255,.35)",
+ boxShadow:
+  "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
+    animation: "spinRunCoin 4s linear infinite",
+    transformStyle: "preserve-3d",
+  }}
+>
+  RUN
+</div>
+
+
+    <div style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--muted)",
+          marginBottom: 6,
+        }}
+      >
+        Unlock Countdown
+      </div>
+
+      <div
+  style={{
+    fontSize: 24,
+    fontWeight: 1000,
+    color: "#7CCBFF",
+    lineHeight: 1.4,
+  }}
+>
+  {unlockDays}d {unlockHours}h
+  <br />
+  {unlockMinutes}m {unlockSeconds}s
+</div>
+    </div>
+  </div>
+</div>
 
                 <div
                   className="stat"
@@ -4598,38 +4927,43 @@ setProfile(json?.profile || null);
                       50%
                     </span>
                   </div>
+<div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(99,245,200,.35)" }}>
+  {fmtSol(profile?.referralRewardsSol || 0)} SOL
+</div>
 
-                  <div className="statValue" style={{ position: "relative", zIndex: 1, fontSize: 19, color: "#FFFFFF", textShadow: "0 0 18px rgba(99,245,200,.35)" }}>
-                    {fmtSol(profile?.referralRewardsSol || 0)} SOL
-                  </div>
+<div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 11 }}>
+  <MiniBtn
 
-                  <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 11 }}>
-                    <MiniBtn
-                      onClick={() => handleClaim("REF")}
-                      style={{
-                        padding: "8px 8px",
-                        borderRadius: 13,
-                        color: "#03110D",
-                        background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
-                        border: "1px solid rgba(255,255,255,.20)",
-                        boxShadow: "0 10px 22px rgba(99,245,200,.24)",
-                      }}
-                    >
-                      Claim
-                    </MiniBtn>
-                    <MiniBtn
-                      onClick={async () => {
-                        const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
-                        setToast(ok ? "Affiliate link copied" : "Copy failed");
-                      }}
-                      style={{
-                        padding: "8px 8px",
-                        borderRadius: 13,
-                        color: "#FFFFFF",
-                        background: "linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06))",
-                        border: "1px solid rgba(255,255,255,.18)",
-                        boxShadow: "0 10px 22px rgba(0,0,0,.18)",
-                      }}
+    onClick={() => handleClaim("REF")}
+    style={{
+      padding: "8px 8px",
+      borderRadius: 13,
+      color: "#03110D",
+      background: "linear-gradient(135deg, #63F5C8, #7CCBFF)",
+      border: "1px solid rgba(255,255,255,.20)",
+      boxShadow: "0 10px 22px rgba(99,245,200,.24)",
+    }}
+
+
+  >
+    Claim
+  </MiniBtn>
+
+  
+
+  <MiniBtn
+    onClick={async () => {
+      const ok = await copyText(solAddr ? getReferralLink(solAddr) : "");
+      setToast(ok ? "Affiliate link copied" : "Copy failed");
+    }}
+    style={{
+      padding: "8px 8px",
+      borderRadius: 13,
+      color: "#FFFFFF",
+      background: "linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06))",
+      border: "1px solid rgba(255,255,255,.18)",
+      boxShadow: "0 10px 22px rgba(0,0,0,.18)",
+    }}
                     >
                       Share
                     </MiniBtn>
@@ -4704,6 +5038,30 @@ setProfile(json?.profile || null);
 
             <Card>
               <SectionHeader title="Open Positions" right={<Pill>{profileHoldings.length}</Pill>} />
+
+<div
+  style={{
+    marginBottom: 12,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "rgba(99,245,200,.08)",
+    border: "1px solid rgba(99,245,200,.18)",
+  }}
+>
+  <div className="miniMuted">Total Holdings Value</div>
+  <div
+    style={{
+      fontSize: 22,
+      fontWeight: 1000,
+      marginTop: 4,
+    }}
+  >
+    {fmtUsd(portfolioHoldingsUsd)}
+  </div>
+</div>
+
+
+
               <div className="scrollY">
                 {profileHoldings.length === 0 ? (
                   <div className="miniMuted">No holdings yet.</div>
@@ -4719,13 +5077,29 @@ setProfile(json?.profile || null);
                       });
                     const amt = Math.max(0, safeNum(h.amount, h.tokens || h.balance || 0));
                     const pct = coin?.totalSupply ? (amt / Math.max(1, safeNum(coin.totalSupply, 1))) * 100 : 0;
+                    const holdingUsd = amt * getCoinPriceUsd(coin);
+                    const allocationPct = portfolioHoldingsUsd > 0 ? (holdingUsd / portfolioHoldingsUsd) * 100 : 0;
+                    const coinTxs = (profileTxs || []).filter(
+  (tx) => String(tx.coinId) === String(coin.id)
+);
+
+const totalBuySol = coinTxs
+  .filter((tx) => tx.side === "BUY")
+  .reduce((sum, tx) => sum + Number(tx.sol || 0), 0);
+
+const totalSellSol = coinTxs
+  .filter((tx) => tx.side === "SELL")
+  .reduce((sum, tx) => sum + Number(tx.sol || 0), 0);
+
+const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
                     return (
                       <ProfileCoinRow
                         key={`${h.coinId || coin?.id || idx}`}
                         coin={coin}
+                        
                         secondary={`${fmtNum(amt, 0)} tokens`}
-                        rightMain={`${pct.toFixed(4)}%`}
-                        rightSub="supply"
+                        rightMain={fmtUsd(holdingUsd)}
+                        rightSub={`${allocationPct.toFixed(1)}% • ${pnlUsd >= 0 ? "+" : ""}${fmtUsd(pnlUsd)}`}
                         onClick={coin ? () => openCoin(coin) : undefined}
                       />
                     );
@@ -4784,6 +5158,78 @@ setProfile(json?.profile || null);
                 )}
               </div>
             </Card>
+
+<Card>
+  <SectionHeader
+    title="Wallet History"
+    right={<Pill>{walletHistory.length}</Pill>}
+  />
+
+  <div className="scrollY">
+    {walletHistory.length === 0 ? (
+      <div style={{ color: "var(--muted2)", fontSize: 13 }}>
+        No wallet history yet.
+      </div>
+    ) : (
+      walletHistory.slice(0, 50).map((item, idx) => (
+        <div
+          key={idx}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            padding: "12px 0",
+            borderBottom: "1px solid rgba(255,255,255,.06)",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 1000,
+                color:
+                  item.type === "DEPOSIT"
+                    ? "#63F5C8"
+                    : "#FF8A8A",
+              }}
+            >
+              {item.type}
+            </div>
+
+            <div className="miniMuted">
+              {new Date(item.createdAt).toLocaleString()}
+            </div>
+          </div>
+
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontWeight: 1000 }}>
+              {fmtSol(item.amount)} SOL
+            </div>
+
+            <div className="miniMuted">
+              {String(item.txHash || "").slice(0, 8)}...
+            </div>
+
+<MiniBtn
+  onClick={async () => {
+    const ok = await copyText(item.txHash || "");
+    setToast(ok ? "TX Hash copied" : "Copy failed");
+  }}
+  style={{
+    marginTop: 4,
+    padding: "4px 10px",
+    minHeight: 28,
+    fontSize: 11,
+  }}
+>
+  Copy
+</MiniBtn>
+
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</Card>
+
           </ScreenShell>
         )}
 

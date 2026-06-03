@@ -28,6 +28,20 @@
   }
 }
 
+@keyframes spinRunCoin {
+  0% {
+    transform: perspective(800px) rotateY(0deg) scale(1);
+  }
+
+  50% {
+    transform: perspective(800px) rotateY(180deg) scale(1.15);
+  }
+
+  100% {
+    transform: perspective(800px) rotateY(360deg) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   a:nth-of-type(2) .logo {
     animation: logo-spin infinite 20s linear;
