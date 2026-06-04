@@ -224,9 +224,9 @@ function ThemeStyles() {
       .appShell{
         position:relative;
         z-index:1;
-        width:100%;
+        width:min(100%, 560px);
         margin:0 auto;
-        padding:16px 12px 126px;
+        padding:16px 14px 128px;
       }
 
       .grid,
@@ -235,39 +235,34 @@ function ThemeStyles() {
       .rightCol{
         display:grid;
         grid-template-columns:1fr;
-        gap:16px;
+        gap:18px;
       }
 
      .card{
   position:relative;
-  border:none;
+  border:1px solid var(--borderSoft);
   border-radius:16px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--card) 88%, white 12%), var(--card)),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, black 28%), color-mix(in srgb, var(--bg) 82%, black 18%));
-  box-shadow:
-    var(--shadow2),
-    0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent),
-    0 18px 50px color-mix(in srgb, var(--glow) 18%, transparent),
-    var(--shine);
+  background:rgba(255,255,255,.022);
+  box-shadow:none;
   overflow:hidden;
-  backdrop-filter: blur(6px) saturate(135%);
-  -webkit-backdrop-filter: blur(6px) saturate(135%);
-  padding: 16px;
+  padding:0;
 }
 
-      .card::before{
-        content:"";
-        position:absolute;
-        inset:0;
-        pointer-events:none;
-        background:linear-gradient(180deg, rgba(255,255,255,.02), transparent 28%);
-      }
+      .card::before{ content:none; }
 
       .cardBody{
         position:relative;
         z-index:1;
-        padding:8px;
+        padding:18px;
+      }
+
+      /* full-bleed: lets the chart break out of card padding edge-to-edge */
+      .bleed{
+        margin-left:-18px;
+        margin-right:-18px;
+        margin-bottom:-18px;
+        margin-top:4px;
+        width:auto;
       }
 
       .sectionHeader{
@@ -310,31 +305,28 @@ function ThemeStyles() {
       }
 
       .coinList{
-        display:grid;
-        gap:10px;
+        display:flex;
+        flex-direction:column;
+        gap:0;
       }
 
       .coinBtn{
   width:100%;
   text-align:left;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--card) 82%, white 18%), color-mix(in srgb, var(--card) 94%, black 6%));
-  border:1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
-  border-radius:20px;
-  padding:13px;
+  background:transparent;
+  border:none;
+  border-bottom:1px solid var(--borderSoft);
+  border-radius:0;
+  padding:14px 2px;
   color:var(--text);
   cursor:pointer;
-  transition:transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.035),
-    0 10px 24px color-mix(in srgb, var(--glow) 10%, transparent);
+  transition:background .15s ease;
 }
 
+      .coinBtn:last-child{ border-bottom:none; }
+
       .coinBtn:hover{
-        transform:translateY(-1px);
-        border-color:rgba(25,230,162,.24);
-        background:
-          linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.024));
+        background:rgba(255,255,255,.03);
       }
 
       .coinRow{
@@ -507,7 +499,7 @@ function ThemeStyles() {
 
       .statsGrid{
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 14px;
 }
@@ -886,15 +878,15 @@ body {
 
         .appShell{
           width:100%;
-          padding:12px 8px 112px;
+          padding:12px 12px 116px;
         }
 
         .card{
-          border-radius:24px;
+          border-radius:14px;
         }
 
         .cardBody{
-          padding:14px;
+          padding:16px;
         }
 
         .heroTitle{
@@ -908,7 +900,7 @@ body {
         }
 
         .statsGrid{
-          grid-template-columns:1fr;
+          grid-template-columns:1fr 1fr;
           gap:8px;
         }
 
@@ -2245,10 +2237,10 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
     <div
       style={{
         width: "100%",
-        borderRadius: 20,
+        borderRadius: 0,
         overflow: "hidden",
         background: themeCfg.wrapBg,
-        border: isLight ? "1px solid rgba(15,23,42,.06)" : "1px solid rgba(255,255,255,.06)",
+        border: "none",
         padding: 0,
       }}
     >
@@ -4240,14 +4232,16 @@ const walletHistory = [
                     </div>
                   ) : null}
 
-                  <PriceChart
-                    coin={selectedCoin}
-                    height={isMobile ? 300 : 420}
-                    chartRange={chartRange}
-                    setChartRange={setChartRange}
-                    isMobile={isMobile}
-                    reloadKey={chartReloadKey}
-                  />
+                  <div className="bleed">
+                    <PriceChart
+                      coin={selectedCoin}
+                      height={isMobile ? 320 : 440}
+                      chartRange={chartRange}
+                      setChartRange={setChartRange}
+                      isMobile={isMobile}
+                      reloadKey={chartReloadKey}
+                    />
+                  </div>
                 </Card>
 
                 <Card>
@@ -4759,7 +4753,6 @@ return walletAddress
                 <div
   className="stat"
   style={{
-
     gridColumn: "span 2",
     minHeight: 190,
     padding: 18,
@@ -4913,7 +4906,6 @@ return walletAddress
                 <div
                   className="stat"
                   style={{
-                    gridColumn: "span 2",
                     minHeight: 158,
                     padding: 14,
                     textAlign: "left",
@@ -5008,7 +5000,6 @@ return walletAddress
                 <div
                   className="stat"
                   style={{
-                    gridColumn: "span 2",
                     minHeight: 158,
                     padding: 14,
                     position: "relative",
