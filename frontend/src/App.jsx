@@ -241,7 +241,7 @@ function ThemeStyles() {
      .card{
   position:relative;
   border:none;
-  border-radius:28px;
+  border-radius:16px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--card) 88%, white 12%), var(--card)),
     linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, black 28%), color-mix(in srgb, var(--bg) 82%, black 18%));
@@ -507,7 +507,7 @@ function ThemeStyles() {
 
       .statsGrid{
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
   margin-top: 14px;
 }
@@ -908,7 +908,7 @@ body {
         }
 
         .statsGrid{
-          grid-template-columns:1fr 1fr;
+          grid-template-columns:1fr;
           gap:8px;
         }
 
@@ -4759,6 +4759,7 @@ return walletAddress
                 <div
   className="stat"
   style={{
+
     gridColumn: "span 2",
     minHeight: 190,
     padding: 18,
@@ -4912,6 +4913,7 @@ return walletAddress
                 <div
                   className="stat"
                   style={{
+                    gridColumn: "span 2",
                     minHeight: 158,
                     padding: 14,
                     textAlign: "left",
@@ -5006,6 +5008,7 @@ return walletAddress
                 <div
                   className="stat"
                   style={{
+                    gridColumn: "span 2",
                     minHeight: 158,
                     padding: 14,
                     position: "relative",
