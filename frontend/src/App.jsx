@@ -240,7 +240,7 @@ function ThemeStyles() {
 
      .card{
   position:relative;
-  border:1px solid var(--border);
+  border:none;
   border-radius:28px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--card) 88%, white 12%), var(--card)),
