@@ -151,12 +151,11 @@ function ThemeStyles() {
         justify-content:space-between;
         gap:10px;
         border:1px solid var(--border);
-        border-radius:24px;
-        background:
-          linear-gradient(180deg, rgba(16,22,28,.78), rgba(10,14,18,.70));
-        box-shadow: var(--shadow1), var(--shine);
-        backdrop-filter: blur(6px) saturate(140%);
-        -webkit-backdrop-filter: blur(6px) saturate(140%);
+        border-radius:20px;
+        background:var(--topbarBg);
+        box-shadow: 0 8px 28px rgba(0,0,0,.18);
+        backdrop-filter: blur(10px) saturate(140%);
+        -webkit-backdrop-filter: blur(10px) saturate(140%);
       }
 
       .brand{
@@ -242,7 +241,7 @@ function ThemeStyles() {
   position:relative;
   border:1px solid var(--borderSoft);
   border-radius:16px;
-  background:rgba(255,255,255,.022);
+  background:var(--surface);
   box-shadow:none;
   overflow:hidden;
   padding:0;
@@ -296,12 +295,10 @@ function ThemeStyles() {
         gap:7px;
         padding:8px 12px;
         border-radius:999px;
-        border:1px solid rgba(255,255,255,.08);
-        background:
-          linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025));
+        border:1px solid var(--border);
+        background:var(--surface2);
         font-size:12px;
         color:var(--muted);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
       }
 
       .coinList{
@@ -444,9 +441,9 @@ function ThemeStyles() {
         gap:10px;
         align-items:center;
         padding:12px 14px;
-        border-radius:18px;
-        background:rgba(255,255,255,.03);
-        border:1px solid rgba(255,255,255,.07);
+        border-radius:14px;
+        background:var(--surface2);
+        border:1px solid var(--border);
       }
 
       .searchBox input{
@@ -465,8 +462,8 @@ function ThemeStyles() {
 
       .hr{
         height:1px;
-        background:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
-        margin:12px 0;
+        background:var(--border);
+        margin:14px 0;
       }
 
       .scrollY{
@@ -490,11 +487,10 @@ function ThemeStyles() {
 
       .tinyCard{
         min-width:230px;
-        border-radius:20px;
-        border:1px solid rgba(255,255,255,.08);
-        background:rgba(255,255,255,.03);
-        padding:13px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+        border-radius:16px;
+        border:1px solid var(--border);
+        background:var(--surface2);
+        padding:14px;
       }
 
       .statsGrid{
@@ -506,19 +502,10 @@ function ThemeStyles() {
 
       .stat{
   padding: 14px;
-  border-radius: 18px;
-
-  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.035));
-
-  border: 1px solid rgba(255,255,255,0.12);
-
+  border-radius: 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
   text-align: center;
-
-  box-shadow:
-    0 10px 30px rgba(0,0,0,0.25),
-    inset 0 1px 0 rgba(255,255,255,0.10);
-
-  backdrop-filter: blur(12px);
 }
 
       .statLabel{
@@ -544,14 +531,13 @@ function ThemeStyles() {
         grid-template-columns: repeat(5, 1fr);
         gap:8px;
         padding:10px;
-        border:1px solid rgba(255,255,255,.08);
-        background:rgba(8,12,15,.88);
-        backdrop-filter: blur(6px) saturate(140%);
-        -webkit-backdrop-filter: blur(6px) saturate(140%);
-        border-radius:24px;
+        border:1px solid var(--border);
+        background:var(--navBg);
+        backdrop-filter: blur(12px) saturate(140%);
+        -webkit-backdrop-filter: blur(12px) saturate(140%);
+        border-radius:22px;
         box-shadow:
-          0 20px 60px rgba(0,0,0,.34),
-          inset 0 1px 0 rgba(255,255,255,.04);
+          0 12px 40px rgba(0,0,0,.22);
       }
 
       .footerBtn{
@@ -602,9 +588,9 @@ body {
         width:min(100%, 520px);
         max-height:min(86vh, 900px);
         overflow:auto;
-        border-radius:28px;
-        border:1px solid rgba(255,255,255,.10);
-        background:linear-gradient(180deg, rgba(10,15,18,.98), rgba(8,12,15,.96));
+        border-radius:22px;
+        border:1px solid var(--border);
+        background:var(--modalBg);
         box-shadow:0 30px 80px rgba(0,0,0,.45);
       }
 
@@ -617,8 +603,8 @@ body {
         justify-content:space-between;
         gap:12px;
         padding:14px 16px;
-        border-bottom:1px solid rgba(255,255,255,.08);
-        background:rgba(10,15,18,.92);
+        border-bottom:1px solid var(--border);
+        background:var(--modalHeadBg);
         backdrop-filter:blur(6px)
       }
 
@@ -640,17 +626,17 @@ body {
         width:100%;
         text-align:left;
         padding:12px 13px;
-        border-radius:16px;
-        border:1px solid rgba(255,255,255,.08);
-        background:rgba(255,255,255,.03);
+        border-radius:14px;
+        border:1px solid var(--border);
+        background:var(--surface2);
         color:var(--text);
         cursor:pointer;
         transition:all .16s ease;
       }
 
       .themeOption.active{
-        border-color:rgba(25,230,162,.28);
-        background:linear-gradient(135deg, rgba(25,230,162,.12), rgba(143,255,208,.08));
+        border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+        background:color-mix(in srgb, var(--primary) 14%, var(--surface2));
       }
 
       .row{
@@ -1015,9 +1001,8 @@ function MiniBtn({ children, onClick, disabled, tone = "default", style }) {
           color: "#FFD1D1",
         }
       : {
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
-          border: "1px solid rgba(255,255,255,.10)",
+          background: "var(--surface2)",
+          border: "1px solid var(--border)",
           color: "var(--text)",
         };
 
@@ -1108,9 +1093,9 @@ function Input({
   const baseStyle = {
     width: "100%",
     padding: "12px 13px",
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,.08)",
-    background: "rgba(255,255,255,.03)",
+    borderRadius: 14,
+    border: "1px solid var(--inputBorder)",
+    background: "var(--inputBg)",
     color: "var(--text)",
     outline: "none",
     fontSize: 14,
@@ -1156,8 +1141,8 @@ function Input({
             right: 10,
             top: "50%",
             transform: "translateY(-50%)",
-            border: "1px solid rgba(255,255,255,.10)",
-            background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+            border: "1px solid var(--border)",
+            background: "var(--surface2)",
             color: "var(--text)",
             borderRadius: 12,
             padding: "7px 10px",
@@ -1668,8 +1653,8 @@ function CoinLogo({ c, size = 44, radius = 14 }) {
         borderRadius: radius,
         overflow: "hidden",
         flex: `0 0 ${size}px`,
-        border: "1px solid rgba(255,255,255,.08)",
-        background: "rgba(255,255,255,.04)",
+        border: "1px solid var(--border)",
+        background: "var(--surface2)",
         display: "grid",
         placeItems: "center",
       }}
@@ -1695,6 +1680,18 @@ function CoinLogo({ c, size = 44, radius = 14 }) {
 function ThemeOption({ theme, current, setTheme, label }) {
   const active = current === theme;
 
+  const PREVIEW = {
+    calm:  { mode: "Dark",  c: ["#63F5C8", "#7CCBFF", "#A78BFA"] },
+    ocean: { mode: "Dark",  c: ["#4FD1FF", "#63F5C8", "#38BDF8"] },
+    royal: { mode: "Dark",  c: ["#8FA8FF", "#63F5C8", "#A78BFA"] },
+    neon:  { mode: "Dark",  c: ["#C084FC", "#22D3EE", "#F472B6"] },
+    rose:  { mode: "Dark",  c: ["#FF8FB1", "#FDB7EA", "#F472B6"] },
+    light: { mode: "Light", c: ["#0EA5A3", "#2563EB", "#7C3AED"] },
+    paper: { mode: "Light", c: ["#C2410C", "#0D9488", "#7C3AED"] },
+  };
+
+  const preview = PREVIEW[theme] || PREVIEW.calm;
+
   return (
     <button
       className={`themeOption ${active ? "active" : ""}`}
@@ -1708,13 +1705,24 @@ function ThemeOption({ theme, current, setTheme, label }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
           <div style={{ fontWeight: 1000, fontSize: 13 }}>{label || theme}</div>
-          <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>{theme}</div>
+          <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>
+            {preview.mode}{active ? " • Active" : ""}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 6 }}>
-          <span style={{ width: 14, height: 14, borderRadius: 999, background: "var(--primary)", border: "1px solid rgba(255,255,255,.12)" }} />
-          <span style={{ width: 14, height: 14, borderRadius: 999, background: "var(--accent2)", border: "1px solid rgba(255,255,255,.12)" }} />
-          <span style={{ width: 14, height: 14, borderRadius: 999, background: "var(--accent3)", border: "1px solid rgba(255,255,255,.12)" }} />
+          {preview.c.map((col, i) => (
+            <span
+              key={i}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 999,
+                background: col,
+                border: "1px solid var(--border)",
+              }}
+            />
+          ))}
         </div>
       </div>
     </button>
@@ -1762,7 +1770,7 @@ const CoinMiniCard = React.memo(function CoinMiniCard({ c, onOpen, subtitle }) {
         </div>
 
         <div className="rightNum">
-          <div className="rightNumMain" style={{ color: "#FFFFFF", fontWeight: 1000 }}>{fmtUsd(c?.mc || 0)}</div>
+          <div className="rightNumMain" style={{ color: "var(--text)", fontWeight: 1000 }}>{fmtUsd(c?.mc || 0)}</div>
           <div className="rightNumSub" style={{ color: isUp ? "#35E0B6" : "#FF5F6D", fontWeight: 1000 }}>
             {move24h > 0 ? "+" : ""}{move24h.toFixed(2)}%
           </div>
@@ -1816,9 +1824,9 @@ function ProfileCoinRow({ coin, primary, secondary, rightMain, rightSub, onClick
       style={{
         width: "100%",
         padding: 12,
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,.08)",
-        background: "rgba(255,255,255,.03)",
+        borderRadius: 14,
+        border: "1px solid var(--border)",
+        background: "var(--surface2)",
         color: "var(--text)",
         textAlign: "left",
         cursor: onClick ? "pointer" : "default",
@@ -1958,8 +1966,6 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
             cacheKey,
             JSON.stringify({ ts: Date.now(), rows })
           );
-        } else {
-          console.log("⚠️ empty candles for", tfKey, "keeping previous chart");
         }
       } catch {
       } finally {
@@ -2296,10 +2302,14 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
             alignItems: "center",
             justifyContent: isMobile ? "flex-start" : "flex-end",
             gap: 8,
-            flexWrap: "wrap",
+            flexWrap: "nowrap",
+            overflowX: "auto",
+            overflowY: "hidden",
+            WebkitOverflowScrolling: "touch",
             marginLeft: "auto",
             maxWidth: "100%",
             width: "100%",
+            paddingBottom: 2,
           }}
         >
           <button
@@ -2307,6 +2317,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
             style={{
               height: 30,
               minWidth: 72,
+              flex: "0 0 auto",
               padding: "0 14px",
               borderRadius: 11,
               border: "1px solid rgba(0,0,0,.08)",
@@ -2330,6 +2341,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
                 style={{
                   height: 30,
                   minWidth: value === "15M" ? 50 : value === "1W" ? 58 : 42,
+                  flex: "0 0 auto",
                   padding: "0 12px",
                   borderRadius: 11,
                   border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
@@ -2359,6 +2371,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
             style={{
               fontSize: 11,
               fontWeight: 1000,
+              flex: "0 0 auto",
               color: up ? themeCfg.up : themeCfg.down,
               padding: "8px 10px",
               borderRadius: 999,
@@ -2414,7 +2427,15 @@ export default function App() {
     return () => clearTimeout(t);
   }, [showIntro]);
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 520;
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" && window.innerWidth < 520
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 520);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const [toast, setToast] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -2643,19 +2664,10 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
   }
 
   const solAddr = useMemo(() => {
-    const phantom = String(phantomWallet || "").trim();
- // if (phantom) {
-//   console.log("PHANTOM WALLET ACTIVE:", phantom);
-//   return phantom;
-// }
-
     const primary = String(user?.wallet?.address || "").trim();
-    console.log("FULL USER:", user);
     if (primary) {
-  console.log("PRIMARY WALLET:", primary);
-  
-  return primary;
-}
+      return primary;
+    }
 
     const solLinked =
       user?.linkedAccounts?.find(
@@ -2856,12 +2868,6 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
     try {
       setLoadingProfile(true);
       const json = await api(`/profile/${wallet}`);
-
- 
-      
-      console.log(json);
-      console.log(json.profile);
-      console.log("ALL TXS:", json.profile?.txs);
       setProfile(json?.profile || null);
 
     } catch (e) {
@@ -2925,92 +2931,108 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
   }, [screen, coinsPage, coinsHasMore, loadingCoins]);
 
   useEffect(() => {
+    // Shared base values for dark / light surfaces so each theme only
+    // needs to declare its identity colors (bg + accents).
+    const dark = (o) => ({
+      mode: "dark",
+      surface: "rgba(255,255,255,.045)",
+      surface2: "rgba(255,255,255,.06)",
+      border: "rgba(255,255,255,.10)",
+      borderSoft: "rgba(255,255,255,.06)",
+      text: "#F6FAFF",
+      muted: "rgba(231,241,255,.78)",
+      muted2: "rgba(208,223,243,.55)",
+      inputBg: "rgba(255,255,255,.05)",
+      inputBorder: "rgba(255,255,255,.10)",
+      navBg: "rgba(10,14,18,.86)",
+      topbarBg: "linear-gradient(180deg, rgba(20,26,34,.82), rgba(12,16,22,.74))",
+      modalBg: "linear-gradient(180deg, rgba(14,19,24,.99), rgba(10,14,18,.98))",
+      modalHeadBg: "rgba(12,16,22,.94)",
+      btnText: "#04130E",
+      good: "#35E0B6",
+      warn: "#FFD47A",
+      ...o,
+    });
+
+    const light = (o) => ({
+      mode: "light",
+      surface: "rgba(255,255,255,.94)",
+      surface2: "rgba(15,23,42,.045)",
+      border: "rgba(15,23,42,.10)",
+      borderSoft: "rgba(15,23,42,.07)",
+      text: "#0B1524",
+      muted: "rgba(20,30,48,.74)",
+      muted2: "rgba(30,41,59,.56)",
+      inputBg: "rgba(15,23,42,.04)",
+      inputBorder: "rgba(15,23,42,.12)",
+      navBg: "rgba(255,255,255,.92)",
+      topbarBg: "linear-gradient(180deg, rgba(255,255,255,.95), rgba(248,250,252,.88))",
+      modalBg: "linear-gradient(180deg, #FFFFFF, #F5F8FC)",
+      modalHeadBg: "rgba(255,255,255,.95)",
+      btnText: "#04130E",
+      good: "#0E9F6E",
+      warn: "#B45309",
+      ...o,
+    });
+
     const themes = {
-      calm: {
-        bg: "#07111F",
-        card: "rgba(18,29,45,.45)",
-        text: "#F7FBFF",
-        primary: "#63F5C8",
-        secondary: "#7CCBFF",
-        accent: "#A78BFA",
-        danger: "#FF8DA1",
-        glow: "rgba(99,245,200,.25)",
-      },
-      neon: {
-        bg: "#0C0B1A",
-        card: "rgba(31,20,49,.45)",
-        text: "#FBF8FF",
-        primary: "#C084FC",
-        secondary: "#22D3EE",
-        accent: "#F472B6",
-        danger: "#FF4D6D",
-        glow: "rgba(192,132,252,.35)",
-      },
-      ocean: {
-        bg: "#071A22",
-        card: "rgba(15,40,54,.45)",
-        text: "#F2FCFF",
-        primary: "#4FD1FF",
-        secondary: "#63F5C8",
-        accent: "#38BDF8",
-        danger: "#FF7B7B",
-        glow: "rgba(79,209,255,.25)",
-      },
-      fire: {
-        bg: "#140707",
-        card: "rgba(40,15,15,.45)",
-        text: "#FFF5F5",
-        primary: "#FF6B3D",
-        secondary: "#FFD166",
-        accent: "#FF3D6E",
-        danger: "#FF2E2E",
-        glow: "rgba(255,107,61,.25)",
-      },
-      royal: {
-        bg: "#0A1024",
-        card: "rgba(22,30,62,.45)",
-        text: "#F6F8FF",
-        primary: "#8FA8FF",
-        secondary: "#63F5C8",
-        accent: "#A78BFA",
-        danger: "#FF6B9D",
-        glow: "rgba(143,168,255,.25)",
-      },
-      rose: {
-        bg: "#1A0B14",
-        card: "rgba(56,24,43,.45)",
-        text: "#FFF7FB",
-        primary: "#FF8FB1",
-        secondary: "#FDB7EA",
-        accent: "#F472B6",
-        danger: "#FF6B8A",
-        glow: "rgba(255,143,177,.28)",
-      },
+      // ---------- DARK ----------
+      calm:  dark({ bg: "#070C14", primary: "#63F5C8", secondary: "#7CCBFF", accent: "#A78BFA", danger: "#FF8DA1", glow: "rgba(99,245,200,.20)" }),
+      ocean: dark({ bg: "#06141B", primary: "#4FD1FF", secondary: "#63F5C8", accent: "#38BDF8", danger: "#FF7B7B", glow: "rgba(79,209,255,.20)" }),
+      royal: dark({ bg: "#0A1024", primary: "#8FA8FF", secondary: "#63F5C8", accent: "#A78BFA", danger: "#FF6B9D", glow: "rgba(143,168,255,.20)" }),
+      neon:  dark({ bg: "#0B0A18", primary: "#C084FC", secondary: "#22D3EE", accent: "#F472B6", danger: "#FF4D6D", glow: "rgba(192,132,252,.26)" }),
+      rose:  dark({ bg: "#160A12", primary: "#FF8FB1", secondary: "#FDB7EA", accent: "#F472B6", danger: "#FF6B8A", glow: "rgba(255,143,177,.22)" }),
+      // ---------- LIGHT ----------
+      light: light({ bg: "#F4F7FB", primary: "#0EA5A3", secondary: "#2563EB", accent: "#7C3AED", danger: "#E11D48", glow: "rgba(14,165,163,.14)" }),
+      paper: light({ bg: "#F6F1E7", primary: "#C2410C", secondary: "#0D9488", accent: "#7C3AED", danger: "#DC2626", glow: "rgba(194,65,12,.12)" }),
     };
 
     const t = themes[theme] || themes.calm;
+    const root = document.documentElement;
+    const set = (k, v) => root.style.setProperty(k, v);
 
-    document.documentElement.style.setProperty("--bg", t.bg);
-    document.documentElement.style.setProperty("--card", t.card);
-    document.documentElement.style.setProperty("--text", t.text);
+    root.setAttribute("data-mode", t.mode);
 
-    document.documentElement.style.setProperty("--btn-primary", t.primary);
-    document.documentElement.style.setProperty("--btn-secondary", t.secondary);
+    set("--bg", t.bg);
+    set("--card", t.surface);
+    set("--surface", t.surface);
+    set("--surface2", t.surface2);
+    set("--border", t.border);
+    set("--borderSoft", t.borderSoft);
 
-    document.documentElement.style.setProperty("--border", t.secondary + "33");
-    document.documentElement.style.setProperty("--shadow", t.glow);
+    set("--text", t.text);
+    set("--muted", t.muted);
+    set("--muted2", t.muted2);
 
-    document.documentElement.style.setProperty("--primary", t.primary);
-    document.documentElement.style.setProperty("--secondary", t.secondary);
-    document.documentElement.style.setProperty("--accent", t.accent);
-    document.documentElement.style.setProperty("--danger", t.danger);
-    document.documentElement.style.setProperty("--glow", t.glow);
+    set("--primary", t.primary);
+    set("--primary2", t.secondary);
+    set("--secondary", t.secondary);
+    set("--accent", t.accent);
+    set("--accent2", t.accent);
+    set("--accent3", t.danger);
+    set("--danger", t.danger);
+    set("--good", t.good);
+    set("--warn", t.warn);
+    set("--glow", t.glow);
+    set("--btnText", t.btnText);
 
-    document.body.style.background = `
-      radial-gradient(900px 600px at 10% 0%, ${t.glow}, transparent),
-      radial-gradient(800px 500px at 100% 0%, ${t.accent}, transparent),
-      ${t.bg}
-    `;
+    set("--inputBg", t.inputBg);
+    set("--inputBorder", t.inputBorder);
+    set("--navBg", t.navBg);
+    set("--topbarBg", t.topbarBg);
+    set("--modalBg", t.modalBg);
+    set("--modalHeadBg", t.modalHeadBg);
+
+    set("--btn-primary", t.primary);
+    set("--btn-secondary", t.secondary);
+    set("--shadow", t.glow);
+
+    document.body.style.background =
+      t.mode === "light"
+        ? `radial-gradient(1100px 720px at 50% -12%, ${t.glow}, transparent 55%), ${t.bg}`
+        : `radial-gradient(1000px 680px at 12% -6%, ${t.glow}, transparent 52%),
+           radial-gradient(900px 560px at 100% 0%, ${t.glow}, transparent 48%),
+           ${t.bg}`;
 
     document.body.style.color = t.text;
 
@@ -3103,8 +3125,6 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
 
     try {
       setCreating(true);
-
-      console.log("creatorWallet:", solAddr);
 
       const payload = {
         name: n,
@@ -3659,45 +3679,6 @@ const walletHistory = [
               <div className="brandTitle">Fun.Run</div>
               <div className="brandSub">Smooth launches. Fast trades. Made for creators.</div>
             </div>
-          </div>
-
-          <div className="topActions">
-            {!authenticated ? (
-              <MiniBtn
-                tone="good"
-                onClick={async () => {
-                  try {
-                    await login?.();
-                  } catch (e) {
-                    setToast(e?.message || "Google login failed");
-                  }
-                }}
-              >
-                Google Login
-              </MiniBtn>
-            ) : (
-              <MiniBtn
-                onClick={async () => {
-                  try {
-                    await logout?.();
-                    setToast("Google logged out");
-                  } catch (e) {
-                    setToast(e?.message || "Logout failed");
-                  }
-                }}
-              >
-                Google Logout
-              </MiniBtn>
-            )}
-            {phantomWallet ? (
-              <MiniBtn onClick={disconnectPhantom}>
-                {shortWallet(phantomWallet)}
-              </MiniBtn>
-            ) : (
-              <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
-                {connectingPhantom ? "Check Phantom" : "Connect Phantom"}
-              </MiniBtn>
-            )}
           </div>
         </div>
       </div>
@@ -4667,21 +4648,15 @@ const walletHistory = [
   }}
 >
   {(() => {
+    const custodialAddr =
+      profile?.custodialWallet ||
+      profile?.depositAddress ||
+      profile?.wallet_address ||
+      "";
 
-    
-    
-    const walletAddress =
-  profile?.wallet ||
-  profile?.wallet_address ||
-  profile?.custodialWallet ||
-  profile?.depositAddress;
-
-
-
-
-return walletAddress
-  ? `${String(walletAddress).slice(0, 4)}...${String(walletAddress).slice(-4)}`
-  : "No wallet";
+    return custodialAddr
+      ? `${String(custodialAddr).slice(0, 4)}...${String(custodialAddr).slice(-4)}`
+      : "Generating wallet...";
   })()}
 </span>
                     
@@ -4693,7 +4668,10 @@ return walletAddress
 
           onClick={() => {
   navigator.clipboard.writeText(
-    profile?.wallet
+    profile?.custodialWallet ||
+    profile?.depositAddress ||
+    profile?.wallet_address ||
+    ""
   );
 
   setToast("Deposit address copied");
@@ -4718,7 +4696,10 @@ return walletAddress
                       <MiniBtn
                         onClick={() => {
                           navigator.clipboard.writeText(
-  profile?.wallet
+  profile?.custodialWallet ||
+  profile?.depositAddress ||
+  profile?.wallet_address ||
+  ""
 );
                           setToast("Wallet copied");
                         }}
@@ -5372,17 +5353,51 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
                   </div>
 
                   <div className="themeGrid">
-                    <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Obsidian" />
-                    <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Deep Blue" />
-                    <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean Glass" />
-                    <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Velvet Rose" />
-                    <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal Night" />
+                    <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "2px 0 2px" }}>DARK</div>
+                    <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="🌙 Midnight" />
+                    <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="🌊 Ocean" />
+                    <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="👑 Royal" />
+                    <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="⚡ Neon" />
+                    <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="🌸 Rose" />
+                    <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "8px 0 2px" }}>LIGHT</div>
+                    <ThemeOption theme="light" current={theme} setTheme={setTheme} label="☀️ Daylight" />
+                    <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="📄 Paper" />
                   </div>
                 </div>
 
                 <div className="hr" />
 
+                <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4, fontWeight: 1000 }}>
+                  Account
+                </div>
+
                 <div style={{ display: "grid", gap: 10 }}>
+                  {!authenticated ? (
+                    <MiniBtn
+                      tone="good"
+                      onClick={async () => {
+                        try {
+                          await login?.();
+                          setToast("Google login opened");
+                        } catch (e) {
+                          setToast(e?.message || "Google login failed");
+                        }
+                      }}
+                    >
+                      Google Login
+                    </MiniBtn>
+                  ) : null}
+
+                  {!phantomWallet ? (
+                    <MiniBtn tone="good" onClick={connectPhantom} disabled={connectingPhantom}>
+                      {connectingPhantom ? "Check Phantom..." : "Connect Phantom"}
+                    </MiniBtn>
+                  ) : (
+                    <MiniBtn>
+                      Phantom: {shortWallet(phantomWallet)}
+                    </MiniBtn>
+                  )}
+
                   <MiniBtn
                     onClick={async () => {
                       if (!solAddr) {
@@ -5513,11 +5528,15 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
 
             <div className="modalBody">
               <div className="themeGrid">
-                <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Obsidian" />
-                <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Deep Blue" />
-                <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean Glass" />
-                <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Velvet Rose" />
-                <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal Night" />
+                <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "2px 0 2px" }}>DARK</div>
+                <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="🌙 Midnight" />
+                <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="🌊 Ocean" />
+                <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="👑 Royal" />
+                <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="⚡ Neon" />
+                <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="🌸 Rose" />
+                <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "8px 0 2px" }}>LIGHT</div>
+                <ThemeOption theme="light" current={theme} setTheme={setTheme} label="☀️ Daylight" />
+                <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="📄 Paper" />
               </div>
 
               <div className="hr" />

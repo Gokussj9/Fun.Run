@@ -1552,8 +1552,13 @@ app.get("/balance/:wallet", async (req, res) => {
 });
 
 app.post("/debug/deposit", async (req, res) => {
+  if (process.env.ALLOW_DEBUG !== "1") {
+    return res.status(403).json({ ok: false, error: "disabled" });
+  }
   try {
     const wallet = String(req.body?.wallet || "").trim();
+
+
     const amount = Math.max(0, safeNum(req.body?.amount, 0));
     const txHash = String(req.body?.txHash || crypto.randomUUID()).trim();
 
@@ -1616,17 +1621,23 @@ app.post("/withdraw", async (req, res) => {
 
 
 
-    const tx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: treasury.publicKey,
-        toPubkey: new PublicKey(destination),
-        lamports: Math.floor(amount * 1_000_000_000),
-      })
-    );
-
-    const signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
-
+// Pehle balance reserve karo (kam ho to yahin ruk jayega, SOL nahi jayega)
     const nextBalance = await decreaseBalance(wallet, amount);
+
+    let signature;
+    try {
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: treasury.publicKey,
+          toPubkey: new PublicKey(destination),
+          lamports: Math.floor(amount * 1_000_000_000),
+        })
+      );
+      signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
+    } catch (sendErr) {
+      await setBalance(wallet, (await getBalance(wallet)) + amount);
+      throw sendErr;
+    }
 
     await saveWithdrawal({
       wallet,
@@ -2229,6 +2240,12 @@ app.post("/claim", async (req, res) => {
       await patchProfile(wallet, { owner_rewards: 0 });
     } else {
       return res.status(400).json({ error: "Unsupported kind" });
+    }
+
+  if (amount > 0) {
+      const custodial = String(profile.wallet_address || wallet).trim();
+      const cur = await getBalance(custodial);
+      await setBalance(custodial, cur + amount);
     }
 
     return res.json({ ok: true, amount });
