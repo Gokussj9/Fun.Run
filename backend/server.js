@@ -84,8 +84,13 @@ const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 if (TRUST_PROXY) app.set("trust proxy", 1);
 
 app.use(cors({
-  origin: CORS_ORIGINS,
-  credentials: true
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (origin.endsWith(".vercel.app") || origin.includes("localhost")) return cb(null, true);
+    if (CORS_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(null, false);
+  },
+  credentials: true,
 }));
 app.options("*", cors());
 app.use(compression());
