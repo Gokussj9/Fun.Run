@@ -655,7 +655,7 @@ async function uploadLogoToIPFS(dataUrl, fileName = "coin-logo.webp") {
 
   return {
     cid: json.IpfsHash,
-    url: `https://gateway.pinata.cloud/ipfs/${json.IpfsHash}`,
+    url: `https://ipfs.io/ipfs/${json.IpfsHash}`,
     ipfs: `ipfs://${json.IpfsHash}`,
   };
 }
