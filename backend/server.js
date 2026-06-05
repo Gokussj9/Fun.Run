@@ -78,6 +78,23 @@ const MAX_CHART_POINTS = 140;
 const PROFILE_TX_LIMIT = 120;
 const PROFILE_HOLDING_TX_SCAN = 500;
 const DEX_LAUNCH_MC_USD = 2_000_000;
+function getSupplyFromInitialSol(sol) {
+  const s = Number(sol || 0);
+
+  if (s >= 0.001 && s <= 0.005) return 100_000_000_000; // 100B
+  if (s > 0.005 && s <= 0.01) return 50_000_000_000;    // 50B
+  if (s > 0.01 && s <= 0.1) return 10_000_000_000;      // 10B
+  if (s > 0.1 && s <= 0.2) return 800_000_000;          // 800M
+  if (s > 0.2 && s <= 0.5) return 700_000_000;          // 700M
+  if (s > 0.5 && s <= 1) return 500_000_000;            // 500M
+  if (s > 1 && s <= 10) return 400_000_000;             // 400M
+  if (s > 10 && s <= 50) return 300_000_000;            // 300M
+  if (s > 50 && s <= 100) return 200_000_000;           // 200M
+
+  return 100_000_000; // >100 SOL
+}
+
+
 const DEX_OPTIONS = ["Raydium", "Orca", "Meteora"];
 
 // -------------------- APP SETUP --------------------
@@ -173,6 +190,10 @@ async function createCustodialWallet() {
     const crypto = (await import("crypto")).default;
 
     const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+    console.log(
+  "ENCRYPTION_KEY length:",
+  process.env.ENCRYPTION_KEY?.length
+);
     if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
       throw new Error("ENCRYPTION_KEY must be exactly 32 characters in .env");
     }
@@ -514,6 +535,8 @@ function coinToDbUpdate(coin = {}) {
     story: coin.story || "",
     logo: coin.logo || "",
     metadata_uri: coin.metadataUri || "",
+    mint_address: coin.mintAddress || "",
+mint_signature: coin.mintSignature || "",
     creator_wallet: coin.creatorWallet || coin.owner || "",
     created_at: new Date(coin.createdAt || Date.now()).toISOString(),
     total_supply: coin.totalSupply || TOTAL_SUPPLY,
@@ -691,6 +714,16 @@ async function ensureSchema() {
       creator_rewards numeric default 0,
       holders jsonb default '{}'::jsonb
     )`;
+
+    await sql`
+  alter table coins
+  add column if not exists mint_address text
+`;
+
+await sql`
+  alter table coins
+  add column if not exists mint_signature text
+`;
 
   await sql`
     create table if not exists profiles (
@@ -1130,14 +1163,16 @@ async function saveCoin(coin) {
 
   const rows = await sql`
     insert into coins (
-      id, name, symbol, story, logo, metadata_uri, creator_wallet, created_at,
+      id, name, symbol, story, logo, metadata_uri, mint_address, mint_signature, creator_wallet, created_at,
       total_supply, curve_supply, curve_sold, v_sol, v_tokens,
       reserve_sol, reserve_token, market_cap, last_price, ath_market_cap,
       volume_sol, last_trade_at, creator_rewards, chart, holders
     )
     values (
       ${payload.id}, ${payload.name}, ${payload.symbol}, ${payload.story},
-      ${payload.logo}, ${payload.metadata_uri}, ${payload.creator_wallet}, ${payload.created_at},
+      ${payload.logo}, ${payload.metadata_uri},
+${payload.mint_address}, ${payload.mint_signature},
+${payload.creator_wallet}, ${payload.created_at},
       ${payload.total_supply}, ${payload.curve_supply}, ${payload.curve_sold},
       ${payload.v_sol}, ${payload.v_tokens},
       ${payload.reserve_sol}, ${payload.reserve_token},
@@ -1151,6 +1186,8 @@ async function saveCoin(coin) {
       story = excluded.story,
       logo = excluded.logo,
       metadata_uri = excluded.metadata_uri,
+      mint_address = excluded.mint_address,
+mint_signature = excluded.mint_signature,
       creator_wallet = excluded.creator_wallet,
       created_at = excluded.created_at,
       total_supply = excluded.total_supply,
@@ -1991,7 +2028,7 @@ app.post("/coin/create", async (req, res) => {
 
     await getProfile(creatorWallet, true);
 
-    const totalSupply = TOTAL_SUPPLY;
+    const totalSupply = getSupplyFromInitialSol(initialSol);
     const curveSupply = saleSupplyFromTotal(totalSupply);
 
     let coin = {
