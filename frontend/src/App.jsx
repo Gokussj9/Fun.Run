@@ -1643,7 +1643,9 @@ function WalletIcon() {
 }
 
 function CoinLogo({ c, size = 44, radius = 14 }) {
-  const src = String(c?.logo || "").trim();
+  const src = String(c?.logo || "")
+  .replace("https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/")
+  .trim();
 
   return (
     <div
