@@ -60,6 +60,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5173")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+  console.log("CORS_ORIGINS:", CORS_ORIGINS);
 
 const FEE_PCT = clampNum(Number(process.env.FEE_PCT || 1), 0, 10);
 const OWNER_PCT_OF_FEE = clampNum(Number(process.env.OWNER_PCT_OF_FEE || 40), 0, 100);
