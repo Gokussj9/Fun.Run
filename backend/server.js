@@ -677,7 +677,7 @@ async function uploadMetadataToIPFS(metadata) {
 
   return {
     cid: json.IpfsHash,
-    url: `https://gateway.pinata.cloud/ipfs/${json.IpfsHash}`,
+    url: `https://ipfs.io/ipfs/${json.IpfsHash}`,
     ipfs: `ipfs://${json.IpfsHash}`,
   };
 }
