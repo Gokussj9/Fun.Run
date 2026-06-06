@@ -2072,12 +2072,7 @@ mintSignature,
     };
 
     
-
-// mintAddress = mint.toBase58();
-
-mintSignature = "MINT_CREATED";
-
-console.log("✅ MINT CREATED:", mintAddress);
+mintSignature = "";
 
     coin = recalcCoin(coin, { appendChart: false });
     coin = await saveCoin(coin);
