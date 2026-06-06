@@ -2073,7 +2073,7 @@ mintSignature,
 
     
 
-mintAddress = mint.toBase58();
+// mintAddress = mint.toBase58();
 
 mintSignature = "MINT_CREATED";
 
