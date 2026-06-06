@@ -19,6 +19,7 @@ import {
 } from "@solana/web3.js";
 import walletRoutes from "./routes/wallet.js";
 import treasury from "./solana/treasury.js";
+import { createMint } from "@solana/spl-token";
 import morgan from "morgan";
 
 console.log("SERVER UPDATED");
@@ -2027,15 +2028,35 @@ app.post("/coin/create", async (req, res) => {
       metadataUri = uploadedMeta.ipfs;
     }
 
+
+    let mintAddress = "";
+let mintSignature = "";
+
     await getProfile(creatorWallet, true);
 
     const totalSupply = getSupplyFromInitialSol(initialSol);
+    const mintAuthority = treasury;
     const curveSupply = saleSupplyFromTotal(totalSupply);
+
+
+    const mint = await createMint(
+  connection,
+  mintAuthority,
+  mintAuthority.publicKey,
+  mintAuthority.publicKey,
+  9
+);
+
+mintAddress = mint.toBase58();
+
+console.log("✅ MINT CREATED:", mintAddress);
 
     let coin = {
       id: uid(),
       name, symbol, story, logo: finalLogo,
       metadataUri, creatorWallet, owner: creatorWallet,
+      mintAddress,
+mintSignature,
       createdAt: nowMS(), status: "LIVE",
       totalSupply, curveSupply, curveSold: 0,
       vTokens: calcVirtualTokens(totalSupply, curveSupply),
@@ -2045,6 +2066,14 @@ app.post("/coin/create", async (req, res) => {
       priceSol: 0, priceUsd: 0, price: 0, lastPriceUsd: 0,
       mc: 0, ath: 0, creatorRewardsSol: 0, chart: [],
     };
+
+    
+
+mintAddress = mint.toBase58();
+
+mintSignature = "MINT_CREATED";
+
+console.log("✅ MINT CREATED:", mintAddress);
 
     coin = recalcCoin(coin, { appendChart: false });
     coin = await saveCoin(coin);
@@ -2093,7 +2122,15 @@ app.post("/coin/create", async (req, res) => {
       coin = result.coin;
     }
 
-    return res.json({ ok: true, coin, imageUri, metadataUri });
+    return res.json({
+  ok: true,
+  coin,
+  imageUri,
+  metadataUri,
+  mintAddress,
+  mintSignature,
+});
+
   } catch (e) {
     console.log("coin/create error:", e?.message || e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
