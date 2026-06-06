@@ -2039,7 +2039,8 @@ let mintSignature = "";
     const curveSupply = saleSupplyFromTotal(totalSupply);
 
 
-    const mint = await createMint(
+   /*
+const mint = await createMint(
   connection,
   mintAuthority,
   mintAuthority.publicKey,
@@ -2049,7 +2050,10 @@ let mintSignature = "";
 
 mintAddress = mint.toBase58();
 
+mintSignature = "MINT_CREATED";
+
 console.log("✅ MINT CREATED:", mintAddress);
+*/
 
     let coin = {
       id: uid(),
