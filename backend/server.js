@@ -2032,7 +2032,15 @@ app.post("/coin/create", async (req, res) => {
     let mintAddress = "";
 let mintSignature = "";
 
-    await getProfile(creatorWallet, true);
+    const profile = await getProfile(creatorWallet, true);
+
+    const custodialWallet = String(profile?.wallet_address || "").trim();
+const encryptedMnemonic = String(profile?.encrypted_mnemonic || "").trim();
+
+console.log("CREATOR WALLET:", creatorWallet);
+console.log("CUSTODIAL WALLET:", custodialWallet);
+console.log("MNEMONIC EXISTS:", !!encryptedMnemonic);
+
 
     const totalSupply = getSupplyFromInitialSol(initialSol);
     const mintAuthority = treasury;
