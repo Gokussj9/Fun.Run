@@ -2547,7 +2547,7 @@ setInterval(async () => {
   } catch (e) {
     console.log("deposit scanner error:", e?.message || e);
   }
-}, 45000);
+}, 180000);
 
 // -------------------- HTTP + WEBSOCKET SERVER --------------------
 const server = app.listen(PORT, () => {
