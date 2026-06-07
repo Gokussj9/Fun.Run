@@ -2535,7 +2535,7 @@ setInterval(async () => {
       select wallet_address from profiles
       where wallet_address is not null
         and wallet_address != ''
-      limit 20
+    limit 1
     `;
 
     for (const row of rows || []) {
