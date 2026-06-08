@@ -21,6 +21,7 @@ import walletRoutes from "./routes/wallet.js";
 import treasury from "./solana/treasury.js";
 import { createMint } from "@solana/spl-token";
 import morgan from "morgan";
+import crypto from "crypto";
 
 console.log("SERVER UPDATED");
 
@@ -79,7 +80,14 @@ const TOTAL_SUPPLY = Math.max(1, Number(process.env.TOTAL_SUPPLY || 1_000_000_00
 const MAX_CHART_POINTS = 140;
 const PROFILE_TX_LIMIT = 120;
 const PROFILE_HOLDING_TX_SCAN = 500;
-const DEX_LAUNCH_MC_USD = 2_000_000;
+const DEX_LAUNCH_MC_USD = 5_000_000;
+
+// Deposit -> treasury sweep sirf tab chale jab env me ENABLE_SWEEP=1 ho.
+// Pehle encryption key rotate karo + devnet par test karo, PHIR enable karo.
+const ENABLE_SWEEP = String(process.env.ENABLE_SWEEP || "") === "1";
+// Custodial wallet me itna SOL chhod do (rent + fee buffer), baaki sweep ho.
+const SWEEP_BUFFER_SOL = clampNum(Number(process.env.SWEEP_BUFFER_SOL || 0.003), 0, 1);
+
 function getSupplyFromInitialSol(sol) {
   const s = Number(sol || 0);
 
@@ -128,8 +136,6 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // IMPORTANT: walletRoutes sirf /wallet pe mount karo
-// /api/profile pe NAHI - kyunke us pe wallet.js ka GET /:wallet
-// hamare proper /profile/:wallet route ko override kar deta tha
 app.use("/wallet", walletRoutes);
 
 // -------------------- CLIENTS --------------------
@@ -184,18 +190,12 @@ function broadcast(event, payload) {
 }
 
 // -------------------- CUSTODIAL WALLET CREATION HELPER --------------------
-// Direct function call - no HTTP fetch needed
 async function createCustodialWallet() {
   try {
     const bip39 = (await import("bip39")).default;
     const { derivePath } = await import("ed25519-hd-key");
-    const crypto = (await import("crypto")).default;
 
     const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-    console.log(
-  "ENCRYPTION_KEY length:",
-  process.env.ENCRYPTION_KEY?.length
-);
     if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
       throw new Error("ENCRYPTION_KEY must be exactly 32 characters in .env");
     }
@@ -219,12 +219,80 @@ async function createCustodialWallet() {
       iv.toString("hex") + ":" + encrypted.toString("hex");
 
     const address = keypair.publicKey.toBase58();
-    console.log("✅ CUSTODIAL WALLET GENERATED:", address);
 
     return { address, encryptedMnemonic };
   } catch (err) {
-    console.log("❌ createCustodialWallet failed:", err?.message || err);
+    console.log("createCustodialWallet failed:", err?.message || err);
     throw err;
+  }
+}
+
+// Encrypted mnemonic -> Keypair (sweep/withdraw ke liye). Mnemonic kabhi log na karo.
+async function getCustodialKeypairFromMnemonic(encryptedMnemonic) {
+  const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+  if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+    throw new Error("ENCRYPTION_KEY must be exactly 32 characters in .env");
+  }
+
+  const enc = String(encryptedMnemonic || "").trim();
+  const parts = enc.split(":");
+  if (parts.length !== 2) throw new Error("Invalid encrypted mnemonic");
+
+  const iv = Buffer.from(parts[0], "hex");
+  const data = Buffer.from(parts[1], "hex");
+
+  const decipher = crypto.createDecipheriv(
+    "aes-256-cbc",
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+  let decrypted = decipher.update(data);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  const mnemonic = decrypted.toString();
+
+  const bip39 = (await import("bip39")).default;
+  const { derivePath } = await import("ed25519-hd-key");
+  const seed = await bip39.mnemonicToSeed(mnemonic);
+  const path = "m/44'/501'/0'/0'";
+  const derivedSeed = derivePath(path, seed.toString("hex")).key;
+  return Keypair.fromSeed(derivedSeed);
+}
+
+// Deposit ke baad custodial wallet ka SOL treasury me forward (sweep) karo.
+// Sirf tab chale jab ENABLE_SWEEP=1. Buffer chhodta hai taake rent/fee bach jaye.
+async function sweepCustodialToTreasury(custodialWallet) {
+  try {
+    if (!ENABLE_SWEEP) return;
+
+    const w = String(custodialWallet || "").trim();
+    if (!w) return;
+
+    const rows = await sql`
+      select encrypted_mnemonic from profiles where wallet_address = ${w} limit 1
+    `;
+    const enc = String(rows?.[0]?.encrypted_mnemonic || "").trim();
+    if (!enc) return;
+
+    const pub = new PublicKey(w);
+    const lamports = await connection.getBalance(pub);
+    const sol = lamports / 1_000_000_000;
+
+    const sendable = sol - SWEEP_BUFFER_SOL;
+    if (sendable <= 0.0005) return; // kuch bhejne layak nahi
+
+    const kp = await getCustodialKeypairFromMnemonic(enc);
+
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: kp.publicKey,
+        toPubkey: treasury.publicKey,
+        lamports: Math.floor(sendable * 1_000_000_000),
+      })
+    );
+
+    await sendAndConfirmTransaction(connection, tx, [kp]);
+  } catch (e) {
+    console.log("sweep error:", e?.message || e);
   }
 }
 
@@ -237,9 +305,11 @@ async function scanWalletDeposits(wallet) {
 
     const lastSignature = await getLastDepositSignature(w);
 
-    const signatures = await connection.getSignaturesForAddress(pub, { limit: 2 });
+    const signatures = await connection.getSignaturesForAddress(pub, { limit: 10 });
 
     if (!signatures?.length) return;
+
+    let creditedAny = false;
 
     for (const sig of signatures) {
       const signature = String(sig?.signature || "").trim();
@@ -279,15 +349,22 @@ async function scanWalletDeposits(wallet) {
 
       if (diff <= 0) continue;
 
-      await creditDeposit({
+      const ok = await creditDeposit({
         wallet: w,
         txHash: signature,
         amount: diff,
       });
+
+      if (ok) creditedAny = true;
     }
 
     if (signatures?.[0]?.signature) {
       await setLastDepositSignature(w, signatures[0].signature);
+    }
+
+    // Naya deposit credit hua to sweep karo (sirf agar ENABLE_SWEEP=1)
+    if (creditedAny) {
+      await sweepCustodialToTreasury(w);
     }
   } catch (e) {
     console.log("scanWalletDeposits error:", e?.message || e);
@@ -320,17 +397,111 @@ async function setBalance(wallet, amount) {
   `;
 }
 
+// ATOMIC: balance se kaato. Kam ho to throw. (race-safe, FOR UPDATE)
 async function decreaseBalance(wallet, amount) {
   const w = String(wallet || "").trim();
-  const current = await getBalance(w);
-  const next = current - Math.max(0, safeNum(amount, 0));
+  const amt = Math.max(0, safeNum(amount, 0));
 
-  if (next < 0) {
-    throw new Error("Insufficient balance");
-  }
+  return await sql.begin(async (tx) => {
+    const rows = await tx`
+      select sol from balances where wallet = ${w} for update
+    `;
+    const current = Math.max(0, safeNum(rows?.[0]?.sol, 0));
+    const next = current - amt;
 
-  await setBalance(w, next);
-  return next;
+    if (next < 0) {
+      throw new Error("Insufficient balance");
+    }
+
+    await tx`
+      insert into balances (wallet, sol, updated_at)
+      values (${w}, ${next}, now())
+      on conflict (wallet)
+      do update set sol = excluded.sol, updated_at = now()
+    `;
+
+    return next;
+  });
+}
+
+// ATOMIC: balance me add karo. (race-safe)
+async function increaseBalance(wallet, amount) {
+  const w = String(wallet || "").trim();
+  const amt = Math.max(0, safeNum(amount, 0));
+
+  return await sql.begin(async (tx) => {
+    const rows = await tx`
+      select sol from balances where wallet = ${w} for update
+    `;
+    const current = Math.max(0, safeNum(rows?.[0]?.sol, 0));
+    const next = current + amt;
+
+    await tx`
+      insert into balances (wallet, sol, updated_at)
+      values (${w}, ${next}, now())
+      on conflict (wallet)
+      do update set sol = excluded.sol, updated_at = now()
+    `;
+
+    return next;
+  });
+}
+
+// -------------------- RUN BALANCE (single spendable balance) --------------------
+// Sab kuch profiles.run_balance par chalta hai (primary wallet ke under).
+// ATOMIC (FOR UPDATE) — race-safe.
+async function decreaseRun(wallet, amount) {
+  const w = String(wallet || "").trim();
+  const amt = Math.max(0, safeNum(amount, 0));
+
+  return await sql.begin(async (tx) => {
+    const rows = await tx`
+      select run_balance from profiles where wallet = ${w} for update
+    `;
+    const current = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
+    const next = current - amt;
+
+    if (next < 0) {
+      throw new Error("Insufficient balance");
+    }
+
+    await tx`
+      update profiles set run_balance = ${next}, updated_at = now() where wallet = ${w}
+    `;
+
+    return next;
+  });
+}
+
+async function increaseRun(wallet, amount) {
+  const w = String(wallet || "").trim();
+  const amt = Math.max(0, safeNum(amount, 0));
+
+  return await sql.begin(async (tx) => {
+    const rows = await tx`
+      select run_balance from profiles where wallet = ${w} for update
+    `;
+    const current = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
+    const next = current + amt;
+
+    await tx`
+      update profiles set run_balance = ${next}, updated_at = now() where wallet = ${w}
+    `;
+
+    return next;
+  });
+}
+
+// primary ya custodial — dono se run_balance dhoondo
+async function getRunBalanceFlexible(walletOrCustodial) {
+  const w = String(walletOrCustodial || "").trim();
+  if (!w) return 0;
+  const rows = await sql`
+    select run_balance from profiles
+    where wallet = ${w} or wallet_address = ${w}
+    limit 1
+  `;
+  return Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
 }
 
 async function hasDeposit(txHash) {
@@ -381,11 +552,16 @@ async function creditDeposit({ wallet, txHash, amount }) {
     return false;
   }
 
-  const currentBalance = await getBalance(w);
-  const nextBalance = currentBalance + Math.max(0, safeNum(amount, 0));
-
   await saveDeposit({ wallet: w, txHash, amount, token: "SOL" });
-  await setBalance(w, nextBalance);
+
+  // Deposit -> owner ke run_balance me credit (custodial address se primary wallet map)
+  const ownerRows = await sql`
+    select wallet from profiles where wallet = ${w} or wallet_address = ${w} limit 1
+  `;
+  const primary = String(ownerRows?.[0]?.wallet || w).trim();
+  if (primary) {
+    await increaseRun(primary, amount);
+  }
 
   return true;
 }
@@ -520,6 +696,8 @@ function mapDbCoinToApi(row = {}) {
     chart,
     holders: asObj(row.holders, {}),
     creatorRewardsSol: Math.max(0, safeNum(row.creator_rewards, 0)),
+    mintAddress: String(row.mint_address || ""),
+    migrated: Boolean(row.migrated),
   };
 }
 
@@ -538,7 +716,7 @@ function coinToDbUpdate(coin = {}) {
     logo: coin.logo || "",
     metadata_uri: coin.metadataUri || "",
     mint_address: coin.mintAddress || "",
-mint_signature: coin.mintSignature || "",
+    mint_signature: coin.mintSignature || "",
     creator_wallet: coin.creatorWallet || coin.owner || "",
     created_at: new Date(coin.createdAt || Date.now()).toISOString(),
     total_supply: coin.totalSupply || TOTAL_SUPPLY,
@@ -582,11 +760,7 @@ function ensureProfileShape(row = {}, wallet = "") {
 
   return {
     wallet: primaryWallet,
-
-    // IMPORTANT
     wallet_address: custodialWallet,
-
-    // frontend compatibility
     connectedWallet: custodialWallet,
 
     encrypted_mnemonic: String(
@@ -727,6 +901,11 @@ await sql`
   add column if not exists mint_signature text
 `;
 
+await sql`
+  alter table coins
+  add column if not exists migrated boolean default false
+`;
+
   await sql`
     create table if not exists profiles (
       wallet text primary key,
@@ -855,14 +1034,10 @@ async function getProfile(wallet, createIfMissing = true) {
 
   const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
 
-  // Existing profile mil gayi
   if (rows[0]) {
     const profile = rows[0];
 
-    // Agar custodial wallet nahi he, abhi banao
     if (!profile.wallet_address) {
-      console.log("⚠️ Profile exists but no custodial wallet. Generating now for:", w);
-
       try {
         const walletData = await createCustodialWallet();
 
@@ -877,26 +1052,22 @@ async function getProfile(wallet, createIfMissing = true) {
 
         profile.wallet_address = walletData.address;
         profile.encrypted_mnemonic = walletData.encryptedMnemonic;
-
-        console.log("✅ Custodial wallet attached to profile:", w, "→", walletData.address);
       } catch (err) {
-        console.log("❌ Failed to generate custodial wallet:", err?.message || err);
+        console.log("Failed to generate custodial wallet:", err?.message || err);
       }
     }
 
     return ensureProfileShape(profile, w);
   }
 
-  // Profile nahi mili
   if (!createIfMissing) return null;
 
-  // Nayi profile + custodial wallet ek saath banao
   let walletData = { address: "", encryptedMnemonic: "" };
 
   try {
     walletData = await createCustodialWallet();
   } catch (err) {
-    console.log("❌ Custodial wallet creation failed during new profile:", err?.message || err);
+    console.log("Custodial wallet creation failed during new profile:", err?.message || err);
   }
 
   const payload = profileToDbRow(
@@ -934,8 +1105,6 @@ async function getProfile(wallet, createIfMissing = true) {
     do update set
       updated_at = excluded.updated_at
     returning *`;
-
-  console.log("✅ New profile created for:", w, "| Custodial wallet:", walletData.address);
 
   return ensureProfileShape(inserted[0], w);
 }
@@ -996,7 +1165,6 @@ async function addProfileReward(wallet, column, amount) {
   const allowed = new Set(["referral_rewards", "creator_rewards", "owner_rewards"]);
   if (!allowed.has(col)) throw new Error("invalid rewards column");
 
-  // Ensure profile exists with custodial wallet
   await getProfile(w, true);
 
   const rows = await sql`
@@ -1541,6 +1709,48 @@ async function runCoinLocked(coinId, fn) {
   }
 }
 
+// -------------------- OPTIONAL AUTH (Privy) --------------------
+// Sensitive endpoints (jaise mnemonic reveal) ke liye Privy access-token verify.
+// Iske liye: npm i @privy-io/server-auth  AUR env me PRIVY_APP_ID + PRIVY_APP_SECRET.
+// Frontend ko Authorization: Bearer <privy access token> bhejna hoga.
+// Agar config nahi hai to protected endpoint 503 dega (kuch leak nahi hoga).
+let _privyClient = null;
+async function getPrivyClient() {
+  if (_privyClient) return _privyClient;
+  const appId = process.env.PRIVY_APP_ID;
+  const appSecret = process.env.PRIVY_APP_SECRET;
+  if (!appId || !appSecret) return null;
+  try {
+    const { PrivyClient } = await import("@privy-io/server-auth");
+    _privyClient = new PrivyClient(appId, appSecret);
+    return _privyClient;
+  } catch (e) {
+    console.log("privy client load failed:", e?.message || e);
+    return null;
+  }
+}
+
+async function requireAuth(req, res) {
+  const client = await getPrivyClient();
+  if (!client) {
+    res.status(503).json({ ok: false, error: "auth not configured" });
+    return null;
+  }
+  try {
+    const header = String(req.headers.authorization || "");
+    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    if (!token) {
+      res.status(401).json({ ok: false, error: "missing token" });
+      return null;
+    }
+    const claims = await client.verifyAuthToken(token);
+    return claims; // { userId, ... }
+  } catch (e) {
+    res.status(401).json({ ok: false, error: "invalid token" });
+    return null;
+  }
+}
+
 // -------------------- ROUTES --------------------
 app.get("/", async (req, res) => {
   return res.json({
@@ -1578,11 +1788,11 @@ app.get("/balance/:wallet", async (req, res) => {
       return res.json({ ok: false, error: "wallet required" });
     }
 
-    // Try custodial wallet first
     const profile = await getProfile(wallet, false);
     const lookupWallet = profile?.wallet_address || wallet;
 
-    const sol = await getBalance(lookupWallet);
+    // Main Wallet ab run_balance dikhata hai (wahi balance jo buy/sell/withdraw use karte hain)
+    const sol = await getRunBalanceFlexible(wallet || lookupWallet);
 
     return res.json({ ok: true, sol });
   } catch (e) {
@@ -1610,8 +1820,6 @@ app.post("/debug/deposit", async (req, res) => {
 
     return res.json({ ok: true, wallet, balance });
  } catch (e) {
-  console.error("WITHDRAW ERROR:", e);
-
   return res.status(500).json({
     ok: false,
     error: e?.message || String(e),
@@ -1622,10 +1830,6 @@ app.post("/debug/deposit", async (req, res) => {
 app.post("/withdraw", async (req, res) => {
 
   try {
-
-
-
-
     const wallet = String(req.body?.wallet || "").trim();
     const destination = String(req.body?.destination || "").trim();
     const amount = Math.max(0, safeNum(req.body?.amount, 0));
@@ -1648,33 +1852,32 @@ app.post("/withdraw", async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid amount" });
     }
 
-    
+    // destination valid Solana address honi chahiye
+    let destPub;
+    try {
+      destPub = new PublicKey(destination);
+    } catch {
+      return res.status(400).json({ ok: false, error: "invalid destination address" });
+    }
 
-    
+    // WITHDRAW: run_balance se cut, phir treasury se on-chain send
+    await getProfile(wallet, true);
 
-    
-
-
-    
- 
-
-
-
-// Pehle balance reserve karo (kam ho to yahin ruk jayega, SOL nahi jayega)
-    const nextBalance = await decreaseBalance(wallet, amount);
+    // Pehle balance reserve karo (kam ho to yahin ruk jayega, SOL nahi jayega)
+    const nextBalance = await decreaseRun(wallet, amount);
 
     let signature;
     try {
       const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: treasury.publicKey,
-          toPubkey: new PublicKey(destination),
+          toPubkey: destPub,
           lamports: Math.floor(amount * 1_000_000_000),
         })
       );
       signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
     } catch (sendErr) {
-      await setBalance(wallet, (await getBalance(wallet)) + amount);
+      await increaseRun(wallet, amount);
       throw sendErr;
     }
 
@@ -1710,11 +1913,13 @@ async function handleRewardWithdraw(req, res, forcedKind = "") {
     }
 
     const p = await getProfile(wallet, true);
+    const custodial = String(p?.wallet_address || wallet).trim();
 
     if (kind === "REF") {
       const amt = Math.max(0, safeNum(p.referral_rewards, 0));
       if (amt <= 0) return res.json({ ok: false, error: "No referral rewards" });
       await patchProfile(wallet, { referral_rewards: 0 });
+      await increaseRun(wallet, amt);
       return res.json({ ok: true, kind: "REF", amountSol: amt, to: wallet });
     }
 
@@ -1722,6 +1927,7 @@ async function handleRewardWithdraw(req, res, forcedKind = "") {
       const amt = Math.max(0, safeNum(p.creator_rewards, 0));
       if (amt <= 0) return res.json({ ok: false, error: "No creator rewards" });
       await patchProfile(wallet, { creator_rewards: 0 });
+      await increaseRun(wallet, amt);
       return res.json({ ok: true, kind: "CREATOR", amountSol: amt, to: wallet });
     }
 
@@ -1729,6 +1935,7 @@ async function handleRewardWithdraw(req, res, forcedKind = "") {
       const amt = Math.max(0, safeNum(p.owner_rewards, 0));
       if (amt <= 0) return res.json({ ok: false, error: "No wallet balance" });
       await patchProfile(wallet, { owner_rewards: 0 });
+      await increaseRun(wallet, amt);
       return res.json({ ok: true, kind: "OWNER", amountSol: amt, to: wallet });
     }
 
@@ -1744,8 +1951,6 @@ app.post("/withdraw/referral", (req, res) => handleRewardWithdraw(req, res, "REF
 
 app.get("/coin/list*", async (req, res) => {
   try {
-    console.log("🔥 /coin/list hit");
-    console.log("👉 query params:", req.query);
     await requireDb();
 
     const page = Math.max(0, Number(req.query.page || 0));
@@ -1793,11 +1998,66 @@ app.get("/coin/:id/dex-preview", async (req, res) => {
       currentMc: mc,
       requiredMc: DEX_LAUNCH_MC_USD,
       options: DEX_OPTIONS,
-      status: mc >= DEX_LAUNCH_MC_USD ? "READY_PHASE_2" : "LOCKED_UNTIL_2M_MC",
+      status: mc >= DEX_LAUNCH_MC_USD ? "READY_PHASE_2" : "LOCKED_UNTIL_5M_MC",
       message: "DEX launch is a safe placeholder. Real pool creation will be enabled after Phase 2 audit.",
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || "DEX preview failed" });
+  }
+});
+
+// -------------------- METEORA MIGRATION (SCAFFOLD) --------------------
+// $5M MC par creator KHUD migrate kar sake. Ye SIRF scaffold hai.
+// Asli Meteora DAMM pool creation + SPL mint + LP lock yahan implement karna hai
+// (Meteora SDK ke saath, pehle DEVNET par test). Abhi ye sirf eligibility check karta hai.
+app.post("/coin/:id/migrate", async (req, res) => {
+  try {
+    await requireDb();
+
+    const coinId = String(req.params.id || "").trim();
+    const wallet = String(req.body?.wallet || "").trim();
+    if (!wallet) return res.status(400).json({ ok: false, error: "wallet required" });
+
+    const row = await getCoinRowById(coinId);
+    const coin = row ? mapDbCoinToApi(row) : null;
+    if (!coin) return res.status(404).json({ ok: false, error: "Coin not found" });
+
+    const creatorWallet = String(coin.creatorWallet || coin.owner || "").trim();
+    if (!creatorWallet || creatorWallet !== wallet) {
+      return res.status(403).json({ ok: false, error: "Only the creator can migrate" });
+    }
+
+    if (coin.migrated) {
+      return res.json({ ok: false, error: "Already migrated" });
+    }
+
+    const mc = Math.max(0, safeNum(coin.mc, 0));
+    if (mc < DEX_LAUNCH_MC_USD) {
+      return res.json({
+        ok: false,
+        error: "Locked",
+        currentMc: mc,
+        requiredMc: DEX_LAUNCH_MC_USD,
+      });
+    }
+
+    // TODO (Meteora step, devnet par banao + test karo):
+    //  1) Asli SPL mint banao (createMint, 6 decimals) ya jo mintAddress mojood ho use karo.
+    //  2) curve me jama hui SOL + tokens se Meteora DAMM pool banao.
+    //  3) LP permanently lock karo.
+    //  4) Pool address DB me save karo, coin.migrated = true karo.
+    // Filhaal sirf eligibility return kar rahe hain (paisa move NAHI hota).
+    return res.json({
+      ok: true,
+      ready: true,
+      coinId: coin.id,
+      currentMc: mc,
+      requiredMc: DEX_LAUNCH_MC_USD,
+      note: "Eligible. Meteora pool creation Phase 4 me implement hoga (devnet test ke baad).",
+    });
+  } catch (e) {
+    console.log("migrate error:", e?.message || e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
@@ -2006,6 +2266,10 @@ app.post("/coin/create", async (req, res) => {
       return res.json({ ok: false, error: "name/symbol/creatorWallet required" });
     }
 
+    if (name.length > 60 || symbol.length > 12) {
+      return res.json({ ok: false, error: "name/symbol too long" });
+    }
+
     let finalLogo = logo;
     let imageUri = "";
     let metadataUri = "";
@@ -2030,45 +2294,29 @@ app.post("/coin/create", async (req, res) => {
 
 
     let mintAddress = "";
-let mintSignature = "";
+    let mintSignature = "";
 
     const profile = await getProfile(creatorWallet, true);
+    const custodialWallet = String(profile?.wallet_address || creatorWallet).trim();
 
-    const custodialWallet = String(profile?.wallet_address || "").trim();
-const encryptedMnemonic = String(profile?.encrypted_mnemonic || "").trim();
-
-console.log("CREATOR WALLET:", creatorWallet);
-console.log("CUSTODIAL WALLET:", custodialWallet);
-console.log("MNEMONIC EXISTS:", !!encryptedMnemonic);
-
+    // CREATE COIN: initial buy ka SOL creator ke run_balance se kato (kam ho to reject)
+    if (initialSol > 0) {
+      try {
+        await decreaseRun(creatorWallet, initialSol);
+      } catch (balErr) {
+        return res.json({ ok: false, error: "Insufficient balance for initial buy" });
+      }
+    }
 
     const totalSupply = getSupplyFromInitialSol(initialSol);
-    const mintAuthority = treasury;
     const curveSupply = saleSupplyFromTotal(totalSupply);
-
-
-   /*
-const mint = await createMint(
-  connection,
-  mintAuthority,
-  mintAuthority.publicKey,
-  mintAuthority.publicKey,
-  9
-);
-
-mintAddress = mint.toBase58();
-
-mintSignature = "MINT_CREATED";
-
-console.log("✅ MINT CREATED:", mintAddress);
-*/
 
     let coin = {
       id: uid(),
       name, symbol, story, logo: finalLogo,
       metadataUri, creatorWallet, owner: creatorWallet,
       mintAddress,
-mintSignature,
+      mintSignature,
       createdAt: nowMS(), status: "LIVE",
       totalSupply, curveSupply, curveSold: 0,
       vTokens: calcVirtualTokens(totalSupply, curveSupply),
@@ -2078,9 +2326,6 @@ mintSignature,
       priceSol: 0, priceUsd: 0, price: 0, lastPriceUsd: 0,
       mc: 0, ath: 0, creatorRewardsSol: 0, chart: [],
     };
-
-    
-mintSignature = "";
 
     coin = recalcCoin(coin, { appendChart: false });
     coin = await saveCoin(coin);
@@ -2094,6 +2339,8 @@ mintSignature = "";
         const buyRes = ammBuy(latestCoin, creatorWallet, initialSol);
 
         if (!buyRes.ok) {
+          // initial buy fail -> kata hua SOL wapas
+          await increaseRun(creatorWallet, initialSol);
           return { ok: false, error: buyRes.error || "Initial buy failed" };
         }
 
@@ -2207,18 +2454,36 @@ async function doTrade(req, res, side) {
       let coin = mapDbCoinToApi(row);
       let tradeResult = null;
 
-      await getProfile(wallet, true);
+      // trader ka profile (run_balance isi primary wallet ke under hai)
+      const traderProfile = await getProfile(wallet, true);
 
       if (sideLower === "buy") {
+        // BUY: pehle run_balance se SOL kato (kam ho to reject)
+        try {
+          await decreaseRun(wallet, sol);
+        } catch (balErr) {
+          return { ok: false, error: "Insufficient balance" };
+        }
+
         tradeResult = ammBuy(coin, wallet, sol);
+
+        if (!tradeResult?.ok) {
+          // trade fail -> kata hua SOL wapas
+          await increaseRun(wallet, sol);
+          return { ok: false, error: tradeResult?.error || "Trade failed" };
+        }
       } else if (sideLower === "sell") {
         tradeResult = ammSellByTokensIn(coin, wallet, tokens);
+
+        if (!tradeResult?.ok) {
+          return { ok: false, error: tradeResult?.error || "Trade failed" };
+        }
+
+        // SELL: net SOL wapas run_balance me
+        const netSol = Math.max(0, safeNum(tradeResult.solOutNet, 0));
+        await increaseRun(wallet, netSol);
       } else {
         return { ok: false, error: "invalid side" };
-      }
-
-      if (!tradeResult?.ok) {
-        return { ok: false, error: tradeResult?.error || "Trade failed" };
       }
 
       const tradeFeeSol = Math.max(0, safeNum(tradeResult.feeSol, 0));
@@ -2324,10 +2589,9 @@ app.post("/claim", async (req, res) => {
       return res.status(400).json({ error: "Unsupported kind" });
     }
 
-  if (amount > 0) {
-      const custodial = String(profile.wallet_address || wallet).trim();
-      const cur = await getBalance(custodial);
-      await setBalance(custodial, cur + amount);
+    // CLAIM: reward seedha run_balance me
+    if (amount > 0) {
+      await increaseRun(wallet, amount);
     }
 
     return res.json({ ok: true, amount });
@@ -2336,7 +2600,45 @@ app.post("/claim", async (req, res) => {
   }
 });
 
-// -------------------- PROFILE ENDPOINT (THE BIG FIX) --------------------
+// -------------------- BACKUP PHRASE (AUTH REQUIRED) --------------------
+// Sirf logged-in malik apna mnemonic dekh sake. Privy auth config zaroori (upar dekho).
+// NOTE: ye tabhi mehfooz hai jab requireAuth ka userId us wallet se match ho.
+// Niche ek basic match diya hai (Privy userId == profile ka linked id). Ise apne
+// Privy setup ke mutabiq adjust karna; bina match ke kabhi mnemonic mat do.
+const mnemonicLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+
+app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
+  try {
+    const claims = await requireAuth(req, res);
+    if (!claims) return; // requireAuth ne already respond kar diya
+
+    const wallet = String(req.body?.wallet || "").trim();
+    if (!wallet) return res.status(400).json({ ok: false, error: "wallet required" });
+
+    // SECURITY: token ka user isi wallet ka malik hai ye verify karo.
+    // Yahan apne Privy linkage ke mutabiq check lagao (e.g. profile me privy_user_id save
+    // karo aur claims.userId se match karo). Filhaal sakht: agar match logic set nahi to mana.
+    const profile = await getProfile(wallet, false);
+    if (!profile || !profile.encrypted_mnemonic) {
+      return res.status(404).json({ ok: false, error: "no wallet" });
+    }
+
+    // TODO: yahan `claims.userId === profile.privy_user_id` jaisa check lazmi lagao.
+    // Bina us check ke ye line uncomment mat karna:
+    // const kp = await getCustodialKeypairFromMnemonic(profile.encrypted_mnemonic);
+
+    // Mnemonic decrypt karke 12 words bhejna — sirf verified owner ko.
+    // (Auth+ownership match confirm hone tak ye disabled rakha hai.)
+    return res.status(501).json({
+      ok: false,
+      error: "ownership check pending: apne Privy userId<->wallet match ka code laga kar enable karo",
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "reveal failed" });
+  }
+});
+
+// -------------------- PROFILE ENDPOINT --------------------
 app.get("/profile/:wallet", async (req, res) => {
   try {
     await requireDb();
@@ -2344,7 +2646,6 @@ app.get("/profile/:wallet", async (req, res) => {
     const wallet = String(req.params.wallet || "").trim();
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
 
-    // Ye call custodial wallet bhi auto-create karta he agar nahi he
     const p = await getProfile(wallet, true);
     const referralCount = await countReferrals(wallet);
 
@@ -2352,15 +2653,7 @@ app.get("/profile/:wallet", async (req, res) => {
       await patchProfile(wallet, { referral_count: referralCount });
     }
 
-    // Custodial wallet (deposit ke liye real wallet)
     const custodialWallet = String(p?.wallet_address || "").trim();
-
-    // Agar abhi bhi nahi he (bahut rare case), error log karo
-    if (!custodialWallet) {
-      console.log("⚠️ WARNING: profile has no custodial wallet for:", wallet);
-    } else {
-      console.log("✅ Returning custodial wallet:", custodialWallet, "for primary:", wallet);
-    }
 
     const creationRows = await sql`
       select * from coins where creator_wallet = ${wallet}
@@ -2461,16 +2754,10 @@ const withdrawals = await sql`
   limit 50
 `;
 
-    // ============= FIXED RESPONSE =============
-    // wallet = CUSTODIAL wallet (real wallet for deposits)
-    // primaryWallet = USER'S CONNECTED wallet (for referral / identity)
     return res.json({
       ok: true,
       profile: {
-        // ⭐ MAIN FIX: wallet field me custodial address jata he
         wallet: custodialWallet || wallet,
-
-        // Extra clarity fields - frontend in me se koi bhi use kar sakta he
         custodialWallet: custodialWallet,
         depositAddress: custodialWallet,
         primaryWallet: wallet,
@@ -2501,11 +2788,6 @@ withdrawHistory: withdrawals || [],
     });
   } catch (e) {
     console.log("profile error:", e?.message || e);
-    console.error("❌ profile error:", e);
-
-
-
-
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
@@ -2513,9 +2795,9 @@ withdrawHistory: withdrawals || [],
 // -------------------- START --------------------
 try {
   await ensureSchema();
-  console.log("✅ Schema ready");
+  console.log("Schema ready");
 } catch (e) {
-  console.error("❌ Startup failed:", e?.message || e);
+  console.error("Startup failed:", e?.message || e);
   process.exit(1);
 }
 
@@ -2528,14 +2810,13 @@ process.on("SIGTERM", async () => {
 });
 
 // -------------------- DEPOSIT SCANNER --------------------
-// Har 45 sec me sab custodial wallets pe deposits check karta he
 setInterval(async () => {
   try {
     const rows = await sql`
       select wallet_address from profiles
       where wallet_address is not null
         and wallet_address != ''
-    limit 1
+      limit 100
     `;
 
     for (const row of rows || []) {
@@ -2551,7 +2832,7 @@ setInterval(async () => {
 
 // -------------------- HTTP + WEBSOCKET SERVER --------------------
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });

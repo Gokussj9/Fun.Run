@@ -1644,8 +1644,8 @@ function WalletIcon() {
 
 function CoinLogo({ c, size = 44, radius = 14 }) {
   const src = String(c?.logo || "")
-  .replace("https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/")
-  .trim();
+    .replace("https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/")
+    .trim();
 
   return (
     <div
@@ -2872,6 +2872,10 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
       const json = await api(`/profile/${wallet}`);
       setProfile(json?.profile || null);
 
+      if (json?.profile?.wallet_address) {
+        loadBalance(json.profile.wallet_address);
+      }
+
     } catch (e) {
       setToast(e?.message || "Failed to load profile");
     } finally {
@@ -2910,7 +2914,7 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
       return;
     }
     loadProfile(solAddr);
-    loadBalance(solAddr);
+    // loadBalance(solAddr); // loadProfile ab custodial wallet se balance laata hai
   }, [isWalletConnected, solAddr]);
 
   useEffect(() => {
@@ -5253,117 +5257,19 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
               <div style={{ display: "grid", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
-                    Profile Logo
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 18,
-                        overflow: "hidden",
-                        border: "1px solid rgba(255,255,255,.10)",
-                        background: "rgba(255,255,255,.04)",
-                        display: "grid",
-                        placeItems: "center",
-                      }}
-                    >
-                      <img
-                        src={profileAvatar}
-                        alt="profile avatar"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    </div>
-                    <label
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,.10)",
-                        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
-                        fontSize: 12,
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Upload From Gallery
-                      <input
-                        type="file"
-                        accept="image/*"
-                        style={{ display: "none" }}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > MAX_LOGO_BYTES) {
-                            setToast("Logo too large");
-                            return;
-                          }
-                          try {
-                            const data = await fileToDataUrl(file);
-                            setProfileAvatar(data);
-                            setToast("Profile logo updated");
-                          } catch {
-                            setToast("Image read failed");
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: 10,
-                    }}
-                  >
-                    {PROFILE_PRESET_LOGOS.map((logo, idx) => (
-                      <button
-                        key={logo}
-                        onClick={() => {
-                          setProfileAvatar(logo);
-                          setToast("Profile logo selected");
-                        }}
-                        style={{
-                          height: 78,
-                          borderRadius: 18,
-                          overflow: "hidden",
-                          border:
-                            profileAvatar === logo
-                              ? "1px solid rgba(50,230,255,.42)"
-                              : "1px solid rgba(255,255,255,.08)",
-                          background: "rgba(255,255,255,.03)",
-                          padding: 0,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <img
-                          src={logo}
-                          alt={`preset ${idx + 1}`}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="hr" />
-
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 10 }}>
                     Theme
                   </div>
 
                   <div className="themeGrid">
                     <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "2px 0 2px" }}>DARK</div>
-                    <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="🌙 Midnight" />
-                    <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="🌊 Ocean" />
-                    <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="👑 Royal" />
-                    <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="⚡ Neon" />
-                    <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="🌸 Rose" />
+                    <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Midnight" />
+                    <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean" />
+                    <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal" />
+                    <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Neon" />
+                    <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Rose" />
                     <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "8px 0 2px" }}>LIGHT</div>
-                    <ThemeOption theme="light" current={theme} setTheme={setTheme} label="☀️ Daylight" />
-                    <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="📄 Paper" />
+                    <ThemeOption theme="light" current={theme} setTheme={setTheme} label="Daylight" />
+                    <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="Paper" />
                   </div>
                 </div>
 
@@ -5531,14 +5437,14 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
             <div className="modalBody">
               <div className="themeGrid">
                 <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "2px 0 2px" }}>DARK</div>
-                <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="🌙 Midnight" />
-                <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="🌊 Ocean" />
-                <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="👑 Royal" />
-                <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="⚡ Neon" />
-                <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="🌸 Rose" />
+                <ThemeOption theme="calm" current={theme} setTheme={setTheme} label="Midnight" />
+                <ThemeOption theme="ocean" current={theme} setTheme={setTheme} label="Ocean" />
+                <ThemeOption theme="royal" current={theme} setTheme={setTheme} label="Royal" />
+                <ThemeOption theme="neon" current={theme} setTheme={setTheme} label="Neon" />
+                <ThemeOption theme="rose" current={theme} setTheme={setTheme} label="Rose" />
                 <div style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 1000, letterSpacing: ".4px", margin: "8px 0 2px" }}>LIGHT</div>
-                <ThemeOption theme="light" current={theme} setTheme={setTheme} label="☀️ Daylight" />
-                <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="📄 Paper" />
+                <ThemeOption theme="light" current={theme} setTheme={setTheme} label="Daylight" />
+                <ThemeOption theme="paper" current={theme} setTheme={setTheme} label="Paper" />
               </div>
 
               <div className="hr" />
