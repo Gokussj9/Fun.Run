@@ -371,81 +371,8 @@ async function scanWalletDeposits(wallet) {
   }
 }
 
-async function getBalance(wallet) {
-  const w = String(wallet || "").trim();
-  if (!w) return 0;
-
-  const rows = await sql`
-    select * from balances
-    where wallet = ${w}
-    limit 1
-  `;
-
-  return Math.max(0, safeNum(rows?.[0]?.sol, 0));
-}
-
-async function setBalance(wallet, amount) {
-  const w = String(wallet || "").trim();
-
-  await sql`
-    insert into balances (wallet, sol, updated_at)
-    values (${w}, ${Math.max(0, safeNum(amount, 0))}, now())
-    on conflict (wallet)
-    do update set
-      sol = excluded.sol,
-      updated_at = now()
-  `;
-}
-
-// ATOMIC: balance se kaato. Kam ho to throw. (race-safe, FOR UPDATE)
-async function decreaseBalance(wallet, amount) {
-  const w = String(wallet || "").trim();
-  const amt = Math.max(0, safeNum(amount, 0));
-
-  return await sql.begin(async (tx) => {
-    const rows = await tx`
-      select sol from balances where wallet = ${w} for update
-    `;
-    const current = Math.max(0, safeNum(rows?.[0]?.sol, 0));
-    const next = current - amt;
-
-    if (next < 0) {
-      throw new Error("Insufficient balance");
-    }
-
-    await tx`
-      insert into balances (wallet, sol, updated_at)
-      values (${w}, ${next}, now())
-      on conflict (wallet)
-      do update set sol = excluded.sol, updated_at = now()
-    `;
-
-    return next;
-  });
-}
-
-// ATOMIC: balance me add karo. (race-safe)
-async function increaseBalance(wallet, amount) {
-  const w = String(wallet || "").trim();
-  const amt = Math.max(0, safeNum(amount, 0));
-
-  return await sql.begin(async (tx) => {
-    const rows = await tx`
-      select sol from balances where wallet = ${w} for update
-    `;
-    const current = Math.max(0, safeNum(rows?.[0]?.sol, 0));
-    const next = current + amt;
-
-    await tx`
-      insert into balances (wallet, sol, updated_at)
-      values (${w}, ${next}, now())
-      on conflict (wallet)
-      do update set sol = excluded.sol, updated_at = now()
-    `;
-
-    return next;
-  });
-}
+// NOTE: purana `balances` table system hata diya gaya hai.
+// Single source of truth ab profiles.run_balance hai (decreaseRun/increaseRun).
 
 // -------------------- RUN BALANCE (single spendable balance) --------------------
 // Sab kuch profiles.run_balance par chalta hai (primary wallet ke under).
@@ -776,7 +703,7 @@ function ensureProfileShape(row = {}, wallet = "") {
 
     run_balance: Math.max(
   0,
-  safeNum(row.run_balance, 700000)
+  safeNum(row.run_balance, 0)
 ),
 
     creator_rewards: Math.max(
@@ -918,13 +845,13 @@ await sql`
       created_at timestamptz default now(),
       updated_at timestamptz default now(),
       wallet_address text,
-run_balance numeric default 700000,
+run_balance numeric default 0,
 encrypted_mnemonic text
     )`;
 
   await sql`alter table profiles add column if not exists wallet_address text`;
   await sql`alter table profiles add column if not exists encrypted_mnemonic text`;
-  await sql`alter table profiles add column if not exists run_balance numeric default 700000`;
+  await sql`alter table profiles add column if not exists run_balance numeric default 0`;
 
   await sql`
     create table if not exists transactions (
@@ -970,13 +897,6 @@ encrypted_mnemonic text
     )`;
 
   await sql`
-    create table if not exists balances (
-      wallet text primary key,
-      sol numeric not null default 0,
-      updated_at timestamptz not null default now()
-    )`;
-
-  await sql`
     create table if not exists deposit_scans (
       wallet text primary key,
       last_signature text,
@@ -1014,7 +934,7 @@ function profileToDbRow(profile = {}) {
     wallet: String(profile.wallet || "").trim(),
     referrer: String(profile.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(profile.referral_rewards, 0)),
-    run_balance: Math.max(0, safeNum(profile.run_balance, 700000)),
+    run_balance: Math.max(0, safeNum(profile.run_balance, 0)),
     creator_rewards: Math.max(0, safeNum(profile.creator_rewards, 0)),
     owner_rewards: Math.max(0, safeNum(profile.owner_rewards, 0)),
     referral_code: String(profile.referral_code || ""),
@@ -1816,7 +1736,7 @@ app.post("/debug/deposit", async (req, res) => {
     }
 
     await creditDeposit({ wallet, txHash, amount });
-    const balance = await getBalance(wallet);
+    const balance = await getRunBalanceFlexible(wallet);
 
     return res.json({ ok: true, wallet, balance });
  } catch (e) {
