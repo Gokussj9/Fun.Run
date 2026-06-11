@@ -2873,7 +2873,7 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
       setProfile(json?.profile || null);
 
       if (json?.profile?.wallet_address) {
-        loadBalance(json.profile.wallet_address);
+        loadBalance(wallet);
       }
 
     } catch (e) {
