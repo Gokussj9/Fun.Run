@@ -1533,15 +1533,28 @@ async function api(path, options = {}) {
   const base = String(API_BASE || "").replace(/\/$/, "");
   const url = base ? `${base}${path}` : path;
 
+  let authToken = "";
+
+try {
+  if (window.__funrunGetToken) {
+    authToken = await window.__funrunGetToken();
+  }
+} catch {}
+
   try {
     const res = await fetch(url, {
       cache: "no-store",
       ...options,
       signal: options.signal || controller.signal,
+
+
       headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
+  "Content-Type": "application/json",
+  ...(authToken
+    ? { Authorization: `Bearer ${authToken}` }
+    : {}),
+  ...(options.headers || {}),
+},
     });
 
     let json = null;
@@ -2404,7 +2417,33 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
 }
 
 export default function App() {
-  const { login, authenticated, user, ready, logout } = usePrivy();
+  const { login, authenticated, user, ready, logout, getAccessToken } = usePrivy();
+
+  useEffect(() => {
+  window.__funrunGetToken = async () => {
+    try {
+      return await getAccessToken();
+    } catch {
+      return "";
+    }
+  };
+
+  return () => {
+    delete window.__funrunGetToken;
+  };
+}, [getAccessToken]);
+
+useEffect(() => {
+  (async () => {
+    try {
+      const token = await getAccessToken();
+      console.log("PRIVY TOKEN:", token);
+    } catch (e) {
+      console.log("TOKEN ERROR:", e);
+    }
+  })();
+}, [authenticated]);
+
   const { exportWallet } = useExportWallet();
   const wsRef = useRef(null);
 
@@ -4632,7 +4671,7 @@ const walletHistory = [
 
 <div className="miniMuted" style={{ marginTop: 6 }}>
   {toUsdFromSol(profile?.runBalance || 0)}
-</div>
+</div>      
 
                   <div
                     style={{
