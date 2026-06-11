@@ -1731,7 +1731,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
-app.get("/balance/:wallet", async (req, res) => {
+app.get("/balance/:wallet", requireAuth, async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();
 
