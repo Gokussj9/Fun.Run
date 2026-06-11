@@ -32,31 +32,7 @@ const PRIVY_JWKS = createRemoteJWKSet(
   new URL("https://auth.privy.io/api/v1/apps/cmld3um1x01w8i50ct60xaywb/jwks.json")
 );
 
-async function requireAuth(req, res, next) {
-  try {
-    const auth = String(req.headers.authorization || "");
 
-    if (!auth.startsWith("Bearer ")) {
-      return res.status(401).json({
-        ok: false,
-        error: "Unauthorized",
-      });
-    }
-
-    const token = auth.slice(7);
-
-    const { payload } = await jwtVerify(token, PRIVY_JWKS);
-
-    req.auth = payload;
-
-    return next();
-  } catch (e) {
-    return res.status(401).json({
-      ok: false,
-      error: "Invalid token",
-    });
-  }
-}
 
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
