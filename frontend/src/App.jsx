@@ -4626,10 +4626,13 @@ const walletHistory = [
 
 
                   <div className="statLabel">Main Wallet</div>
-                  <div className="statValue">{fmtSol(walletSolBalance)} SOL</div>
-                  <div className="miniMuted" style={{ marginTop: 6 }}>
-                    {toUsdFromSol(walletSolBalance)}
-                  </div>
+                 <div className="statValue">
+  {fmtSol(profile?.runBalance || 0)} SOL
+</div>
+
+<div className="miniMuted" style={{ marginTop: 6 }}>
+  {toUsdFromSol(profile?.runBalance || 0)}
+</div>
 
                   <div
                     style={{
