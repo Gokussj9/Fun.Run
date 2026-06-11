@@ -2683,6 +2683,8 @@ const withdrawals = await sql`
         primaryWallet: wallet,
         connectedWallet: wallet,
 
+        runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
+
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
         referralCount,
