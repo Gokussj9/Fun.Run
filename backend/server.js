@@ -2608,11 +2608,12 @@ app.get("/profile/:wallet", requireAuth, async (req, res) => {
 
     const custodialWallet = String(p?.wallet_address || "").trim();
 
-    const creationRows = await sql`
     console.log("PROFILE STEP 3");
-      select * from coins where creator_wallet = ${wallet}
-      order by created_at desc limit 1000
-    `;
+
+const creationRows = await sql`
+  select * from coins where creator_wallet = ${wallet}
+  order by created_at desc limit 1000
+`;
     const myCreations = Array.isArray(creationRows)
       ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
 
@@ -2709,7 +2710,7 @@ const withdrawals = await sql`
 `;
 
 
-console.log("PROFILE RESPONSE SEND");
+console.log("PROFILE RESPONSE SEND");   
     return res.json({
       ok: true,
       profile: {

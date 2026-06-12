@@ -2609,6 +2609,8 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
 
   useEffect(() => {
     const ws = new WebSocket(WS_BASE);
+    ws.onopen = () => console.log("WS OPEN");
+ws.onclose = (e) => console.log("WS CLOSED", e.code, e.reason);
 
     wsRef.current = ws;
 
@@ -2649,8 +2651,10 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
     };
 
     return () => {
-      ws.close();
-    };
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.close();
+  }
+};
   }, []);
 
   useEffect(() => {
@@ -3749,6 +3753,8 @@ const walletHistory = [
           </div>
         </div>
       </div>
+      
+      
 
       <div className="appShell">
 
@@ -3763,7 +3769,14 @@ const walletHistory = [
               </div>
 
               <div className="heroActions">
-                <MiniBtn tone="good" onClick={() => goScreen("CREATE")}>
+                <MiniBtn tone="good" onClick={() => {
+  if (!authenticated) {
+    login?.();
+    return;
+  }
+
+  goScreen("CREATE");
+}}>
                   Create Coin
                 </MiniBtn>
                 <MiniBtn onClick={() => goScreen("SEARCH")}>Explore Coins</MiniBtn>

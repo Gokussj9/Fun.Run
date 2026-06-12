@@ -10,14 +10,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <PrivyProvider
       appId="cmld3um1x01w8i50ct60xaywb"
       config={{
+        
         loginMethods: ["google"],
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
-          solana: { createOnLogin: "users-without-wallets" },
+          
         },
         appearance: {
           theme: "dark",
-          walletChainType: "solana-only",
+          
           showWalletLoginFirst: false,
         },
       }}
