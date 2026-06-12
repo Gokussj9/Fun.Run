@@ -1684,10 +1684,19 @@ async function requireAuth(req, res) {
     }
     const claims = await client.verifyAuthToken(token);
     return claims; // { userId, ... }
-  } catch (e) {
-    res.status(401).json({ ok: false, error: "invalid token" });
-    return null;
   }
+  catch (e) {
+  console.log("PRIVY VERIFY ERROR:");
+  console.log(e);
+
+  res.status(401).json({
+    ok: false,
+    error: "invalid token",
+    details: String(e?.message || e),
+  });
+
+  return null;
+}
 }
 
 // -------------------- ROUTES --------------------

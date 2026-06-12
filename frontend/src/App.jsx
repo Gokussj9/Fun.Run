@@ -1541,6 +1541,8 @@ try {
   }
 } catch {}
 
+console.log("AUTH TOKEN LENGTH:", authToken?.length || 0);
+
   try {
     const res = await fetch(url, {
       cache: "no-store",
@@ -1551,6 +1553,7 @@ try {
       headers: {
   "Content-Type": "application/json",
   ...(authToken
+    
     ? { Authorization: `Bearer ${authToken}` }
     : {}),
   ...(options.headers || {}),
@@ -2909,11 +2912,13 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
     try {
       setLoadingProfile(true);
       const json = await api(`/profile/${wallet}`);
+      
+      console.log("PROFILE RESPONSE:", json);
       setProfile(json?.profile || null);
 
-      if (json?.profile?.wallet_address) {
-        loadBalance(wallet);
-      }
+     if (json?.profile) {
+  loadBalance(wallet);
+}
 
     } catch (e) {
       setToast(e?.message || "Failed to load profile");
