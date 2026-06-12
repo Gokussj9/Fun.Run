@@ -1644,17 +1644,29 @@ async function runCoinLocked(coinId, fn) {
 let _privyClient = null;
 async function getPrivyClient() {
   if (_privyClient) return _privyClient;
+
   const appId = process.env.PRIVY_APP_ID;
-  const appSecret = process.env.PRIVY_APP_SECRET;
-  if (!appId || !appSecret) return null;
+const appSecret = process.env.PRIVY_APP_SECRET;
+
+console.log("PRIVY_APP_ID exists:", !!appId);
+console.log("PRIVY_APP_SECRET exists:", !!appSecret);
+
+if (!appId || !appSecret) {
+  console.log("Privy env missing");
+  return null;
+}
   try {
     const { PrivyClient } = await import("@privy-io/server-auth");
     _privyClient = new PrivyClient(appId, appSecret);
     return _privyClient;
-  } catch (e) {
-    console.log("privy client load failed:", e?.message || e);
-    return null;
-  }
+  } 
+  
+  catch (e) {
+  console.log("PRIVY IMPORT ERROR:");
+  console.log(e);
+  return null;
+}
+
 }
 
 async function requireAuth(req, res) {
