@@ -1544,6 +1544,7 @@ try {
 console.log("AUTH TOKEN LENGTH:", authToken?.length || 0);
 
   try {
+    console.log("API CALL:", url);
     const res = await fetch(url, {
       cache: "no-store",
       ...options,
@@ -1559,10 +1560,20 @@ console.log("AUTH TOKEN LENGTH:", authToken?.length || 0);
   ...(options.headers || {}),
 },
     });
+    console.log("API STATUS:", res.status);
 
     let json = null;
     try {
-      json = await res.json();
+      const text = await res.text();
+
+console.log("RAW RESPONSE URL:", url);
+console.log("RAW RESPONSE:", text);
+
+try {
+  json = JSON.parse(text);
+} catch {
+  json = null;
+}
     } catch {
       json = null;
     }
@@ -2907,25 +2918,31 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
   }
 
   async function loadProfile(wallet = solAddr) {
-    if (!wallet) return;
+  if (!wallet) return;
 
-    try {
-      setLoadingProfile(true);
-      const json = await api(`/profile/${wallet}`);
-      
-      console.log("PROFILE RESPONSE:", json);
-      setProfile(json?.profile || null);
+  console.log("LOAD PROFILE START:", wallet);
 
-     if (json?.profile) {
-  loadBalance(wallet);
-}
+  try {
+    setLoadingProfile(true);
 
-    } catch (e) {
-      setToast(e?.message || "Failed to load profile");
-    } finally {
-      setLoadingProfile(false);
+    const json = await api(`/profile/${wallet}`);
+
+    console.log("PROFILE RESPONSE:", json);
+    console.log("PROFILE OBJECT:", json?.profile);
+
+    setProfile(json?.profile || null);
+
+    if (json?.profile) {
+      loadBalance(wallet);
     }
+
+  } catch (e) {
+    console.log("LOAD PROFILE ERROR:", e);
+    setToast(e?.message || "Failed to load profile");
+  } finally {
+    setLoadingProfile(false);
   }
+}
 
   async function loadBalance(wallet = solAddr) {
     if (!wallet) return;

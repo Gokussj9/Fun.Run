@@ -2590,6 +2590,7 @@ app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
 
 // -------------------- PROFILE ENDPOINT --------------------
 app.get("/profile/:wallet", requireAuth, async (req, res) => {
+  console.log("PROFILE START");
   try {
     await requireDb();
 
@@ -2597,7 +2598,9 @@ app.get("/profile/:wallet", requireAuth, async (req, res) => {
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
 
     const p = await getProfile(wallet, true);
+    console.log("PROFILE STEP 1");
     const referralCount = await countReferrals(wallet);
+    console.log("PROFILE STEP 2");
 
     if (safeNum(p.referral_count, 0) !== referralCount) {
       await patchProfile(wallet, { referral_count: referralCount });
@@ -2606,6 +2609,7 @@ app.get("/profile/:wallet", requireAuth, async (req, res) => {
     const custodialWallet = String(p?.wallet_address || "").trim();
 
     const creationRows = await sql`
+    console.log("PROFILE STEP 3");
       select * from coins where creator_wallet = ${wallet}
       order by created_at desc limit 1000
     `;
@@ -2704,6 +2708,8 @@ const withdrawals = await sql`
   limit 50
 `;
 
+
+console.log("PROFILE RESPONSE SEND");
     return res.json({
       ok: true,
       profile: {
