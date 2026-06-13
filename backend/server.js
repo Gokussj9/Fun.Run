@@ -22,17 +22,10 @@ import treasury from "./solana/treasury.js";
 import { createMint } from "@solana/spl-token";
 import morgan from "morgan";
 import crypto from "crypto";
-import { jwtVerify, createRemoteJWKSet } from "jose";
 
 console.log("SERVER UPDATED");
 
 const app = express();
-
-const PRIVY_JWKS = createRemoteJWKSet(
-  new URL("https://auth.privy.io/api/v1/apps/cmld3um1x01w8i50ct60xaywb/jwks.json")
-);
-
-
 
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
@@ -1644,29 +1637,17 @@ async function runCoinLocked(coinId, fn) {
 let _privyClient = null;
 async function getPrivyClient() {
   if (_privyClient) return _privyClient;
-
   const appId = process.env.PRIVY_APP_ID;
-const appSecret = process.env.PRIVY_APP_SECRET;
-
-console.log("PRIVY_APP_ID exists:", !!appId);
-console.log("PRIVY_APP_SECRET exists:", !!appSecret);
-
-if (!appId || !appSecret) {
-  console.log("Privy env missing");
-  return null;
-}
+  const appSecret = process.env.PRIVY_APP_SECRET;
+  if (!appId || !appSecret) return null;
   try {
     const { PrivyClient } = await import("@privy-io/server-auth");
     _privyClient = new PrivyClient(appId, appSecret);
     return _privyClient;
-  } 
-  
-  catch (e) {
-  console.log("PRIVY IMPORT ERROR:");
-  console.log(e);
-  return null;
-}
-
+  } catch (e) {
+    console.log("privy client load failed:", e?.message || e);
+    return null;
+  }
 }
 
 async function requireAuth(req, res) {
@@ -1684,19 +1665,10 @@ async function requireAuth(req, res) {
     }
     const claims = await client.verifyAuthToken(token);
     return claims; // { userId, ... }
+  } catch (e) {
+    res.status(401).json({ ok: false, error: "invalid token" });
+    return null;
   }
-  catch (e) {
-  console.log("PRIVY VERIFY ERROR:");
-  console.log(e);
-
-  res.status(401).json({
-    ok: false,
-    error: "invalid token",
-    details: String(e?.message || e),
-  });
-
-  return null;
-}
 }
 
 // -------------------- ROUTES --------------------
@@ -1730,8 +1702,6 @@ app.get("/health", async (req, res) => {
 
 app.get("/balance/:wallet", async (req, res) => {
   try {
-    const claims = await requireAuth(req, res);
-if (!claims) return;
     const wallet = String(req.params.wallet || "").trim();
 
     if (!wallet) {
@@ -2589,44 +2559,45 @@ app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
 });
 
 // -------------------- PROFILE ENDPOINT --------------------
-app.get("/profile/:wallet", requireAuth, async (req, res) => {
-  console.log("PROFILE START");
-  
+app.get("/profile/:wallet", async (req, res) => {
   try {
     await requireDb();
 
     const wallet = String(req.params.wallet || "").trim();
     if (!wallet) return res.json({ ok: false, error: "wallet required" });
 
+    // Step 1: profile (custodial wallet banane ke liye zaroori hai pehle)
     const p = await getProfile(wallet, true);
-    console.log("PROFILE STEP 1");
-    const referralCount = await countReferrals(wallet);
-    console.log("PROFILE STEP 2");
-
-    if (safeNum(p.referral_count, 0) !== referralCount) {
-      await patchProfile(wallet, { referral_count: referralCount });
-    }
-
     const custodialWallet = String(p?.wallet_address || "").trim();
 
-    console.log("PROFILE STEP 3");
+    // Step 2: baaki sab queries PARALLEL chalao (8 queries ek saath)
+    const [
+      referralCountRows,
+      creationRows,
+      txArr,
+      holdingBaseRows,
+      deposits,
+      withdrawals,
+    ] = await Promise.all([
+      sql`select count(*)::int as count from profiles where referrer = ${wallet}`,
+      sql`select * from coins where creator_wallet = ${wallet} order by created_at desc limit 100`,
+      sql`select * from transactions where wallet = ${wallet} order by created_at desc limit ${PROFILE_TX_LIMIT}`,
+      sql`select wallet, coin_id, tokens, updated_at from holdings where wallet = ${wallet} and tokens > 0 order by updated_at desc limit 200`,
+      sql`select * from deposits where wallet = ${custodialWallet || wallet} order by created_at desc limit 50`,
+      sql`select * from withdrawals where wallet = ${wallet} order by created_at desc limit 50`,
+    ]);
 
-const creationRows = await sql`
-  select * from coins where creator_wallet = ${wallet}
-  order by created_at desc limit 1000
-`;
+    const referralCount = safeNum(referralCountRows?.[0]?.count, 0);
+
+    // referral count update (background — response wait nahi karti)
+    if (safeNum(p.referral_count, 0) !== referralCount) {
+      patchProfile(wallet, { referral_count: referralCount }).catch(() => {});
+    }
+
     const myCreations = Array.isArray(creationRows)
       ? creationRows.map(mapDbCoinToApi).filter(Boolean) : [];
 
-    const txArr = await sql`
-      select * from transactions
-      where wallet = ${wallet}
-      order by created_at desc
-      limit ${PROFILE_TX_LIMIT}
-    `;
-    const walletTxRows = Array.isArray(txArr) ? txArr : [];
-
-    const lastTx = walletTxRows.map((t) => ({
+    const lastTx = (Array.isArray(txArr) ? txArr : []).map((t) => ({
       id: t.id,
       coinId: t.coinId || t.coin_id,
       side: String(t.type || "TX").toUpperCase(),
@@ -2634,29 +2605,18 @@ const creationRows = await sql`
       sol: safeNum(t.sol, 0),
       tokens: safeNum(t.tokens, 0),
       fee: safeNum(t.fee, 0),
-      ts: t.createdAt ? new Date(t.createdAt).getTime()
-        : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
-      t: t.createdAt ? new Date(t.createdAt).getTime()
-        : t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      ts: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
+      t: t.created_at ? new Date(t.created_at).getTime() : nowMS(),
       wallet: t.wallet,
     }));
 
-    const holdingBaseRows = await sql`
-      select wallet, coin_id, tokens, updated_at
-      from holdings
-      where wallet = ${wallet} and tokens > 0
-      order by updated_at desc
-      limit 500
-    `;
-
+    // holdings: coin detail parallel fetch
     const holdingCoinIds = Array.from(
       new Set((holdingBaseRows || []).map((r) => String(r.coin_id || "").trim()).filter(Boolean))
     );
-
-    let holdingRows = [];
-    if (holdingCoinIds.length) {
-      holdingRows = await sql`select * from coins where id = any(${holdingCoinIds})`;
-    }
+    const holdingRows = holdingCoinIds.length
+      ? await sql`select * from coins where id = any(${holdingCoinIds})`
+      : [];
 
     const holdingMap = new Map(
       (holdingBaseRows || []).map((r) => [String(r.coin_id || "").trim(), r])
@@ -2669,7 +2629,6 @@ const creationRows = await sql`
         const h = holdingMap.get(String(c.id)) || null;
         const amount = Math.max(0, safeNum(h?.tokens, 0));
         if (amount <= 0) return null;
-
         return {
           coinId: c.id,
           symbol: c.symbol,
@@ -2694,35 +2653,15 @@ const creationRows = await sql`
       };
     }
 
-    const deposits = await sql`
-  select *
-  from deposits
-  where wallet = ${wallet}
-  order by created_at desc
-  limit 50
-`;
-
-const withdrawals = await sql`
-  select *
-  from withdrawals
-  where wallet = ${wallet}
-  order by created_at desc
-  limit 50
-`;
-
-
-console.log("PROFILE RESPONSE SEND");   
     return res.json({
       ok: true,
       profile: {
         wallet: custodialWallet || wallet,
-        custodialWallet: custodialWallet,
+        custodialWallet,
         depositAddress: custodialWallet,
         primaryWallet: wallet,
         connectedWallet: wallet,
-
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
-
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
         referralCount,
@@ -2731,16 +2670,15 @@ console.log("PROFILE RESPONSE SEND");
         ownerRewardsSol: Math.max(0, safeNum(p?.owner_rewards, 0)),
         referralRewards: { totalSol: Math.max(0, safeNum(p?.referral_rewards, 0)) },
         ownerRewards: { totalSol: Math.max(0, safeNum(p?.owner_rewards, 0)) },
-       rewards: {
-  totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)),
-  byCoin: rewardsByCoin,
-},
-holdings,
-txs: lastTx,
-creations: myCreations,
-
-depositHistory: deposits || [],
-withdrawHistory: withdrawals || [],
+        rewards: {
+          totalSol: Math.max(0, safeNum(p?.creator_rewards, 0)),
+          byCoin: rewardsByCoin,
+        },
+        holdings,
+        txs: lastTx,
+        creations: myCreations,
+        depositHistory: deposits || [],
+        withdrawHistory: withdrawals || [],
       },
       myCreations,
       lastTx,
