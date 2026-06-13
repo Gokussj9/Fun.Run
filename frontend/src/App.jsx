@@ -19,7 +19,7 @@ const LS_THEME = "theme";
 const LS_PROFILE_AVATAR = "profile_avatar_v1";
 
 const APP_OWNER_WALLET = "HEBqdStfnZgygQVMxpq5CXjsfPPagytdZoAyY2WcC1ji";
-const DEX_LAUNCH_MC_USD = 2_000_000;
+const DEX_LAUNCH_MC_USD = 5_000_000;
 const DEX_OPTIONS = [
   { id: "raydium", name: "Raydium", sub: "Most popular Solana liquidity pool option." },
   { id: "orca", name: "Orca", sub: "Clean Solana DEX with concentrated liquidity." },
@@ -1178,35 +1178,57 @@ function Title({ children, sub = null, right = null }) {
   );
 }
 
-function Toast({ text, onClose }) {
+function Toast({ text, type = "default", onClose }) {
   useEffect(() => {
     if (!text) return;
-    const t = setTimeout(() => onClose?.(), 2200);
+    const t = setTimeout(() => onClose?.(), 2800);
     return () => clearTimeout(t);
-  }, [text, onClose]);
+  }, [text]);
 
   if (!text) return null;
 
+  const colors = {
+    error:   { bg: "rgba(30,8,10,.97)", border: "rgba(255,100,120,.30)", icon: "✕" },
+    success: { bg: "rgba(6,22,14,.97)", border: "rgba(25,230,162,.28)", icon: "✓" },
+    default: { bg: "rgba(8,14,20,.97)", border: "rgba(255,255,255,.12)", icon: null },
+  };
+  const c = colors[type] || colors.default;
+
   return (
     <div
+      onClick={() => onClose?.()}
       style={{
         position: "fixed",
         top: 18,
         left: "50%",
         transform: "translateX(-50%)",
-        zIndex: 200,
-        padding: "11px 14px",
+        zIndex: 999,
+        padding: "11px 16px",
         borderRadius: 14,
-        border: "1px solid rgba(25,230,162,.24)",
-        background: "rgba(7,11,14,.95)",
+        border: `1px solid ${c.border}`,
+        background: c.bg,
         color: "var(--text)",
-        boxShadow: "0 18px 60px rgba(0,0,0,.35)",
+        boxShadow: "0 18px 60px rgba(0,0,0,.45)",
         fontSize: 13,
         fontWeight: 900,
-        maxWidth: "calc(100% - 24px)",
+        maxWidth: "calc(100% - 32px)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        userSelect: "none",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        lineHeight: 1.4,
       }}
     >
-      {text}
+      {c.icon && (
+        <span style={{ fontSize: 11, opacity: 0.7, flexShrink: 0 }}>{c.icon}</span>
+      )}
+      <span>{text}</span>
+      <span style={{ fontSize: 10, opacity: 0.4, flexShrink: 0, marginLeft: 4 }}>✕</span>
     </div>
   );
 }
@@ -1533,47 +1555,20 @@ async function api(path, options = {}) {
   const base = String(API_BASE || "").replace(/\/$/, "");
   const url = base ? `${base}${path}` : path;
 
-  let authToken = "";
-
-try {
-  if (window.__funrunGetToken) {
-    authToken = await window.__funrunGetToken();
-  }
-} catch {}
-
-console.log("AUTH TOKEN LENGTH:", authToken?.length || 0);
-
   try {
-    console.log("API CALL:", url);
     const res = await fetch(url, {
       cache: "no-store",
       ...options,
       signal: options.signal || controller.signal,
-
-
       headers: {
-  "Content-Type": "application/json",
-  ...(authToken
-    
-    ? { Authorization: `Bearer ${authToken}` }
-    : {}),
-  ...(options.headers || {}),
-},
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
     });
-    console.log("API STATUS:", res.status);
 
     let json = null;
     try {
-      const text = await res.text();
-
-console.log("RAW RESPONSE URL:", url);
-console.log("RAW RESPONSE:", text);
-
-try {
-  json = JSON.parse(text);
-} catch {
-  json = null;
-}
+      json = await res.json();
     } catch {
       json = null;
     }
@@ -2431,33 +2426,7 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
 }
 
 export default function App() {
-  const { login, authenticated, user, ready, logout, getAccessToken } = usePrivy();
-
-  useEffect(() => {
-  window.__funrunGetToken = async () => {
-    try {
-      return await getAccessToken();
-    } catch {
-      return "";
-    }
-  };
-
-  return () => {
-    delete window.__funrunGetToken;
-  };
-}, [getAccessToken]);
-
-useEffect(() => {
-  (async () => {
-    try {
-      const token = await getAccessToken();
-      console.log("PRIVY TOKEN:", token);
-    } catch (e) {
-      console.log("TOKEN ERROR:", e);
-    }
-  })();
-}, [authenticated]);
-
+  const { login, authenticated, user, ready, logout } = usePrivy();
   const { exportWallet } = useExportWallet();
   const wsRef = useRef(null);
 
@@ -2609,8 +2578,6 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
 
   useEffect(() => {
     const ws = new WebSocket(WS_BASE);
-    ws.onopen = () => console.log("WS OPEN");
-ws.onclose = (e) => console.log("WS CLOSED", e.code, e.reason);
 
     wsRef.current = ws;
 
@@ -2651,10 +2618,8 @@ ws.onclose = (e) => console.log("WS CLOSED", e.code, e.reason);
     };
 
     return () => {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.close();
-  }
-};
+      ws.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -2922,31 +2887,23 @@ ws.onclose = (e) => console.log("WS CLOSED", e.code, e.reason);
   }
 
   async function loadProfile(wallet = solAddr) {
-  if (!wallet) return;
+    if (!wallet) return;
 
-  console.log("LOAD PROFILE START:", wallet);
+    try {
+      setLoadingProfile(true);
+      const json = await api(`/profile/${wallet}`);
+      setProfile(json?.profile || null);
 
-  try {
-    setLoadingProfile(true);
+      if (json?.profile?.wallet_address) {
+        loadBalance(json.profile.wallet_address);
+      }
 
-    const json = await api(`/profile/${wallet}`);
-
-    console.log("PROFILE RESPONSE:", json);
-    console.log("PROFILE OBJECT:", json?.profile);
-
-    setProfile(json?.profile || null);
-
-    if (json?.profile) {
-      loadBalance(wallet);
+    } catch (e) {
+      setToast(e?.message || "Failed to load profile");
+    } finally {
+      setLoadingProfile(false);
     }
-
-  } catch (e) {
-    console.log("LOAD PROFILE ERROR:", e);
-    setToast(e?.message || "Failed to load profile");
-  } finally {
-    setLoadingProfile(false);
   }
-}
 
   async function loadBalance(wallet = solAddr) {
     if (!wallet) return;
@@ -3577,7 +3534,7 @@ const walletHistory = [
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
-  const portfolioWalletUsd = Number(walletSolBalance || 0) * 80;
+  const portfolioWalletUsd = Number(profile?.runBalance ?? walletSolBalance ?? 0) * 80;
 
   const portfolioHoldingsUsd = profileHoldings.reduce((sum, h) => {
   const coin =
@@ -3590,9 +3547,124 @@ const walletHistory = [
   return sum + amt * getCoinPriceUsd(coin);
 }, 0);
 
+  // -------------------- BACKUP PHRASE --------------------
+  const [phraseOpen, setPhraseOpen] = useState(false);
+  const [phraseWords, setPhraseWords] = useState([]);
+  const [phraseLoading, setPhraseLoading] = useState(false);
+
+  async function handleRevealPhrase() {
+    setPhraseLoading(true);
+    try {
+      const json = await api("/wallet/reveal-mnemonic", {
+        method: "POST",
+        body: JSON.stringify({ wallet: solAddr }),
+      });
+      if (json?.words) {
+        setPhraseWords(json.words);
+        setPhraseOpen(true);
+      } else {
+        setToast(json?.error || "Phrase not available yet");
+      }
+    } catch (e) {
+      setToast(e?.message || "Failed to load phrase");
+    }
+    setPhraseLoading(false);
+  }
+
+  // -------------------- LOGIN GATE --------------------
+  if (!ready) {
+    return (
+      <>
+        <ThemeStyles />
+        <div style={{
+          minHeight: "100dvh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "var(--bg)", gap: 16, padding: 24,
+        }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--accent)" }}>Fun.Run</div>
+          <div style={{ color: "var(--muted2)", fontSize: 14 }}>Loading...</div>
+        </div>
+      </>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <>
+        <ThemeStyles />
+        <div style={{
+          minHeight: "100dvh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "var(--bg)", gap: 24, padding: 32,
+        }}>
+          <div style={{ fontSize: 36, fontWeight: 900, color: "var(--accent)", letterSpacing: -1 }}>
+            Fun.Run
+          </div>
+          <div style={{
+            color: "var(--muted)", fontSize: 15, textAlign: "center", maxWidth: 280, lineHeight: 1.5,
+          }}>
+            Solana meme-coin launchpad. Login karo aur trading shuru karo.
+          </div>
+          <button
+            onClick={async () => { try { await login?.(); } catch (e) { console.log(e); } }}
+            style={{
+              background: "var(--accent)", color: "#fff", border: "none",
+              borderRadius: 14, padding: "14px 36px", fontSize: 16,
+              fontWeight: 700, cursor: "pointer", letterSpacing: 0.2,
+              boxShadow: "0 4px 24px var(--accent-glow, #0003)",
+            }}
+          >
+            Google se Login / Sign Up
+          </button>
+          <div style={{ color: "var(--muted2)", fontSize: 12, textAlign: "center", maxWidth: 260 }}>
+            Naya account? Automatically ban jayega — koi extra step nahi.
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <ThemeStyles />
+
+      {/* ---- BACKUP PHRASE MODAL ---- */}
+      {phraseOpen && (
+        <div className="modalBack" onClick={() => { setPhraseOpen(false); setPhraseWords([]); }}>
+          <div className="modalCard" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
+            <div className="modalHead">
+              <div className="modalTitle">Recovery Phrase</div>
+              <MiniBtn onClick={() => { setPhraseOpen(false); setPhraseWords([]); }}>Close</MiniBtn>
+            </div>
+            <div className="modalBody">
+              <div style={{ color: "var(--warn, #f59e0b)", fontSize: 12, marginBottom: 12, lineHeight: 1.5, background: "var(--card2)", borderRadius: 8, padding: "8px 10px" }}>
+                ⚠️ Ye 12 words kisi ko mat dikhana. Agar kho gayi to wallet recover nahi hoga.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {phraseWords.map((w, i) => (
+                  <div key={i} style={{
+                    background: "var(--card2)", borderRadius: 8, padding: "6px 8px",
+                    fontSize: 13, fontWeight: 600, color: "var(--text)",
+                    display: "flex", gap: 6, alignItems: "center",
+                  }}>
+                    <span style={{ color: "var(--muted2)", fontSize: 10, minWidth: 16 }}>{i + 1}.</span>
+                    {w}
+                  </div>
+                ))}
+              </div>
+              <MiniBtn
+                style={{ marginTop: 14, width: "100%" }}
+                onClick={async () => {
+                  const ok = await copyText(phraseWords.join(" "));
+                  setToast(ok ? "Phrase copied" : "Copy failed");
+                }}
+              >
+                Copy All Words
+              </MiniBtn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {withdrawOpen && (
         <div className="modalBack">
@@ -3685,7 +3757,7 @@ const walletHistory = [
                   </div>
                   <div style={{ marginTop: 10 }}>
                     <Pill style={{ color: dexLaunchReady ? "var(--good)" : "var(--warn)" }}>
-                      {dexLaunchReady ? "Ready for Phase 2 launch" : "Locked until $2M MC"}
+                      {dexLaunchReady ? "Ready for Phase 2 launch" : "Locked until $5M MC"}
                     </Pill>
                   </div>
                 </div>
@@ -3694,7 +3766,7 @@ const walletHistory = [
                   <button
                     key={dex.id}
                     type="button"
-                    onClick={() => setToast(dexLaunchReady ? `${dex.name} launch will be enabled in Phase 2` : "DEX launch unlocks at $2M MC")}
+                    onClick={() => setToast(dexLaunchReady ? `${dex.name} launch Phase 4 me aayega (devnet test ke baad)` : "DEX launch unlocks at $5M MC")}
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -3753,8 +3825,6 @@ const walletHistory = [
           </div>
         </div>
       </div>
-      
-      
 
       <div className="appShell">
 
@@ -3769,14 +3839,7 @@ const walletHistory = [
               </div>
 
               <div className="heroActions">
-                <MiniBtn tone="good" onClick={() => {
-  if (!authenticated) {
-    login?.();
-    return;
-  }
-
-  goScreen("CREATE");
-}}>
+                <MiniBtn tone="good" onClick={() => goScreen("CREATE")}>
                   Create Coin
                 </MiniBtn>
                 <MiniBtn onClick={() => goScreen("SEARCH")}>Explore Coins</MiniBtn>
@@ -4700,13 +4763,10 @@ const walletHistory = [
 
 
                   <div className="statLabel">Main Wallet</div>
-                 <div className="statValue">
-  {fmtSol(profile?.runBalance || 0)} SOL
-</div>
-
-<div className="miniMuted" style={{ marginTop: 6 }}>
-  {toUsdFromSol(profile?.runBalance || 0)}
-</div>      
+                  <div className="statValue">{fmtSol(profile?.runBalance ?? walletSolBalance)} SOL</div>
+                  <div className="miniMuted" style={{ marginTop: 6 }}>
+                    {toUsdFromSol(profile?.runBalance ?? walletSolBalance)}
+                  </div>
 
                   <div
                     style={{
@@ -4853,7 +4913,7 @@ const walletHistory = [
           marginTop: 6,
         }}
       >
-        {fmtUsd((profile?.run_balance || 700000) * 0.000002)}
+        {fmtUsd((profile?.run_balance ?? 0) * 0.000002)}
       </div>
 
       <div
@@ -4863,7 +4923,7 @@ const walletHistory = [
           fontWeight: 900,
         }}
       >
-        {(profile?.run_balance || 700000).toLocaleString()} RUN
+        {(profile?.run_balance ?? 0).toLocaleString()} RUN
       </div>
 
       <div
@@ -4881,7 +4941,7 @@ const walletHistory = [
     fontWeight: 800,
   }}
 >
-  👥 Referral: {Math.max(0, (profile?.run_balance || 700000) - 700000).toLocaleString()} RUN
+  Referral RUN: {Math.max(0, (profile?.run_balance ?? 0) - 700000).toLocaleString()}
 </div>
 
       <div
@@ -5357,6 +5417,20 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
                 </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
+
+                  {/* Backup Recovery Phrase */}
+                  {authenticated && solAddr && (
+                    <MiniBtn
+                      onClick={async () => {
+                        setSettingsOpen(false);
+                        await handleRevealPhrase();
+                      }}
+                      disabled={phraseLoading}
+                    >
+                      {phraseLoading ? "Loading..." : "Backup Recovery Phrase"}
+                    </MiniBtn>
+                  )}
+
                   {!authenticated ? (
                     <MiniBtn
                       tone="good"

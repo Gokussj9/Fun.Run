@@ -2710,6 +2710,8 @@ process.on("SIGTERM", async () => {
 // -------------------- DEPOSIT SCANNER --------------------
 setInterval(async () => {
   try {
+
+    await requireDb();
     const rows = await sql`
       select wallet_address from profiles
       where wallet_address is not null
