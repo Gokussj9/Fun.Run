@@ -2591,6 +2591,7 @@ app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
 // -------------------- PROFILE ENDPOINT --------------------
 app.get("/profile/:wallet", requireAuth, async (req, res) => {
   console.log("PROFILE START");
+  console.log("PROFILE WALLET:", wallet);
   try {
     await requireDb();
 
