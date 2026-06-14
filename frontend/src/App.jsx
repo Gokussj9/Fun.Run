@@ -4786,6 +4786,8 @@ const walletHistory = [
   </div>
 
   
+
+  
 </div>
 
 
@@ -4939,22 +4941,22 @@ const walletHistory = [
       </div>
 
       <div style={{ fontSize: 34, fontWeight: 1000, marginTop: 6 }}>
-        {fmtUsd((profile?.run_balance ?? 0) * 0.000002)}
+        {fmtUsd(
+  (
+    700000 +
+    ((profile?.referralCount ?? 0) * 300000)
+  ) * 0.000002
+)}
       </div>
 
       <div style={{ marginTop: 6, color: "#63F5C8", fontWeight: 900 }}>
-        {(profile?.run_balance ?? 0).toLocaleString()} RUN
+        {(
+  700000 +
+  ((profile?.referralCount ?? 0) * 300000)
+).toLocaleString()} RUN
       </div>
 
-      {/* Price info */}
-      <div style={{
-        marginTop: 8, padding: "7px 11px", borderRadius: 10,
-        background: "rgba(255,212,122,.07)", border: "1px solid rgba(255,212,122,.18)",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <span style={{ fontSize: 11, color: "rgba(255,212,122,.85)", fontWeight: 800 }}>Token Price</span>
-        <span style={{ fontSize: 11, fontWeight: 900, color: "#FFD47A" }}>1 Lakh = $0.20 &nbsp;•&nbsp; 1 RUN = $0.000002</span>
-      </div>
+      
 
       {/* Airdrop breakdown */}
       <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
@@ -5212,6 +5214,179 @@ const walletHistory = [
                 </div>
               </div>
             </Card>
+
+<Card
+  style={{
+    position: "relative",
+    overflow: "hidden",
+    background:
+      "linear-gradient(135deg, rgba(99,245,200,.08), rgba(124,203,255,.06), rgba(167,139,250,.08))",
+    border: "1px solid rgba(255,255,255,.12)",
+    backdropFilter: "blur(18px)",
+  }}
+>
+  <div
+    style={{
+      position: "absolute",
+      top: -70,
+      left: -70,
+      width: 180,
+      height: 180,
+      borderRadius: "50%",
+      background: "rgba(99,245,200,.12)",
+      filter: "blur(55px)",
+    }}
+  />
+
+  <div
+    style={{
+      position: "absolute",
+      bottom: -60,
+      right: -60,
+      width: 160,
+      height: 160,
+      borderRadius: "50%",
+      background: "rgba(167,139,250,.12)",
+      filter: "blur(55px)",
+    }}
+  />
+
+  <div
+    style={{
+      position: "relative",
+      zIndex: 1,
+      textAlign: "center",
+      padding: "20px 14px",
+    }}
+  >
+    <div
+      style={{
+        fontSize: 22,
+        marginBottom: 8,
+      }}
+    >
+      🚀
+    </div>
+
+    <div
+      style={{
+        fontSize: 18,
+        fontWeight: 1000,
+        color: "#63F5C8",
+        letterSpacing: ".5px",
+        textShadow: "0 0 20px rgba(99,245,200,.25)",
+      }}
+    >
+      Multi-Chain Expansion
+    </div>
+
+    <div
+      style={{
+        marginTop: 14,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 14,
+          background:
+            "linear-gradient(135deg, rgba(243,186,47,.12), rgba(243,186,47,.05))",
+          border: "1px solid rgba(243,186,47,.20)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ fontWeight: 900, color: "#FFD86B" }}>
+          ⚡ BNB Chain
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            color: "#FFD86B",
+          }}
+        >
+          COMING SOON
+        </span>
+      </div>
+
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 14,
+          background:
+            "linear-gradient(135deg, rgba(167,139,250,.12), rgba(167,139,250,.05))",
+          border: "1px solid rgba(167,139,250,.20)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ fontWeight: 900, color: "#A78BFA" }}>
+          🔷 Polygon
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            color: "#A78BFA",
+          }}
+        >
+          COMING SOON
+        </span>
+      </div>
+
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 14,
+          background:
+            "linear-gradient(135deg, rgba(99,245,200,.12), rgba(99,245,200,.05))",
+          border: "1px solid rgba(99,245,200,.20)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ fontWeight: 900, color: "#63F5C8" }}>
+          🚀 Fun.Run Exchange
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            color: "#63F5C8",
+          }}
+        >
+          IN DEVELOPMENT
+        </span>
+      </div>
+    </div>
+
+    <div
+      style={{
+        marginTop: 16,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "8px 16px",
+        borderRadius: 999,
+        background: "rgba(99,245,200,.12)",
+        border: "1px solid rgba(99,245,200,.25)",
+        color: "#63F5C8",
+        fontSize: 12,
+        fontWeight: 900,
+        boxShadow: "0 0 20px rgba(99,245,200,.15)",
+      }}
+    >
+      ✦ EXPANDING ECOSYSTEM
+    </div>
+  </div>
+</Card>
+
 
             <Card>
               <SectionHeader title="My Creations" right={<Pill>{myCreations.length}</Pill>} />
