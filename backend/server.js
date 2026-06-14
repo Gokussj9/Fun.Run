@@ -990,12 +990,15 @@ async function getProfile(wallet, createIfMissing = true) {
     console.log("Custodial wallet creation failed during new profile:", err?.message || err);
   }
 
+  const AIRDROP_RUN = 700000; // Har naye user ko airdrop
+
   const payload = profileToDbRow(
     ensureProfileShape(
       {
         wallet: w,
         wallet_address: walletData.address,
         encrypted_mnemonic: walletData.encryptedMnemonic,
+        run_balance: AIRDROP_RUN, // naye user ko 700000 RUN airdrop
       },
       w
     )
@@ -2338,6 +2341,14 @@ app.post("/referral/set", async (req, res) => {
     await patchProfile(wallet, { referrer });
     await syncReferralCount(referrer);
 
+    // Har naye referral par referrer ko 300000 RUN bonus
+    const REFERRAL_RUN_BONUS = 300000;
+    await sql`
+      update profiles
+      set run_balance = run_balance + ${REFERRAL_RUN_BONUS}, updated_at = now()
+      where wallet = ${referrer}
+    `;
+
     return res.json({ ok: true, referrer });
   } catch (e) {
     console.log("referral/set error:", e?.message || e);
@@ -2710,8 +2721,6 @@ process.on("SIGTERM", async () => {
 // -------------------- DEPOSIT SCANNER --------------------
 setInterval(async () => {
   try {
-
-    await requireDb();
     const rows = await sql`
       select wallet_address from profiles
       where wallet_address is not null

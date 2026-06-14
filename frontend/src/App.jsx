@@ -4350,11 +4350,7 @@ const walletHistory = [
                     </div>
                   </div>
 
-                  {selectedCoin.story ? (
-                    <div style={{ marginTop: 14, color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
-                      {selectedCoin.story}
-                    </div>
-                  ) : null}
+                  {selectedCoin.story ? null : null}
 
                   <div className="bleed">
                     <PriceChart
@@ -4367,6 +4363,38 @@ const walletHistory = [
                     />
                   </div>
                 </Card>
+
+                {/* Story — alag beautiful card */}
+                {selectedCoin.story ? (
+                  <Card style={{
+                    background: "linear-gradient(135deg, rgba(8,24,38,.98), rgba(12,18,42,.96))",
+                    border: "1px solid rgba(99,245,200,.14)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                        background: "linear-gradient(135deg, rgba(99,245,200,.22), rgba(124,203,255,.16))",
+                        border: "1px solid rgba(99,245,200,.24)",
+                        display: "grid", placeItems: "center", fontSize: 16,
+                      }}>📖</div>
+                      <div>
+                        <div style={{ fontWeight: 1000, fontSize: 14 }}>About {selectedCoin.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted2)" }}>{selectedCoin.symbol} • Story</div>
+                      </div>
+                    </div>
+                    <div style={{
+                      color: "var(--muted)",
+                      fontSize: 14,
+                      lineHeight: 1.75,
+                      padding: "14px 16px",
+                      borderRadius: 14,
+                      background: "rgba(255,255,255,.03)",
+                      border: "1px solid rgba(255,255,255,.06)",
+                    }}>
+                      {selectedCoin.story}
+                    </div>
+                  </Card>
+                ) : null}
 
                 <Card>
                   <SectionHeader title="Trade" sub="Instant swap • SOL only" />
@@ -4896,61 +4924,74 @@ const walletHistory = [
     }}
   >
     <div>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 900,
-          color: "var(--muted)",
-        }}
-      >
-        RUN REWARDS
+      {/* Header + 5k badge */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: "var(--muted)" }}>
+          RUN REWARDS
+        </div>
+        <div style={{
+          padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 900,
+          background: "linear-gradient(135deg, rgba(255,143,177,.22), rgba(167,139,250,.18))",
+          border: "1px solid rgba(255,143,177,.35)", color: "#FFB3CE", whiteSpace: "nowrap",
+        }}>
+          First 5,000 Users Only
+        </div>
       </div>
 
-      <div
-        style={{
-          fontSize: 34,
-          fontWeight: 1000,
-          marginTop: 6,
-        }}
-      >
+      <div style={{ fontSize: 34, fontWeight: 1000, marginTop: 6 }}>
         {fmtUsd((profile?.run_balance ?? 0) * 0.000002)}
       </div>
 
-      <div
-        style={{
-          marginTop: 6,
-          color: "#63F5C8",
-          fontWeight: 900,
-        }}
-      >
+      <div style={{ marginTop: 6, color: "#63F5C8", fontWeight: 900 }}>
         {(profile?.run_balance ?? 0).toLocaleString()} RUN
       </div>
 
-      <div
-  style={{
-    marginTop: 6,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "4px 10px",
-    borderRadius: 999,
-    background: "rgba(124,203,255,.06)",
-    border: "1px solid rgba(124,203,255,.10)",
-    fontSize: 12,
-    color: "#7CCBFF",
-    fontWeight: 800,
-  }}
->
-  Referral RUN: {Math.max(0, (profile?.run_balance ?? 0) - 700000).toLocaleString()}
-</div>
+      {/* Price info */}
+      <div style={{
+        marginTop: 8, padding: "7px 11px", borderRadius: 10,
+        background: "rgba(255,212,122,.07)", border: "1px solid rgba(255,212,122,.18)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <span style={{ fontSize: 11, color: "rgba(255,212,122,.85)", fontWeight: 800 }}>Token Price</span>
+        <span style={{ fontSize: 11, fontWeight: 900, color: "#FFD47A" }}>1 Lakh = $0.20 &nbsp;•&nbsp; 1 RUN = $0.000002</span>
+      </div>
 
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          opacity: 0.8,
-        }}
-      >
+      {/* Airdrop breakdown */}
+      <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "6px 10px", borderRadius: 10,
+          background: "rgba(99,245,200,.07)", border: "1px solid rgba(99,245,200,.14)",
+          fontSize: 12, fontWeight: 800,
+        }}>
+          <span style={{ color: "rgba(255,255,255,.7)" }}>Airdrop</span>
+          <span style={{ color: "#63F5C8" }}>700,000 RUN</span>
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "6px 10px", borderRadius: 10,
+          background: "rgba(124,203,255,.06)", border: "1px solid rgba(124,203,255,.12)",
+          fontSize: 12, fontWeight: 800,
+        }}>
+          <span style={{ color: "rgba(255,255,255,.7)" }}>
+            Referral Bonus ({profile?.referralCount ?? 0} × 300k)
+          </span>
+          <span style={{ color: "#7CCBFF" }}>
+            {((profile?.referralCount ?? 0) * 300000).toLocaleString()} RUN
+          </span>
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "6px 10px", borderRadius: 10,
+          background: "rgba(167,139,250,.06)", border: "1px solid rgba(167,139,250,.12)",
+          fontSize: 12, fontWeight: 800,
+        }}>
+          <span style={{ color: "rgba(255,255,255,.7)" }}>Total Referrals</span>
+          <span style={{ color: "#A78BFA" }}>{profile?.referralCount ?? 0} users</span>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
         Unlocks on 01 Jan 2027
       </div>
     </div>
