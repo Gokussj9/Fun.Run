@@ -4842,10 +4842,10 @@ const walletHistory = [
   }}
 >
   {(() => {
+   
     const custodialAddr =
-      profile?.custodialWallet ||
       profile?.depositAddress ||
-      profile?.wallet_address ||
+      profile?.custodialWallet ||
       "";
 
     return custodialAddr
@@ -4862,9 +4862,9 @@ const walletHistory = [
 
           onClick={() => {
   navigator.clipboard.writeText(
-    profile?.custodialWallet ||
-    profile?.depositAddress ||
-    profile?.wallet_address ||
+   profile?.depositAddress ||
+profile?.custodialWallet ||
+profile?.wallet_address ||
     ""
   );
 
@@ -4890,9 +4890,9 @@ const walletHistory = [
                       <MiniBtn
                         onClick={() => {
                           navigator.clipboard.writeText(
-  profile?.custodialWallet ||
   profile?.depositAddress ||
-  profile?.wallet_address ||
+profile?.custodialWallet ||
+profile?.wallet_address ||
   ""
 );
                           setToast("Wallet copied");
