@@ -2662,13 +2662,6 @@ app.post("/claim", claimLimiter, async (req, res) => {
 // NOTE: ye tabhi mehfooz hai jab requireAuth ka userId us wallet se match ho.
 // Niche ek basic match diya hai (Privy userId == profile ka linked id). Ise apne
 // Privy setup ke mutabiq adjust karna; bina match ke kabhi mnemonic mat do.
-const mnemonicLimiter = rateLimit({ windowMs: 60_000, max: 5 });
-
-// Financial endpoint rate limiters (per IP)
-const tradeLimiter    = rateLimit({ windowMs: 60_000, max: 60,  message: { ok: false, error: "Too many requests" } });
-const withdrawLimiter = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many withdrawal requests" } });
-const claimLimiter    = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many claim requests" } });
-const createLimiter   = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many create requests" } });
 
 app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
   try {
