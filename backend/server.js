@@ -82,6 +82,11 @@ const PROFILE_TX_LIMIT = 120;
 const PROFILE_HOLDING_TX_SCAN = 500;
 const DEX_LAUNCH_MC_USD = 5_000_000;
 
+// Treasury minimum reserve — is se neeche withdraw NAHI hoga
+const TREASURY_MIN_RESERVE_SOL = clampNum(
+  Number(process.env.TREASURY_MIN_RESERVE_SOL || 0.05), 0, 1000
+);
+
 // Deposit -> treasury sweep sirf tab chale jab env me ENABLE_SWEEP=1 ho.
 // Pehle encryption key rotate karo + devnet par test karo, PHIR enable karo.
 const ENABLE_SWEEP = String(process.env.ENABLE_SWEEP || "") === "1";
@@ -481,13 +486,14 @@ async function creditDeposit({ wallet, txHash, amount }) {
 
   await saveDeposit({ wallet: w, txHash, amount, token: "SOL" });
 
-  // Deposit -> owner ke run_balance me credit (custodial address se primary wallet map)
+  // Deposit -> owner ke run_balance me credit
   const ownerRows = await sql`
     select wallet from profiles where wallet = ${w} or wallet_address = ${w} limit 1
   `;
   const primary = String(ownerRows?.[0]?.wallet || w).trim();
   if (primary) {
     await increaseRun(primary, amount);
+    await writeAudit("DEPOSIT", primary, amount, { meta: { txHash, custodial: w } });
   }
 
   return true;
@@ -903,6 +909,21 @@ encrypted_mnemonic text
       updated_at timestamptz not null default now()
     )`;
 
+  // Immutable audit log — kabhi delete na ho, sirf insert
+  await sql`
+    create table if not exists audit_logs (
+      id text primary key,
+      event_type text not null,
+      wallet text not null,
+      amount numeric default 0,
+      coin_id text,
+      meta jsonb default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )`;
+
+  await sql`create index if not exists audit_logs_wallet_idx on audit_logs (wallet, created_at desc)`;
+  await sql`create index if not exists audit_logs_type_idx on audit_logs (event_type, created_at desc)`;
+
   await sql`
     create table if not exists candles (
       coin_id text not null,
@@ -927,6 +948,31 @@ encrypted_mnemonic text
   await sql`create index if not exists holdings_coin_id_idx on holdings (coin_id)`;
   await sql`create index if not exists candles_coin_tf_bucket_idx on candles (coin_id, timeframe, bucket_time desc)`;
   await sql`create index if not exists profiles_wallet_address_idx on profiles (wallet_address)`;
+
+  // Unique constraints (idempotent)
+  await sql`create unique index if not exists profiles_referral_code_unique on profiles (referral_code) where referral_code is not null and referral_code != ''`;
+  await sql`create unique index if not exists coins_mint_address_unique on coins (mint_address) where mint_address is not null and mint_address != ''`;
+}
+
+// -------------------- AUDIT LOG --------------------
+async function writeAudit(eventType, wallet, amount = 0, opts = {}) {
+  try {
+    await sql`
+      insert into audit_logs (id, event_type, wallet, amount, coin_id, meta, created_at)
+      values (
+        ${crypto.randomUUID()},
+        ${String(eventType)},
+        ${String(wallet || "")},
+        ${Math.max(0, safeNum(amount, 0))},
+        ${String(opts.coinId || "") || null},
+        ${JSON.stringify(opts.meta || {})},
+        now()
+      )
+    `;
+  } catch (e) {
+    // Audit log failure kabhi main flow block na kare
+    console.log("audit_log write error:", e?.message || e);
+  }
 }
 
 function profileToDbRow(profile = {}) {
@@ -1703,6 +1749,54 @@ app.get("/health", async (req, res) => {
   }
 });
 
+// -------------------- ADMIN MONITORING --------------------
+// ADMIN_SECRET env var set karo — bina secret ke access nahi milega
+app.get("/admin/stats", async (req, res) => {
+  try {
+    const secret = String(req.headers["x-admin-secret"] || req.query.secret || "").trim();
+    const expected = String(process.env.ADMIN_SECRET || "").trim();
+    if (!expected || secret !== expected) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+
+    await requireDb();
+
+    const [
+      usersRow, coinsRow, depositsRow, withdrawalsRow,
+      failedRow, totalMcRow, recentAuditRows, treasuryRow
+    ] = await Promise.all([
+      sql`select count(*)::int as count from profiles`,
+      sql`select count(*)::int as count from coins`,
+      sql`select coalesce(sum(amount),0)::numeric as total from deposits`,
+      sql`select coalesce(sum(amount),0)::numeric as total from withdrawals where status='confirmed'`,
+      sql`select count(*)::int as count from audit_logs where event_type like '%FAILED%'`,
+      sql`select coalesce(sum(market_cap),0)::numeric as total from coins`,
+      sql`select event_type, wallet, amount, created_at from audit_logs order by created_at desc limit 20`,
+      connection.getBalance(treasury.publicKey).then(l => l / 1e9).catch(() => 0),
+    ]);
+
+    const totalDeposits    = safeNum(depositsRow?.[0]?.total, 0);
+    const totalWithdrawals = safeNum(withdrawalsRow?.[0]?.total, 0);
+    const totalUserFunds   = totalDeposits - totalWithdrawals;
+
+    return res.json({
+      ok: true,
+      ts: new Date().toISOString(),
+      treasury: { balanceSol: treasuryRow, minReserveSol: TREASURY_MIN_RESERVE_SOL },
+      users: safeNum(usersRow?.[0]?.count, 0),
+      coins: safeNum(coinsRow?.[0]?.count, 0),
+      totalMarketCapUsd: safeNum(totalMcRow?.[0]?.total, 0),
+      funds: { totalDeposits, totalWithdrawals, totalUserFunds },
+      failedTransactions: safeNum(failedRow?.[0]?.count, 0),
+      recentAudit: recentAuditRows || [],
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || "stats failed" });
+  }
+});
+
+
+
 app.get("/balance/:wallet", async (req, res) => {
   try {
     const wallet = String(req.params.wallet || "").trim();
@@ -1750,7 +1844,7 @@ app.post("/debug/deposit", async (req, res) => {
 }
 });
 
-app.post("/withdraw", async (req, res) => {
+app.post("/withdraw", withdrawLimiter, async (req, res) => {
 
   try {
     const wallet = String(req.body?.wallet || "").trim();
@@ -1786,6 +1880,16 @@ app.post("/withdraw", async (req, res) => {
     // WITHDRAW: run_balance se cut, phir treasury se on-chain send
     await getProfile(wallet, true);
 
+    // Treasury reserve check — minimum balance ensure karo
+    const treasuryLamports = await connection.getBalance(treasury.publicKey);
+    const treasurySol = treasuryLamports / 1_000_000_000;
+    if (treasurySol - amount < TREASURY_MIN_RESERVE_SOL) {
+      return res.status(503).json({
+        ok: false,
+        error: `Treasury reserve insufficient. Please try a smaller amount or try later.`,
+      });
+    }
+
     // Pehle balance reserve karo (kam ho to yahin ruk jayega, SOL nahi jayega)
     const nextBalance = await decreaseRun(wallet, amount);
 
@@ -1801,16 +1905,12 @@ app.post("/withdraw", async (req, res) => {
       signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
     } catch (sendErr) {
       await increaseRun(wallet, amount);
+      await writeAudit("WITHDRAW_FAILED", wallet, amount, { meta: { error: sendErr?.message, destination } });
       throw sendErr;
     }
 
-    await saveWithdrawal({
-      wallet,
-      destination,
-      amount,
-      txHash: signature,
-      status: "confirmed",
-    });
+    await saveWithdrawal({ wallet, destination, amount, txHash: signature, status: "confirmed" });
+    await writeAudit("WITHDRAW", wallet, amount, { meta: { destination, txHash: signature } });
 
     return res.json({ ok: true, balance: nextBalance, txHash: signature });
   } catch (e) {
@@ -2174,7 +2274,7 @@ app.get("/coin/:id/candles", async (req, res) => {
   }
 });
 
-app.post("/coin/create", async (req, res) => {
+app.post("/coin/create", createLimiter, async (req, res) => {
   try {
     await requireDb();
 
@@ -2299,14 +2399,19 @@ app.post("/coin/create", async (req, res) => {
       coin = result.coin;
     }
 
+    await writeAudit("COIN_CREATE", creatorWallet, initialSol, {
+      coinId: coin?.id,
+      meta: { name: coin?.name, symbol: coin?.symbol, initialSol },
+    });
+
     return res.json({
-  ok: true,
-  coin,
-  imageUri,
-  metadataUri,
-  mintAddress,
-  mintSignature,
-});
+      ok: true,
+      coin,
+      imageUri,
+      metadataUri,
+      mintAddress,
+      mintSignature,
+    });
 
   } catch (e) {
     console.log("coin/create error:", e?.message || e);
@@ -2460,6 +2565,10 @@ async function doTrade(req, res, side) {
       const sideEffects = await Promise.allSettled([
         distributeFeeDirect(sideCoin, wallet, tradeFeeSol),
         insertTransaction(txPayload),
+        writeAudit(sideLower === "buy" ? "BUY" : "SELL", wallet,
+          sideLower === "buy" ? sol : safeNum(tradeResult.solOutNet, 0),
+          { coinId: coin.id, meta: { fee: tradeFeeSol, tokens: txPayload.tokens } }
+        ),
       ]);
       const failed = sideEffects.find((x) => x.status === "rejected");
       if (failed) console.log("trade side-effect error:", failed.reason?.message || failed.reason);
@@ -2487,47 +2596,58 @@ async function doTrade(req, res, side) {
   }
 }
 
-app.post("/coin/buy", (req, res) => doTrade(req, res, "buy"));
-app.post("/coin/sell", (req, res) => doTrade(req, res, "sell"));
+app.post("/coin/buy",  tradeLimiter,    (req, res) => doTrade(req, res, "buy"));
+app.post("/coin/sell", tradeLimiter,    (req, res) => doTrade(req, res, "sell"));
 
-app.post("/claim", async (req, res) => {
+app.post("/claim", claimLimiter, async (req, res) => {
   try {
     await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
     const kind = String(req.body?.kind || "").trim().toUpperCase();
 
-    const profile = await getProfile(wallet, true);
-    if (!profile) {
-      return res.status(400).json({ error: "Invalid wallet" });
+    if (!wallet) return res.status(400).json({ error: "wallet required" });
+
+    const col =
+      kind === "CREATOR" ? "creator_rewards" :
+      kind === "REF"     ? "referral_rewards" :
+      kind === "OWNER"   ? "owner_rewards" : null;
+
+    if (!col) return res.status(400).json({ error: "Unsupported kind" });
+
+    // ATOMIC: ek hi DB transaction mein rewards zero karo + run_balance badhao
+    // Double-claim impossible — FOR UPDATE lock lagta hai
+    const result = await sql.begin(async (tx) => {
+      const rows = await tx`
+        select ${tx(col)}, run_balance
+        from profiles
+        where wallet = ${wallet}
+        for update
+      `;
+      if (!rows?.[0]) throw new Error("Profile not found");
+
+      const amount = Math.max(0, safeNum(rows[0][col], 0));
+      if (amount <= 0) return { amount: 0 };
+
+      await tx`
+        update profiles
+        set
+          ${tx(col)} = 0,
+          run_balance = run_balance + ${amount},
+          updated_at = now()
+        where wallet = ${wallet}
+      `;
+      return { amount };
+    });
+
+    if (result.amount > 0) {
+      await writeAudit(`CLAIM_${kind}`, wallet, result.amount);
     }
 
-    let amount = 0;
-
-    if (kind === "CREATOR") {
-      amount = Math.max(0, safeNum(profile.creator_rewards, 0));
-      if (amount <= 0) return res.json({ ok: true, amount: 0 });
-      await patchProfile(wallet, { creator_rewards: 0 });
-    } else if (kind === "REF") {
-      amount = Math.max(0, safeNum(profile.referral_rewards, 0));
-      if (amount <= 0) return res.json({ ok: true, amount: 0 });
-      await patchProfile(wallet, { referral_rewards: 0 });
-    } else if (kind === "OWNER") {
-      amount = Math.max(0, safeNum(profile.owner_rewards, 0));
-      if (amount <= 0) return res.json({ ok: true, amount: 0 });
-      await patchProfile(wallet, { owner_rewards: 0 });
-    } else {
-      return res.status(400).json({ error: "Unsupported kind" });
-    }
-
-    // CLAIM: reward seedha run_balance me
-    if (amount > 0) {
-      await increaseRun(wallet, amount);
-    }
-
-    return res.json({ ok: true, amount });
+    return res.json({ ok: true, amount: result.amount });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.log("claim error:", e?.message || e);
+    res.status(500).json({ error: e?.message || "Claim failed" });
   }
 });
 
@@ -2537,6 +2657,12 @@ app.post("/claim", async (req, res) => {
 // Niche ek basic match diya hai (Privy userId == profile ka linked id). Ise apne
 // Privy setup ke mutabiq adjust karna; bina match ke kabhi mnemonic mat do.
 const mnemonicLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+
+// Financial endpoint rate limiters (per IP)
+const tradeLimiter    = rateLimit({ windowMs: 60_000, max: 60,  message: { ok: false, error: "Too many requests" } });
+const withdrawLimiter = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many withdrawal requests" } });
+const claimLimiter    = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many claim requests" } });
+const createLimiter   = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many create requests" } });
 
 app.post("/wallet/reveal-mnemonic", mnemonicLimiter, async (req, res) => {
   try {
@@ -2732,7 +2858,12 @@ setInterval(async () => {
       const wallet = String(row?.wallet_address || "").trim();
       if (!wallet) continue;
 
-      await scanWalletDeposits(wallet);
+      // Har wallet ko isolate karo — ek ka fail doosre ko block na kare
+      try {
+        await scanWalletDeposits(wallet);
+      } catch (walletErr) {
+        console.log(`deposit scanner wallet error ${wallet}:`, walletErr?.message || walletErr);
+      }
     }
   } catch (e) {
     console.log("deposit scanner error:", e?.message || e);

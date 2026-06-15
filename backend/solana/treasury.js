@@ -1,11 +1,22 @@
 import { Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const treasury = Keypair.fromSecretKey(
-  bs58.decode(process.env.TREASURY_PRIVATE_KEY)
-);
+const keyString = process.env.TREASURY_PRIVATE_KEY || "";
+
+let treasury;
+
+if (keyString.startsWith("[")) {
+  // Array format
+  treasury = Keypair.fromSecretKey(
+    Uint8Array.from(JSON.parse(keyString))
+  );
+} else {
+  // Base64 format
+  treasury = Keypair.fromSecretKey(
+    Buffer.from(keyString, "base64")
+  );
+}
 
 export default treasury;
