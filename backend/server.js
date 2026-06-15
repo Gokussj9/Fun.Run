@@ -1800,7 +1800,6 @@ app.get("/balance/:wallet", async (req, res) => {
 
 
 app.post("/withdraw", withdrawLimiter, async (req, res) => {
-
   try {
     const wallet = String(req.body?.wallet || "").trim();
     const destination = String(req.body?.destination || "").trim();
@@ -1811,7 +1810,7 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "wallet required" });
     }
 
-    // Reward-based withdrawal (no on-chain transfer)
+    // Reward-based withdrawal
     if (kind === "REF" || kind === "REFERRAL" || kind === "CREATOR" || kind === "OWNER") {
       return handleRewardWithdraw(req, res, kind);
     }
@@ -1832,42 +1831,71 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid destination address" });
     }
 
-    // WITHDRAW: run_balance se cut, phir treasury se on-chain send
-    await getProfile(wallet, true);
+    // Profile aur custodial wallet lo
+    const profile = await getProfile(wallet, true);
+    const custodialAddress = String(profile?.wallet_address || "").trim();
 
-    // Treasury reserve check — minimum balance ensure karo
-    const treasuryLamports = await connection.getBalance(treasury.publicKey);
-    const treasurySol = treasuryLamports / 1_000_000_000;
-    if (treasurySol - amount < TREASURY_MIN_RESERVE_SOL) {
-      return res.status(503).json({
-        ok: false,
-        error: `Treasury reserve insufficient. Please try a smaller amount or try later.`,
+    if (!custodialAddress) {
+      return res.status(400).json({ ok: false, error: "custodial wallet not found" });
+    }
+
+    // Sol balance check
+    const solBal = Math.max(0, safeNum(profile?.sol_balance, 0));
+    if (amount > solBal) {
+      return res.status(400).json({ ok: false, error: "Insufficient balance" });
+    }
+
+    // Custodial wallet ka keypair lo
+    const encryptedMnemonic = String(profile?.encrypted_mnemonic || "").trim();
+    if (!encryptedMnemonic) {
+      return res.status(400).json({ ok: false, error: "custodial wallet not configured" });
+    }
+
+    // Custodial wallet mein actual SOL check karo
+    const custodialPub = new PublicKey(custodialAddress);
+    const custodialLamports = await connection.getBalance(custodialPub);
+    const custodialSol = custodialLamports / 1_000_000_000;
+
+    // Network fee ke liye buffer
+    const FEE_BUFFER = 0.001;
+    if (custodialSol < amount + FEE_BUFFER) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: `Insufficient on-chain balance. Available: ${custodialSol.toFixed(4)} SOL` 
       });
     }
 
-    // Pehle balance reserve karo (kam ho to yahin ruk jayega, SOL nahi jayega)
-    const nextBalance = await decreaseRun(wallet, amount);
+    // Balance pehle cut karo
+    await decreaseRun(wallet, amount);
 
     let signature;
     try {
+      const custodialKeypair = await getCustodialKeypairFromMnemonic(encryptedMnemonic);
+
       const tx = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: treasury.publicKey,
+          fromPubkey: custodialKeypair.publicKey,
           toPubkey: destPub,
           lamports: Math.floor(amount * 1_000_000_000),
         })
       );
-      signature = await sendAndConfirmTransaction(connection, tx, [treasury]);
+
+      signature = await sendAndConfirmTransaction(connection, tx, [custodialKeypair]);
     } catch (sendErr) {
+      // Fail hone par balance wapas karo
       await increaseRun(wallet, amount);
-      await writeAudit("WITHDRAW_FAILED", wallet, amount, { meta: { error: sendErr?.message, destination } });
+      await writeAudit("WITHDRAW_FAILED", wallet, amount, { 
+        meta: { error: sendErr?.message, destination } 
+      });
       throw sendErr;
     }
 
     await saveWithdrawal({ wallet, destination, amount, txHash: signature, status: "confirmed" });
     await writeAudit("WITHDRAW", wallet, amount, { meta: { destination, txHash: signature } });
 
-    return res.json({ ok: true, balance: nextBalance, txHash: signature });
+    const newBalance = Math.max(0, safeNum(profile?.sol_balance, 0) - amount);
+    return res.json({ ok: true, balance: newBalance, txHash: signature });
+
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
