@@ -701,9 +701,9 @@ function ensureProfileShape(row = {}, wallet = "") {
   const custodialWallet = String(row.wallet_address || row.connectedWallet || "").trim();
 
   return {
-    wallet: custodialWallet || wallet,
-custodialWallet,
-depositAddress: custodialWallet,
+    wallet: primaryWallet,
+    custodialWallet,
+    depositAddress: custodialWallet,
     encrypted_mnemonic: String(row.encrypted_mnemonic || "").trim(),
     referrer: String(row.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
