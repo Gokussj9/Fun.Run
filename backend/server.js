@@ -701,9 +701,9 @@ function ensureProfileShape(row = {}, wallet = "") {
   const custodialWallet = String(row.wallet_address || row.connectedWallet || "").trim();
 
   return {
-    wallet: primaryWallet,
-    wallet_address: custodialWallet,
-    connectedWallet: custodialWallet,
+    wallet: custodialWallet || wallet,
+custodialWallet,
+depositAddress: custodialWallet,
     encrypted_mnemonic: String(row.encrypted_mnemonic || "").trim(),
     referrer: String(row.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
@@ -2822,20 +2822,20 @@ process.on("SIGTERM", async () => {
 });
 
 // -------------------- DEPOSIT SCANNER --------------------
+// -------------------- DEPOSIT SCANNER --------------------
 setInterval(async () => {
   try {
     const rows = await sql`
       select wallet_address from profiles
-      where wallet_address is not null
-        and wallet_address != ''
-      limit 100
+where wallet_address is not null
+  and wallet_address != ''
+limit 100
     `;
 
     for (const row of rows || []) {
       const wallet = String(row?.wallet_address || "").trim();
       if (!wallet) continue;
 
-      // Har wallet ko isolate karo — ek ka fail doosre ko block na kare
       try {
         await scanWalletDeposits(wallet);
       } catch (walletErr) {
