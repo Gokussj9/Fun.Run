@@ -3541,7 +3541,7 @@ const walletHistory = [
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
-  const portfolioWalletUsd = Number(profile?.sol ?? 0) * 80;
+  const portfolioWalletUsd = Number(walletSolBalance ?? 0) * 80;
 
   const portfolioHoldingsUsd = profileHoldings.reduce((sum, h) => {
   const coin =
