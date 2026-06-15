@@ -5043,7 +5043,7 @@ borderRadius: "50%",
           "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
         animation: "flipRunCoin 10s ease-in-out infinite",
         willChange: "transform",
-        transformStyle: "preserve-3d",
+        transformStyle: "flat",
       }}
     >
       <span style={{ position: "absolute", backfaceVisibility: "hidden" }}>
