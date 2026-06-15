@@ -394,20 +394,26 @@ async function decreaseRun(wallet, amount) {
 
   return await sql.begin(async (tx) => {
     const rows = await tx`
-      select run_balance from profiles where wallet = ${w} for update
+      select run_balance, sol_balance from profiles where wallet = ${w} for update
     `;
-    const current = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
-    const next = current - amt;
+    const currentRun = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
+    const currentSol = Math.max(0, safeNum(rows?.[0]?.sol_balance, 0));
+    const nextRun = currentRun - amt;
+    const nextSol = currentSol - amt;
 
-    if (next < 0) {
+    if (nextSol < 0) {
       throw new Error("Insufficient balance");
     }
 
     await tx`
-      update profiles set run_balance = ${next}, updated_at = now() where wallet = ${w}
+      update profiles set 
+        run_balance = ${nextRun}, 
+        sol_balance = ${nextSol},
+        updated_at = now() 
+      where wallet = ${w}
     `;
 
-    return next;
+    return nextRun;
   });
 }
 
@@ -417,16 +423,22 @@ async function increaseRun(wallet, amount) {
 
   return await sql.begin(async (tx) => {
     const rows = await tx`
-      select run_balance from profiles where wallet = ${w} for update
+      select run_balance, sol_balance from profiles where wallet = ${w} for update
     `;
-    const current = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
-    const next = current + amt;
+    const currentRun = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
+    const currentSol = Math.max(0, safeNum(rows?.[0]?.sol_balance, 0));
+    const nextRun = currentRun + amt;
+    const nextSol = currentSol + amt;
 
     await tx`
-      update profiles set run_balance = ${next}, updated_at = now() where wallet = ${w}
+      update profiles set 
+        run_balance = ${nextRun}, 
+        sol_balance = ${nextSol},
+        updated_at = now() 
+      where wallet = ${w}
     `;
 
-    return next;
+    return nextRun;
   });
 }
 
@@ -685,63 +697,24 @@ function coinToDbUpdate(coin = {}) {
 }
 
 function ensureProfileShape(row = {}, wallet = "") {
-  const primaryWallet = String(
-    row.wallet ||
-    wallet ||
-    ""
-  ).trim();
-
-  const custodialWallet = String(
-    row.wallet_address ||
-    row.connectedWallet ||
-    ""
-  ).trim();
+  const primaryWallet = String(row.wallet || wallet || "").trim();
+  const custodialWallet = String(row.wallet_address || row.connectedWallet || "").trim();
 
   return {
     wallet: primaryWallet,
     wallet_address: custodialWallet,
     connectedWallet: custodialWallet,
-
-    encrypted_mnemonic: String(
-      row.encrypted_mnemonic || ""
-    ).trim(),
-
+    encrypted_mnemonic: String(row.encrypted_mnemonic || "").trim(),
     referrer: String(row.referrer || "").trim(),
-
-    referral_rewards: Math.max(
-      0,
-      safeNum(row.referral_rewards, 0)
-    ),
-
-    run_balance: Math.max(
-  0,
-  safeNum(row.run_balance, 0)
-),
-
-    creator_rewards: Math.max(
-      0,
-      safeNum(row.creator_rewards, 0)
-    ),
-
-    owner_rewards: Math.max(
-      0,
-      safeNum(row.owner_rewards, 0)
-    ),
-
-    referral_code: String(
-      row.referral_code || primaryWallet.slice(0, 6)
-    ),
-
-    referral_count: Math.max(
-      0,
-      safeNum(row.referral_count, 0)
-    ),
-
-    created_at:
-      row.created_at || new Date().toISOString(),
-
-    updated_at:
-      row.updated_at || new Date().toISOString(),
+    referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
+    run_balance: Math.max(0, safeNum(row.run_balance, 0)),
+    sol_balance: Math.max(0, safeNum(row.sol_balance, 0)),
+    creator_rewards: Math.max(0, safeNum(row.creator_rewards, 0)),
+    owner_rewards: Math.max(0, safeNum(row.owner_rewards, 0)),
+    referral_code: String(row.referral_code || primaryWallet.slice(0, 6)),
+    referral_count: Math.max(0, safeNum(row.referral_count, 0)),
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString(),
   };
 }
 
@@ -987,6 +960,7 @@ function profileToDbRow(profile = {}) {
     referrer: String(profile.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(profile.referral_rewards, 0)),
     run_balance: Math.max(0, safeNum(profile.run_balance, 0)),
+    sol_balance: Math.max(0, safeNum(profile.sol_balance, 0)),
     creator_rewards: Math.max(0, safeNum(profile.creator_rewards, 0)),
     owner_rewards: Math.max(0, safeNum(profile.owner_rewards, 0)),
     referral_code: String(profile.referral_code || ""),
@@ -2773,6 +2747,7 @@ app.get("/profile/:wallet", async (req, res) => {
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
+        solBalance: Math.max(0, safeNum(p?.sol_balance, 0)),
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
         referralCount,

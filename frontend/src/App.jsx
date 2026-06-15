@@ -3541,7 +3541,7 @@ const walletHistory = [
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
-  const portfolioWalletUsd = Number(walletSolBalance ?? 0) * 80;
+  const portfolioWalletUsd = Number(profile?.solBalance ?? walletSolBalance ?? 0) * 80;
 
   const portfolioHoldingsUsd = profileHoldings.reduce((sum, h) => {
   const coin =
@@ -4814,10 +4814,10 @@ const walletHistory = [
 
 
                   <div className="statLabel">Main Wallet</div>
-                  <div className="statValue">{fmtSol(profile?.runBalance ?? walletSolBalance)} SOL</div>
-                  <div className="miniMuted" style={{ marginTop: 6 }}>
-                    {toUsdFromSol(profile?.runBalance ?? walletSolBalance)}
-                  </div>
+                  <div className="statValue">{fmtSol(profile?.solBalance ?? walletSolBalance)} SOL</div>
+<div className="miniMuted" style={{ marginTop: 6 }}>
+  {toUsdFromSol(profile?.solBalance ?? walletSolBalance)}
+</div>
 
                   <div
                     style={{
