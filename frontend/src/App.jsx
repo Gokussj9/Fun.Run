@@ -2577,49 +2577,55 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
     } catch {}
   }
 
-  useEffect(() => {
-    const ws = new WebSocket(WS_BASE);
+ useEffect(() => {
+    let ws;
+    let reconnectTimer;
 
-    wsRef.current = ws;
+    function connect() {
+      ws = new WebSocket(WS_BASE);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.event === "coin:update") {
-          const updated = normalizeCoin(msg.payload);
-
-          setCoins((prev) =>
-            prev.map((c) => {
-              if (c.id !== updated.id) return c;
-
-              return {
-                ...c,
-                ...updated,
-                holders:
-                  updated.holders &&
-                  Object.keys(updated.holders).length
-                    ? {
-                        ...c.holders,
-                        ...updated.holders,
-                      }
-                    : c.holders || {},
-              };
-            })
-          );
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.event === "coin:update") {
+            const updated = normalizeCoin(msg.payload);
+            setCoins((prev) =>
+              prev.map((c) => {
+                if (c.id !== updated.id) return c;
+                return {
+                  ...c,
+                  ...updated,
+                  holders:
+                    updated.holders && Object.keys(updated.holders).length
+                      ? { ...c.holders, ...updated.holders }
+                      : c.holders || {},
+                };
+              })
+            );
+          }
+          if (msg.event === "trade:new") {
+            setRecentTrades((prev) => [msg.payload, ...prev.slice(0, 24)]);
+          }
+        } catch (err) {
+          console.error(err);
         }
-        if (msg.event === "trade:new") {
-          setRecentTrades((prev) => [
-            msg.payload,
-            ...prev.slice(0, 24),
-          ]);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      };
+
+      ws.onclose = () => {
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
 
     return () => {
-      ws.close();
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
     };
   }, []);
 
@@ -5649,18 +5655,7 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
 
                 <div style={{ display: "grid", gap: 10 }}>
 
-                  {/* Backup Recovery Phrase */}
-                  {authenticated && solAddr && (
-                    <MiniBtn
-                      onClick={async () => {
-                        setSettingsOpen(false);
-                        await handleRevealPhrase();
-                      }}
-                      disabled={phraseLoading}
-                    >
-                      {phraseLoading ? "Loading..." : "Backup Recovery Phrase"}
-                    </MiniBtn>
-                  )}
+                 
 
                   {!authenticated ? (
                     <MiniBtn
