@@ -127,6 +127,12 @@ app.use(cors({
 app.options("*", cors());
 app.use(compression());
 
+const mnemonicLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+const tradeLimiter    = rateLimit({ windowMs: 60_000, max: 60,  message: { ok: false, error: "Too many requests" } });
+const withdrawLimiter = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many withdrawal requests" } });
+const claimLimiter    = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many claim requests" } });
+const createLimiter   = rateLimit({ windowMs: 60_000, max: 10,  message: { ok: false, error: "Too many create requests" } });
+
 app.use(
   rateLimit({
     windowMs: 60_000,
