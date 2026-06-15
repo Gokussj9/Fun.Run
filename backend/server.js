@@ -2769,9 +2769,9 @@ app.get("/profile/:wallet", async (req, res) => {
     return res.json({
       ok: true,
       profile: {
-        wallet: custodialWallet || wallet,
-        custodialWallet,
-        depositAddress: custodialWallet,
+       wallet: wallet,
+custodialWallet: wallet,
+depositAddress: wallet,
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
