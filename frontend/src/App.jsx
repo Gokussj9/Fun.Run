@@ -2562,6 +2562,7 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
   const [tradeAmount, setTradeAmount] = useState("");
   const [trading, setTrading] = useState(false);
   const [dexModalOpen, setDexModalOpen] = useState(false);
+  const [showFullStory, setShowFullStory] = useState(false);
 
   const coinsLoadMoreRef = useRef(null);
   const didBootRef = useRef(false);
@@ -4391,7 +4392,21 @@ const walletHistory = [
                       background: "rgba(255,255,255,.03)",
                       border: "1px solid rgba(255,255,255,.06)",
                     }}>
-                      {selectedCoin.story}
+                      {showFullStory ? selectedCoin.story : selectedCoin.story.slice(0, 120) + (selectedCoin.story.length > 120 ? "..." : "")}
+
+{selectedCoin.story.length > 120 && (
+  <button
+    onClick={() => setShowFullStory(!showFullStory)}
+    style={{ color: "var(--primary)", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900, marginTop: 6 }}
+  >
+    {showFullStory ? "Less" : "Read More"}
+  </button>
+)}
+
+
+
+
+
                     </div>
                   </Card>
                 ) : null}
@@ -5466,7 +5481,7 @@ const pnlUsd = holdingUsd - ((totalBuySol - totalSellSol) * 80);
                         
                         secondary={`${fmtNum(amt, 0)} tokens`}
                         rightMain={fmtUsd(holdingUsd)}
-                        rightSub={`${allocationPct.toFixed(1)}% • ${pnlUsd >= 0 ? "+" : ""}${fmtUsd(pnlUsd)}`}
+                        rightSub={null}
                         onClick={coin ? () => openCoin(coin) : undefined}
                       />
                     );
