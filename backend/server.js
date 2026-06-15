@@ -2770,8 +2770,8 @@ app.get("/profile/:wallet", async (req, res) => {
       ok: true,
       profile: {
        wallet: wallet,
-custodialWallet: wallet,
-depositAddress: wallet,
+custodialWallet: p?.wallet_address || "",
+depositAddress: p?.wallet_address || "",
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
