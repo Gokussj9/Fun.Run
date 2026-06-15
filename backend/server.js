@@ -1823,32 +1823,7 @@ app.get("/balance/:wallet", async (req, res) => {
   }
 });
 
-app.post("/debug/deposit", async (req, res) => {
-  if (process.env.ALLOW_DEBUG !== "1") {
-    return res.status(403).json({ ok: false, error: "disabled" });
-  }
-  try {
-    const wallet = String(req.body?.wallet || "").trim();
 
-
-    const amount = Math.max(0, safeNum(req.body?.amount, 0));
-    const txHash = String(req.body?.txHash || crypto.randomUUID()).trim();
-
-    if (!wallet) {
-      return res.status(400).json({ ok: false, error: "wallet required" });
-    }
-
-    await creditDeposit({ wallet, txHash, amount });
-    const balance = await getRunBalanceFlexible(wallet);
-
-    return res.json({ ok: true, wallet, balance });
- } catch (e) {
-  return res.status(500).json({
-    ok: false,
-    error: e?.message || String(e),
-  });
-}
-});
 
 app.post("/withdraw", withdrawLimiter, async (req, res) => {
 
