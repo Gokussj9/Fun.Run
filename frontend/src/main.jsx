@@ -4,7 +4,6 @@ import App from "./App.jsx";
 import "./index.css";
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { SolanaProvider } from "@privy-io/react-auth/solana";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -15,20 +14,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
         },
-        externalWallets: {
-          solana: {
-            connectors: [],
-          },
-        },
         appearance: {
           theme: "dark",
           showWalletLoginFirst: false,
         },
       }}
     >
-      <SolanaProvider>
-        <App />
-      </SolanaProvider>
+      <App />
     </PrivyProvider>
   </React.StrictMode>
 );

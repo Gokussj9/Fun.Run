@@ -3018,8 +3018,8 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
       neon:  dark({ bg: "#0B0A18", primary: "#C084FC", secondary: "#22D3EE", accent: "#F472B6", danger: "#FF4D6D", glow: "rgba(192,132,252,.26)" }),
       rose:  dark({ bg: "#160A12", primary: "#FF8FB1", secondary: "#FDB7EA", accent: "#F472B6", danger: "#FF6B8A", glow: "rgba(255,143,177,.22)" }),
       // ---------- LIGHT ----------
-      light: light({ bg: "#F4F7FB", primary: "#0EA5A3", secondary: "#2563EB", accent: "#7C3AED", danger: "#E11D48", glow: "rgba(14,165,163,.14)" }),
-      paper: light({ bg: "#F6F1E7", primary: "#C2410C", secondary: "#0D9488", accent: "#7C3AED", danger: "#DC2626", glow: "rgba(194,65,12,.12)" }),
+     light: light({ bg: "#E8EDF2", primary: "#0EA5A3", secondary: "#2563EB", accent: "#7C3AED", danger: "#E11D48", glow: "rgba(14,165,163,.14)" }),
+paper: light({ bg: "#EDE8DC", primary: "#C2410C", secondary: "#0D9488", accent: "#7C3AED", danger: "#DC2626", glow: "rgba(194,65,12,.12)" }),
     };
 
     const t = themes[theme] || themes.calm;
