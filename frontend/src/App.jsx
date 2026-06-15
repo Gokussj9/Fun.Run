@@ -3541,7 +3541,7 @@ const walletHistory = [
 
   const toUsdFromSol = (sol) => fmtUsd(Number(sol || 0) * 80);
 
-  const portfolioWalletUsd = Number(profile?.runBalance ?? walletSolBalance ?? 0) * 80;
+  const portfolioWalletUsd = Number(profile?.sol ?? 0) * 80;
 
   const portfolioHoldingsUsd = profileHoldings.reduce((sum, h) => {
   const coin =
@@ -5023,9 +5023,9 @@ const walletHistory = [
 
     <div
       style={{
-        width: 85,
-        height: 85,
-        borderRadius: "50%",
+        width: 70,
+height: 70,
+borderRadius: "50%",
         background:
           "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
         border: "5px solid rgba(255,255,255,.28)",
