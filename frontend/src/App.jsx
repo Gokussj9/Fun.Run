@@ -829,6 +829,11 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
+      @keyframes spinRunCoin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+
       .ghostBtn{
         border:none;
         cursor:pointer;
@@ -5023,8 +5028,8 @@ profile?.wallet_address ||
 
     <div
       style={{
-        width: 70,
-height: 70,
+width: 56,
+height: 56,
 borderRadius: "50%",
         background:
           "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
@@ -5041,7 +5046,7 @@ borderRadius: "50%",
         textShadow: "0 1px 2px rgba(255,255,255,.35)",
         boxShadow:
           "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
-        animation: "flipRunCoin 10s ease-in-out infinite",
+        animation: "spinRunCoin 4s linear infinite",
         willChange: "transform",
         transformStyle: "flat",
       }}
