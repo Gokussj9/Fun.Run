@@ -1003,7 +1003,7 @@ async function getProfile(wallet, createIfMissing = true) {
       }
     }
 
-    console.log("DEBUG wallet_address:", profile.wallet_address);
+    
 
     return ensureProfileShape(profile, w);
   }
@@ -2700,7 +2700,7 @@ app.get("/profile/:wallet", async (req, res) => {
     const p = await getProfile(wallet, true);
     const profileRow = await sql`select wallet_address from profiles where wallet = ${String(wallet)} limit 1`;
 const debugAddr = profileRow?.[0]?.wallet_address;
-console.log("CUSTODIAL ADDR:", debugAddr);
+
 const custodialWallet = String(profileRow?.[0]?.wallet_address || "").trim();
 
 
