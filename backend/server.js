@@ -1861,7 +1861,7 @@ const solBal = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
     }
 
     // Sol balance check
-    const solBal = Math.max(0, safeNum(profile?.sol_balance, 0));
+    
     if (amount > solBal) {
       return res.status(400).json({ ok: false, error: "Insufficient balance" });
     }
