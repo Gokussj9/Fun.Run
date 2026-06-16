@@ -829,9 +829,12 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
-      @keyframes spinRunCoin {
-  from { transform: rotateY(0deg); }
-  to { transform: rotateY(360deg); }
+     @keyframes spinRunCoin {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.05); }
+  50% { transform: scale(1); }
+  75% { transform: scale(1.05); }
+  100% { transform: scale(1); }
 }
 
       .ghostBtn{
@@ -5046,23 +5049,16 @@ borderRadius: "50%",
         textShadow: "0 1px 2px rgba(255,255,255,.35)",
         boxShadow:
           "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
-        animation: "spinRunCoin 4s linear infinite",
-        willChange: "transform",
-        transformStyle: "flat",
+        animation: "spinRunCoin 8s linear infinite",
+willChange: "transform",
+transformStyle: "flat",
+perspective: "none",
       }}
     >
       <span style={{ position: "absolute", backfaceVisibility: "hidden" }}>
         RUN
       </span>
-      <span
-        style={{
-          position: "absolute",
-          transform: "rotateY(180deg)",
-          backfaceVisibility: "hidden",
-        }}
-      >
-        RUN
-      </span>
+      
     </div>
   
 
