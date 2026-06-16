@@ -829,12 +829,9 @@ body {
         100%{ transform:translateX(58%) rotate(2deg); opacity:0; }
       }
 
-     @keyframes spinRunCoin {
-  0% { transform: scale(1); }
-  25% { transform: scale(1.05); }
-  50% { transform: scale(1); }
-  75% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+    @keyframes pulseRunCoin {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(255,165,0,.5); }
+  50% { transform: scale(1.08); box-shadow: 0 0 30px rgba(255,165,0,.8); }
 }
 
       .ghostBtn{
@@ -5030,36 +5027,27 @@ profile?.wallet_address ||
 
 
     <div
-      style={{
-width: 56,
-height: 56,
-borderRadius: "50%",
-        background:
-          "radial-gradient(circle at 25% 20%, #F5F5F5 0%, #D8D8D8 20%, #B8B8B8 45%, #8F8F8F 75%, #6A6A6A 100%)",
-        border: "5px solid rgba(255,255,255,.28)",
-        outline: "2px solid rgba(255,215,0,.65)",
-        outlineOffset: "-8px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 24,
-        fontWeight: 800,
-        color: "#2B2B2B",
-        letterSpacing: 1,
-        textShadow: "0 1px 2px rgba(255,255,255,.35)",
-        boxShadow:
-          "0 0 6px rgba(255,255,255,.08), inset 0 1px 3px rgba(255,255,255,.12), inset 0 -2px 4px rgba(0,0,0,.12)",
-        animation: "spinRunCoin 8s linear infinite",
-willChange: "transform",
-transformStyle: "flat",
-perspective: "none",
-      }}
-    >
-      <span style={{ position: "absolute", backfaceVisibility: "hidden" }}>
-        RUN
-      </span>
-      
-    </div>
+  style={{
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "linear-gradient(145deg, #FFD700 0%, #FFA500 40%, #FF8C00 70%, #DAA520 100%)",
+    border: "3px solid rgba(255,215,0,.6)",
+    boxShadow: "0 0 20px rgba(255,165,0,.5), 0 0 40px rgba(255,165,0,.2), inset 0 2px 4px rgba(255,255,255,.4), inset 0 -2px 4px rgba(0,0,0,.2)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 16,
+    fontWeight: 900,
+    color: "#7B3F00",
+    letterSpacing: 1,
+    textShadow: "0 1px 2px rgba(255,255,255,.4)",
+    animation: "pulseRunCoin 3s ease-in-out infinite",
+    flexShrink: 0,
+  }}
+>
+  RUN
+</div>
   
 
 
