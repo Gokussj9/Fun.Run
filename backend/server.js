@@ -1003,6 +1003,8 @@ async function getProfile(wallet, createIfMissing = true) {
       }
     }
 
+    console.log("DEBUG wallet_address:", profile.wallet_address);
+
     return ensureProfileShape(profile, w);
   }
 
