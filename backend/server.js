@@ -2686,7 +2686,9 @@ app.get("/profile/:wallet", async (req, res) => {
 
     // Step 1: profile (custodial wallet banane ke liye zaroori hai pehle)
     const p = await getProfile(wallet, true);
-    const profileRow = await sql`select wallet_address from profiles where wallet = ${wallet} limit 1`;
+    const profileRow = await sql`select wallet_address from profiles where wallet = ${String(wallet)} limit 1`;
+const debugAddr = profileRow?.[0]?.wallet_address;
+console.log("CUSTODIAL ADDR:", debugAddr);
 const custodialWallet = String(profileRow?.[0]?.wallet_address || "").trim();
 
 
@@ -2777,8 +2779,8 @@ const custodialWallet = String(profileRow?.[0]?.wallet_address || "").trim();
       ok: true,
       profile: {
        wallet: wallet,
-custodialWallet: String(p?.wallet_address || p?.connectedWallet || "").trim(),
-depositAddress: String(p?.wallet_address || p?.connectedWallet || "").trim(),
+custodialWallet: custodialWallet,
+depositAddress: custodialWallet,
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
