@@ -978,7 +978,7 @@ async function getProfile(wallet, createIfMissing = true) {
 
   await requireDb();
 
-  const rows = await sql`select * from profiles where wallet = ${w} limit 1`;
+  const rows = await sql`select wallet, wallet_address, encrypted_mnemonic, referrer, referral_rewards, run_balance, sol_balance, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at from profiles where wallet = ${w} limit 1`;
 
   if (rows[0]) {
     const profile = rows[0];
