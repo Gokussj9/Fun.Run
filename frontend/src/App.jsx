@@ -4945,11 +4945,10 @@ profile?.wallet_address ||
 >
   <div
     style={{
-      display: "flex",
-justifyContent: "space-between",
+     display: "grid",
+gridTemplateColumns: "1fr auto auto",
 alignItems: "center",
-gap: 10,
-flexWrap: "wrap",
+gap: 12,
     }}
   >
     <div>
