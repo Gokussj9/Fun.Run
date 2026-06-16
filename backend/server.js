@@ -1790,11 +1790,25 @@ app.get("/balance/:wallet", async (req, res) => {
       return res.json({ ok: false, error: "wallet required" });
     }
 
-    const profile = await getProfile(wallet, false);
-    const lookupWallet = profile?.wallet_address || wallet;
+    const profileRow = await sql`select wallet_address, sol_balance from profiles where wallet = ${String(wallet)} limit 1`;
+    const custodialAddress = String(profileRow?.[0]?.wallet_address || "").trim();
 
-    // Main Wallet ab run_balance dikhata hai (wahi balance jo buy/sell/withdraw use karte hain)
-    const sol = await getRunBalanceFlexible(wallet || lookupWallet);
+    let sol = 0;
+
+    if (custodialAddress) {
+      try {
+        const pub = new PublicKey(custodialAddress);
+        const lamports = await connection.getBalance(pub);
+        sol = lamports / 1_000_000_000;
+
+        // sol_balance update karo
+        await sql`update profiles set sol_balance = ${sol}, updated_at = now() where wallet = ${String(wallet)}`;
+      } catch {
+        sol = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
+      }
+    } else {
+      sol = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
+    }
 
     return res.json({ ok: true, sol });
   } catch (e) {
