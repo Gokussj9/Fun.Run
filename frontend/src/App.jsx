@@ -4,6 +4,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
 import { createChart, ColorType } from "lightweight-charts";
+const { login, authenticated, user, ready, logout, getAccessToken } = usePrivy();
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
@@ -3712,8 +3713,12 @@ const walletHistory = [
                       return;
                     }
 
-                   const json = await api("/withdraw", {
+     const token = await getAccessToken();
+const json = await api("/withdraw", {
   method: "POST",
+  headers: {
+    "Authorization": `Bearer ${token}`,
+  },
   body: JSON.stringify({
     wallet: profile?.wallet,
     destination: withdrawAddr,

@@ -1819,6 +1819,8 @@ app.get("/balance/:wallet", async (req, res) => {
 
 
 app.post("/withdraw", withdrawLimiter, async (req, res) => {
+  const claims = await requireAuth(req, res);
+  if (!claims) return;
   try {
     const wallet = String(req.body?.wallet || "").trim();
     const destination = String(req.body?.destination || "").trim();
