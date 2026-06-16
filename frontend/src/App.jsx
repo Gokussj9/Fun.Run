@@ -4946,9 +4946,10 @@ profile?.wallet_address ||
   <div
     style={{
       display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: 20,
+justifyContent: "space-between",
+alignItems: "center",
+gap: 10,
+flexWrap: "wrap",
     }}
   >
     <div>
