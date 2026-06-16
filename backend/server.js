@@ -1851,8 +1851,10 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
     }
 
     // Profile aur custodial wallet lo
-    const profile = await getProfile(wallet, true);
-    const custodialAddress = String(profile?.wallet_address || "").trim();
+    const profileRow = await sql`select wallet_address, encrypted_mnemonic, sol_balance from profiles where wallet = ${String(wallet)} limit 1`;
+const custodialAddress = String(profileRow?.[0]?.wallet_address || "").trim();
+const encryptedMnemonic = String(profileRow?.[0]?.encrypted_mnemonic || "").trim();
+const solBal = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
 
     if (!custodialAddress) {
       return res.status(400).json({ ok: false, error: "custodial wallet not found" });
@@ -1864,11 +1866,7 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Insufficient balance" });
     }
 
-    // Custodial wallet ka keypair lo
-    const encryptedMnemonic = String(profile?.encrypted_mnemonic || "").trim();
-    if (!encryptedMnemonic) {
-      return res.status(400).json({ ok: false, error: "custodial wallet not configured" });
-    }
+    
 
     // Custodial wallet mein actual SOL check karo
     const custodialPub = new PublicKey(custodialAddress);
