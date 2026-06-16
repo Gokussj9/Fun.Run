@@ -2687,7 +2687,7 @@ app.get("/profile/:wallet", async (req, res) => {
     // Step 1: profile (custodial wallet banane ke liye zaroori hai pehle)
     const p = await getProfile(wallet, true);
     const custodialWallet = String(p?.wallet_address || "").trim();
-const p = await getProfile(wallet, true);
+
 console.log("DEBUG p =", JSON.stringify(p));
 const custodialWallet = String(p?.wallet_address || "").trim();
     // Step 2: baaki sab queries PARALLEL chalao (8 queries ek saath)
