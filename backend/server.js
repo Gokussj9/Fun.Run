@@ -1910,7 +1910,7 @@ const solBal = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
     await saveWithdrawal({ wallet, destination, amount, txHash: signature, status: "confirmed" });
     await writeAudit("WITHDRAW", wallet, amount, { meta: { destination, txHash: signature } });
 
-    const newBalance = Math.max(0, safeNum(profile?.sol_balance, 0) - amount);
+    const newBalance = Math.max(0, solBal - amount);
     return res.json({ ok: true, balance: newBalance, txHash: signature });
 
   } catch (e) {
