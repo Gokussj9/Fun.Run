@@ -1030,9 +1030,9 @@ async function getProfile(wallet, createIfMissing = true) {
     )
   );
 
-  const inserted = await sql`
+ const inserted = await sql`
     insert into profiles (
-      wallet, referrer, referral_rewards, run_balance, creator_rewards, owner_rewards,
+      wallet, referrer, referral_rewards, run_balance, sol_balance, creator_rewards, owner_rewards,
       referral_code, referral_count, wallet_address, encrypted_mnemonic,
       created_at, updated_at
     )
@@ -1041,6 +1041,7 @@ async function getProfile(wallet, createIfMissing = true) {
       ${payload.referrer},
       ${payload.referral_rewards},
       ${payload.run_balance},
+      ${payload.sol_balance},
       ${payload.creator_rewards},
       ${payload.owner_rewards},
       ${payload.referral_code},
@@ -1052,6 +1053,8 @@ async function getProfile(wallet, createIfMissing = true) {
     )
     on conflict (wallet)
     do update set
+      wallet_address = coalesce(nullif(excluded.wallet_address, ''), profiles.wallet_address),
+      encrypted_mnemonic = coalesce(nullif(excluded.encrypted_mnemonic, ''), profiles.encrypted_mnemonic),
       updated_at = excluded.updated_at
     returning *`;
 
@@ -2770,8 +2773,8 @@ app.get("/profile/:wallet", async (req, res) => {
       ok: true,
       profile: {
        wallet: wallet,
-custodialWallet: custodialWallet,
-depositAddress: custodialWallet,
+custodialWallet: String(p?.wallet_address || "").trim(),
+depositAddress: String(p?.wallet_address || "").trim(),
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
