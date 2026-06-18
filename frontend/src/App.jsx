@@ -4,7 +4,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useExportWallet } from "@privy-io/react-auth/solana";
 import { createChart, ColorType } from "lightweight-charts";
-const { login, authenticated, user, ready, logout, getAccessToken } = usePrivy();
+
 
 const INTRO_MS = 5000;
 const APP_LOGO_URL = "/logo.png";
@@ -2432,7 +2432,8 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
 }
 
 export default function App() {
-  const { login, authenticated, user, ready, logout } = usePrivy();
+  const { login, authenticated, user, ready, logout, getAccessToken } = usePrivy();
+  
   const { exportWallet } = useExportWallet();
   const wsRef = useRef(null);
 
