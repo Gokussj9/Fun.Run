@@ -93,6 +93,15 @@ const ENABLE_SWEEP = String(process.env.ENABLE_SWEEP || "") === "1";
 // Custodial wallet me itna SOL chhod do (rent + fee buffer), baaki sweep ho.
 const SWEEP_BUFFER_SOL = clampNum(Number(process.env.SWEEP_BUFFER_SOL || 0.003), 0, 1);
 
+// Kill switches — explicitly '1' set karo tabhi enable hoga.
+// Emergency mein env var hataao ya '0' karo aur server restart — turant band.
+const WITHDRAWALS_ENABLED = String(process.env.WITHDRAWALS_ENABLED || "") === "1";
+const TRADING_ENABLED     = String(process.env.TRADING_ENABLED     || "") === "1";
+
+// Withdrawal limits — 0 matlab no limit (default off)
+const MAX_WITHDRAW_SOL       = clampNum(Number(process.env.MAX_WITHDRAW_SOL       || 0), 0, 1_000_000);
+const DAILY_WITHDRAW_CAP_SOL = clampNum(Number(process.env.DAILY_WITHDRAW_CAP_SOL || 0), 0, 1_000_000);
+
 function getSupplyFromInitialSol(sol) {
   const s = Number(sol || 0);
 
@@ -394,22 +403,19 @@ async function decreaseRun(wallet, amount) {
 
   return await sql.begin(async (tx) => {
     const rows = await tx`
-      select run_balance, sol_balance from profiles where wallet = ${w} for update
+      select run_balance from profiles where wallet = ${w} for update
     `;
     const currentRun = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
-    const currentSol = Math.max(0, safeNum(rows?.[0]?.sol_balance, 0));
     const nextRun = currentRun - amt;
-    const nextSol = currentSol - amt;
 
-    if (nextSol < 0) {
+    if (nextRun < 0) {
       throw new Error("Insufficient balance");
     }
 
     await tx`
-      update profiles set 
-        run_balance = ${nextRun}, 
-        sol_balance = ${nextSol},
-        updated_at = now() 
+      update profiles set
+        run_balance = ${nextRun},
+        updated_at = now()
       where wallet = ${w}
     `;
 
@@ -423,18 +429,15 @@ async function increaseRun(wallet, amount) {
 
   return await sql.begin(async (tx) => {
     const rows = await tx`
-      select run_balance, sol_balance from profiles where wallet = ${w} for update
+      select run_balance from profiles where wallet = ${w} for update
     `;
     const currentRun = Math.max(0, safeNum(rows?.[0]?.run_balance, 0));
-    const currentSol = Math.max(0, safeNum(rows?.[0]?.sol_balance, 0));
     const nextRun = currentRun + amt;
-    const nextSol = currentSol + amt;
 
     await tx`
-      update profiles set 
-        run_balance = ${nextRun}, 
-        sol_balance = ${nextSol},
-        updated_at = now() 
+      update profiles set
+        run_balance = ${nextRun},
+        updated_at = now()
       where wallet = ${w}
     `;
 
@@ -931,6 +934,10 @@ encrypted_mnemonic text
   // Unique constraints (idempotent)
   await sql`create unique index if not exists profiles_referral_code_unique on profiles (referral_code) where referral_code is not null and referral_code != ''`;
   await sql`create unique index if not exists coins_mint_address_unique on coins (mint_address) where mint_address is not null and mint_address != ''`;
+
+  // Withdraw idempotency key (nullable — purane records NULL rahenge, naye unique honge)
+  await sql`alter table withdrawals add column if not exists idempotency_key text`;
+  await sql`create unique index if not exists withdrawals_idempotency_key_unique on withdrawals (idempotency_key) where idempotency_key is not null`;
 }
 
 // -------------------- AUDIT LOG --------------------
@@ -1821,11 +1828,16 @@ app.get("/balance/:wallet", async (req, res) => {
 app.post("/withdraw", withdrawLimiter, async (req, res) => {
   const claims = await requireAuth(req, res);
   if (!claims) return;
+  if (!WITHDRAWALS_ENABLED) {
+    return res.status(503).json({ ok: false, error: "Withdrawals temporarily disabled" });
+  }
   try {
     const wallet = String(req.body?.wallet || "").trim();
     const destination = String(req.body?.destination || "").trim();
     const amount = Math.max(0, safeNum(req.body?.amount, 0));
     const kind = String(req.body?.kind || "").trim().toUpperCase();
+    // Idempotency key (optional — client UUID bheje taake double-click safe ho)
+    const idempotencyKey = String(req.body?.idempotencyKey || "").trim() || null;
 
     if (!wallet) {
       return res.status(400).json({ ok: false, error: "wallet required" });
@@ -1836,6 +1848,27 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return handleRewardWithdraw(req, res, kind);
     }
 
+    // Idempotency check: agar same key se pehle request aayi thi toh duplicate process mat karo
+    if (idempotencyKey) {
+      const existing = await sql`
+        select id, status, tx_hash from withdrawals
+        where idempotency_key = ${idempotencyKey} and wallet = ${wallet}
+        limit 1
+      `;
+      const rec = existing?.[0];
+      if (rec) {
+        if (rec.status === "confirmed") {
+          // Pehle se complete — same result return karo (safe to retry)
+          return res.json({ ok: true, txHash: rec.tx_hash, idempotent: true });
+        }
+        if (rec.status === "pending") {
+          // Abhi chal rahi hai — client dobara try na kare
+          return res.status(409).json({ ok: false, error: "Withdrawal already in progress", withdrawalId: rec.id });
+        }
+        // status='failed' — retry allowed, neeche normal flow chalega
+      }
+    }
+
     if (!destination) {
       return res.status(400).json({ ok: false, error: "destination required" });
     }
@@ -1844,7 +1877,35 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid amount" });
     }
 
-    // destination valid Solana address honi chahiye
+    // Per-transaction limit
+    if (MAX_WITHDRAW_SOL > 0 && amount > MAX_WITHDRAW_SOL) {
+      return res.status(400).json({
+        ok: false,
+        error: `Maximum withdrawal is ${MAX_WITHDRAW_SOL} SOL per transaction`,
+      });
+    }
+
+    // Per-user daily cap — last 24h ke confirmed withdrawals ka sum check karo
+    if (DAILY_WITHDRAW_CAP_SOL > 0) {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const capRows = await sql`
+        select coalesce(sum(amount), 0)::numeric as total
+        from withdrawals
+        where wallet = ${wallet}
+          and status = 'confirmed'
+          and created_at >= ${since}
+      `;
+      const usedToday = Math.max(0, safeNum(capRows?.[0]?.total, 0));
+      if (usedToday + amount > DAILY_WITHDRAW_CAP_SOL) {
+        const remaining = Math.max(0, DAILY_WITHDRAW_CAP_SOL - usedToday);
+        return res.status(400).json({
+          ok: false,
+          error: `Daily withdrawal limit reached. Remaining: ${remaining.toFixed(4)} SOL`,
+        });
+      }
+    }
+
+    // Destination valid Solana address honi chahiye
     let destPub;
     try {
       destPub = new PublicKey(destination);
@@ -1852,68 +1913,99 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid destination address" });
     }
 
-    // Profile aur custodial wallet lo
-    const profileRow = await sql`select wallet_address, encrypted_mnemonic, sol_balance from profiles where wallet = ${String(wallet)} limit 1`;
-const custodialAddress = String(profileRow?.[0]?.wallet_address || "").trim();
-const encryptedMnemonic = String(profileRow?.[0]?.encrypted_mnemonic || "").trim();
-const solBal = Math.max(0, safeNum(profileRow?.[0]?.sol_balance, 0));
+    // Custodial wallet info fetch (sol_balance nahi — run_balance authoritative hai)
+    const profileRow = await sql`
+      select wallet_address, encrypted_mnemonic
+      from profiles where wallet = ${wallet} limit 1
+    `;
+    const custodialAddress = String(profileRow?.[0]?.wallet_address || "").trim();
+    const encryptedMnemonic = String(profileRow?.[0]?.encrypted_mnemonic || "").trim();
 
-    if (!custodialAddress) {
+    if (!custodialAddress || !encryptedMnemonic) {
       return res.status(400).json({ ok: false, error: "custodial wallet not found" });
     }
 
-    // Sol balance check
-    
-    if (amount > solBal) {
-      return res.status(400).json({ ok: false, error: "Insufficient balance" });
-    }
-
-    
-
-    // Custodial wallet mein actual SOL check karo
+    // On-chain custodial balance check (network fee buffer included)
+    const FEE_BUFFER = 0.001;
     const custodialPub = new PublicKey(custodialAddress);
     const custodialLamports = await connection.getBalance(custodialPub);
     const custodialSol = custodialLamports / 1_000_000_000;
-
-    // Network fee ke liye buffer
-    const FEE_BUFFER = 0.001;
     if (custodialSol < amount + FEE_BUFFER) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: `Insufficient on-chain balance. Available: ${custodialSol.toFixed(4)} SOL` 
+      return res.status(400).json({
+        ok: false,
+        error: `Insufficient on-chain balance. Available: ${custodialSol.toFixed(4)} SOL`,
       });
     }
 
-    // Balance pehle cut karo
-    await decreaseRun(wallet, amount);
+    // STEP 1 — Atomic: run_balance deduct + 'pending' withdrawal record ek saath.
+    // FOR UPDATE lock concurrent double-spend rokta hai.
+    // Agar Solana TX ke beech server crash ho, ye 'pending' record reconciliation
+    // ke liye exist karega — startup pe on-chain check karke restore ya confirm ho sakta hai.
+    let withdrawalId;
+    try {
+      withdrawalId = await sql.begin(async (tx) => {
+        const rows = await tx`
+          select run_balance from profiles
+          where wallet = ${wallet}
+          for update
+        `;
+        if (!rows?.[0]) throw new Error("Profile not found");
 
+        const runBal = Math.max(0, safeNum(rows[0].run_balance, 0));
+        if (runBal < amount) throw new Error("Insufficient balance");
+
+        await tx`
+          update profiles
+          set run_balance = run_balance - ${amount}, updated_at = now()
+          where wallet = ${wallet}
+        `;
+
+        const wdId = crypto.randomUUID();
+        await tx`
+          insert into withdrawals (id, wallet, destination, amount, tx_hash, status, idempotency_key, created_at)
+          values (${wdId}, ${wallet}, ${destination}, ${amount}, null, 'pending', ${idempotencyKey}, now())
+        `;
+        return wdId;
+      });
+    } catch (balErr) {
+      return res.status(400).json({ ok: false, error: balErr.message || "Insufficient balance" });
+    }
+
+    // STEP 2 — Solana on-chain transfer
     let signature;
     try {
       const custodialKeypair = await getCustodialKeypairFromMnemonic(encryptedMnemonic);
-
-      const tx = new Transaction().add(
+      const solanaTx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: custodialKeypair.publicKey,
           toPubkey: destPub,
           lamports: Math.floor(amount * 1_000_000_000),
         })
       );
-
-      signature = await sendAndConfirmTransaction(connection, tx, [custodialKeypair]);
+      signature = await sendAndConfirmTransaction(connection, solanaTx, [custodialKeypair]);
     } catch (sendErr) {
-      // Fail hone par balance wapas karo
+      // TX fail: record 'failed' mark karo, phir balance restore karo.
+      // Agar restore bhi fail ho, 'failed' status reconciliation signal hai.
+      await sql`
+        update withdrawals set status = 'failed' where id = ${withdrawalId}
+      `.catch(() => {});
       await increaseRun(wallet, amount);
-      await writeAudit("WITHDRAW_FAILED", wallet, amount, { 
-        meta: { error: sendErr?.message, destination } 
+      await writeAudit("WITHDRAW_FAILED", wallet, amount, {
+        meta: { error: sendErr?.message, destination, withdrawalId },
       });
-      throw sendErr;
+      return res.status(502).json({ ok: false, error: "On-chain transfer failed: " + (sendErr?.message || sendErr) });
     }
 
-    await saveWithdrawal({ wallet, destination, amount, txHash: signature, status: "confirmed" });
-    await writeAudit("WITHDRAW", wallet, amount, { meta: { destination, txHash: signature } });
+    // STEP 3 — Confirm: record update + audit
+    await sql`
+      update withdrawals set status = 'confirmed', tx_hash = ${signature}
+      where id = ${withdrawalId}
+    `;
+    await writeAudit("WITHDRAW", wallet, amount, {
+      meta: { destination, txHash: signature, withdrawalId },
+    });
 
-    const newBalance = Math.max(0, solBal - amount);
-    return res.json({ ok: true, balance: newBalance, txHash: signature });
+    return res.json({ ok: true, txHash: signature });
 
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -1925,46 +2017,59 @@ async function handleRewardWithdraw(req, res, forcedKind = "") {
     await requireDb();
 
     const wallet = String(req.body?.wallet || "").trim();
-    const kindRaw = String(forcedKind || req.body?.kind || "").trim().toUpperCase();
+    if (!wallet) return res.status(400).json({ ok: false, error: "wallet required" });
 
+    const kindRaw = String(forcedKind || req.body?.kind || "").trim().toUpperCase();
     const kind =
-      kindRaw === "REFERRAL" ? "REF" :
-      kindRaw === "REF" ? "REF" :
-      kindRaw === "CREATOR" ? "CREATOR" :
-      kindRaw === "OWNER" ? "OWNER" : "";
+      kindRaw === "REFERRAL" ? "REF"     :
+      kindRaw === "REF"      ? "REF"     :
+      kindRaw === "CREATOR"  ? "CREATOR" :
+      kindRaw === "OWNER"    ? "OWNER"   : "";
 
     if (!["REF", "CREATOR", "OWNER"].includes(kind)) {
       return res.json({ ok: false, error: "Unsupported kind" });
     }
 
-    const p = await getProfile(wallet, true);
-    const custodial = String(p?.wallet_address || wallet).trim();
+    const col =
+      kind === "REF"     ? "referral_rewards" :
+      kind === "CREATOR" ? "creator_rewards"  :
+                           "owner_rewards";
 
-    if (kind === "REF") {
-      const amt = Math.max(0, safeNum(p.referral_rewards, 0));
-      if (amt <= 0) return res.json({ ok: false, error: "No referral rewards" });
-      await patchProfile(wallet, { referral_rewards: 0 });
-      await increaseRun(wallet, amt);
-      return res.json({ ok: true, kind: "REF", amountSol: amt, to: wallet });
+    // Atomic: ek hi DB transaction mein rewards zero + run_balance credit.
+    // FOR UPDATE lock ensure karta hai ke do concurrent requests ek hi amount
+    // do baar nahi le sakte (same pattern jo /claim mein hai).
+    const result = await sql.begin(async (tx) => {
+      const rows = await tx`
+        select ${tx(col)}, run_balance
+        from profiles
+        where wallet = ${wallet}
+        for update
+      `;
+      if (!rows?.[0]) throw new Error("Profile not found");
+
+      const amount = Math.max(0, safeNum(rows[0][col], 0));
+      if (amount <= 0) return { amount: 0 };
+
+      await tx`
+        update profiles
+        set
+          ${tx(col)} = 0,
+          run_balance = run_balance + ${amount},
+          updated_at = now()
+        where wallet = ${wallet}
+      `;
+      return { amount };
+    });
+
+    if (result.amount <= 0) {
+      return res.json({ ok: false, error: `No ${kind.toLowerCase()} rewards to claim` });
     }
 
-    if (kind === "CREATOR") {
-      const amt = Math.max(0, safeNum(p.creator_rewards, 0));
-      if (amt <= 0) return res.json({ ok: false, error: "No creator rewards" });
-      await patchProfile(wallet, { creator_rewards: 0 });
-      await increaseRun(wallet, amt);
-      return res.json({ ok: true, kind: "CREATOR", amountSol: amt, to: wallet });
-    }
+    await writeAudit(`CLAIM_${kind}`, wallet, result.amount, {
+      meta: { col, kind },
+    });
 
-    if (kind === "OWNER") {
-      const amt = Math.max(0, safeNum(p.owner_rewards, 0));
-      if (amt <= 0) return res.json({ ok: false, error: "No wallet balance" });
-      await patchProfile(wallet, { owner_rewards: 0 });
-      await increaseRun(wallet, amt);
-      return res.json({ ok: true, kind: "OWNER", amountSol: amt, to: wallet });
-    }
-
-    return res.json({ ok: false, error: "Unsupported kind" });
+    return res.json({ ok: true, kind, amountSol: result.amount, to: wallet });
   } catch (e) {
     console.log("reward withdraw error:", e?.message || e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -2466,6 +2571,9 @@ app.post("/referral/set", async (req, res) => {
 async function doTrade(req, res, side) {
   try {
     await requireDb();
+    if (!TRADING_ENABLED) {
+      return res.status(503).json({ ok: false, error: "Trading temporarily disabled" });
+    }
 
     const wallet = String(req.body?.wallet || "").trim();
     const coinId = String(req.body?.coinId || "").trim();
@@ -2827,10 +2935,153 @@ depositAddress: custodialWallet,
   }
 });
 
+// -------------------- SECRETS VALIDATION --------------------
+function validateSecrets() {
+  const errors = [];
+
+  // ENCRYPTION_KEY: custodial mnemonics isi se encrypt/decrypt hote hain.
+  // 32 chars strict hain — AES-256-CBC ka key size.
+  const encKey = String(process.env.ENCRYPTION_KEY || "");
+  if (!encKey) {
+    errors.push("ENCRYPTION_KEY is not set (must be exactly 32 characters)");
+  } else if (encKey.length !== 32) {
+    errors.push(`ENCRYPTION_KEY must be exactly 32 characters (got ${encKey.length})`);
+  }
+
+  // TREASURY_PRIVATE_KEY: treasury.js already decode karta hai module load pe,
+  // lekin agar kisi wajah se woh silent fail kare toh yahan explicit check.
+  const treasuryRaw = String(process.env.TREASURY_PRIVATE_KEY || "").trim();
+  if (!treasuryRaw) {
+    errors.push("TREASURY_PRIVATE_KEY is not set");
+  } else {
+    // treasury module ne load karte waqt keypair banaya tha — verify karo accessible hai
+    try {
+      const pubKey = treasury.publicKey.toBase58();
+      if (!pubKey) throw new Error("empty pubkey");
+    } catch (e) {
+      errors.push(`TREASURY_PRIVATE_KEY loaded but unusable: ${e.message}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error("FATAL — server cannot start safely. Fix these env vars:");
+    for (const e of errors) console.error("  [x] " + e);
+    process.exit(1);
+  }
+
+  console.log(`Secrets OK — treasury: ${treasury.publicKey.toBase58().slice(0, 8)}...`);
+}
+
+// -------------------- STARTUP RECONCILIATION --------------------
+// Server restart ke baad status='pending' withdrawals check karo.
+// app.listen abhi nahi hua — koi naya request process nahi ho raha.
+async function reconcilePendingWithdrawals() {
+  if (!sql) return;
+  // Solana blockhash ~150 slots × ~400ms ≈ 60s valid rehta hai.
+  // 2 min conservative threshold — is se purana record "definitely expired" consider hoga.
+  const BLOCKHASH_EXPIRY_MS = 2 * 60 * 1000;
+
+  try {
+    const rows = await sql`
+      select id, wallet, amount, tx_hash, created_at
+      from withdrawals
+      where status = 'pending'
+    `;
+    if (!rows?.length) {
+      console.log("reconcile: no pending withdrawals");
+      return;
+    }
+
+    console.log(`reconcile: ${rows.length} pending withdrawal(s) found`);
+
+    for (const wd of rows) {
+      const id     = String(wd.id     || "");
+      const wallet = String(wd.wallet || "");
+      const amt    = Math.max(0, safeNum(wd.amount, 0));
+      const txHash = String(wd.tx_hash || "").trim();
+      const ageMs  = Date.now() - new Date(wd.created_at).getTime();
+
+      try {
+        // CASE 1: tx_hash nahi — TX kabhi bheja hi nahi gaya (crash before Solana send)
+        if (!txHash) {
+          await sql`update withdrawals set status = 'failed' where id = ${id}`;
+          if (amt > 0) await increaseRun(wallet, amt);
+          await writeAudit("WITHDRAW_RECONCILED_FAILED", wallet, amt, {
+            meta: { withdrawalId: id, reason: "no_tx_hash" },
+          });
+          console.log(`reconcile: ${id} — no tx_hash, failed, ${amt} SOL restored`);
+          continue;
+        }
+
+        // CASE 2–4: Solana pe signature check karo
+        let sigStatus;
+        try {
+          sigStatus = await connection.getSignatureStatus(txHash, {
+            searchTransactionHistory: true,
+          });
+        } catch (rpcErr) {
+          // CASE 2: RPC error — network/timeout issue, result uncertain.
+          // Balance mat chhuao — agli startup pe phir check hoga.
+          await writeAudit("WITHDRAW_RECONCILE_INCONCLUSIVE", wallet, amt, {
+            meta: { withdrawalId: id, txHash, reason: "rpc_error", error: rpcErr?.message },
+          });
+          console.log(`reconcile: ${id} — RPC error (${rpcErr?.message}), leaving pending`);
+          continue;
+        }
+
+        if (sigStatus?.value === null) {
+          // Signature history mein nahi mili
+          if (ageMs < BLOCKHASH_EXPIRY_MS) {
+            // CASE 3a: bahut naya record — blockhash abhi bhi valid ho sakta hai.
+            // Certain nahi — pending rehne do, agli startup pe dobara check.
+            await writeAudit("WITHDRAW_RECONCILE_INCONCLUSIVE", wallet, amt, {
+              meta: { withdrawalId: id, txHash, reason: "not_found_too_recent", ageMs },
+            });
+            console.log(`reconcile: ${id} — not found but only ${Math.round(ageMs / 1000)}s old, leaving pending`);
+          } else {
+            // CASE 3b: purana record + history mein nahi = blockhash expire, TX gaya nahi.
+            // Pakka fail — balance restore karo.
+            await sql`update withdrawals set status = 'failed' where id = ${id}`;
+            if (amt > 0) await increaseRun(wallet, amt);
+            await writeAudit("WITHDRAW_RECONCILED_FAILED", wallet, amt, {
+              meta: { withdrawalId: id, txHash, reason: "blockhash_expired_not_found" },
+            });
+            console.log(`reconcile: ${id} — ${Math.round(ageMs / 1000)}s old + not found, failed, ${amt} SOL restored`);
+          }
+        } else if (sigStatus?.value?.err !== null) {
+          // CASE 4a: TX chain pe mila lekin on-chain error (e.g. InstructionError).
+          // Pakka fail — balance restore karo.
+          await sql`update withdrawals set status = 'failed' where id = ${id}`;
+          if (amt > 0) await increaseRun(wallet, amt);
+          await writeAudit("WITHDRAW_RECONCILED_FAILED", wallet, amt, {
+            meta: { withdrawalId: id, txHash, reason: "on_chain_error", err: sigStatus.value.err },
+          });
+          console.log(`reconcile: ${id} — on-chain error, failed, ${amt} SOL restored`);
+        } else {
+          // CASE 4b: value !== null, err === null — TX confirmed.
+          // Balance already kat chuka tha — sirf record update karo.
+          await sql`update withdrawals set status = 'confirmed' where id = ${id}`;
+          await writeAudit("WITHDRAW_RECONCILED_CONFIRMED", wallet, amt, {
+            meta: { withdrawalId: id, txHash },
+          });
+          console.log(`reconcile: ${id} — on-chain confirmed`);
+        }
+      } catch (wdErr) {
+        // Ek withdrawal ka error baaki records ko block na kare
+        console.error(`reconcile: error on withdrawal ${id}:`, wdErr?.message || wdErr);
+      }
+    }
+  } catch (e) {
+    console.error("reconcilePendingWithdrawals error:", e?.message || e);
+  }
+}
+
 // -------------------- START --------------------
+validateSecrets();
 try {
   await ensureSchema();
   console.log("Schema ready");
+  await reconcilePendingWithdrawals();
 } catch (e) {
   console.error("Startup failed:", e?.message || e);
   process.exit(1);

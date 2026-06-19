@@ -2472,6 +2472,9 @@ export default function App() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAddr, setWithdrawAddr] = useState("");
   const [withdrawAmt, setWithdrawAmt] = useState("");
+  // Idempotency key: retry pe same key, nayi withdrawal pe naya key.
+  // useRef kyunki ye UI render trigger nahi karta — sirf request ka internal detail hai.
+  const withdrawKeyRef = useRef(null);
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem(LS_THEME) || "calm";
@@ -3685,7 +3688,7 @@ const walletHistory = [
           <div className="modalCard">
             <div className="modalHead">
               <div className="modalTitle">Withdraw SOL</div>
-              <MiniBtn onClick={() => setWithdrawOpen(false)}>Close</MiniBtn>
+              <MiniBtn onClick={() => { withdrawKeyRef.current = null; setWithdrawOpen(false); }}>Close</MiniBtn>
             </div>
 
             <div className="modalBody">
@@ -3714,33 +3717,41 @@ const walletHistory = [
                       return;
                     }
 
-     const token = await getAccessToken();
-const json = await api("/withdraw", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${token}`,
-  },
-  body: JSON.stringify({
-    wallet: profile?.wallet,
-    destination: withdrawAddr,
-    amount: Number(withdrawAmt),
-  }),
-});
+                    // Retry pe same key bhejo; nayi koshish pe naya key banao
+                    if (!withdrawKeyRef.current) {
+                      withdrawKeyRef.current = crypto.randomUUID();
+                    }
+                    const idempotencyKey = withdrawKeyRef.current;
+
+                    const token = await getAccessToken();
+                    const json = await api("/withdraw", {
+                      method: "POST",
+                      headers: {
+                        "Authorization": `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        wallet: profile?.wallet,
+                        destination: withdrawAddr,
+                        amount: Number(withdrawAmt),
+                        idempotencyKey,
+                      }),
+                    });
 
                     if (json?.ok) {
-  setToast(`Sent ${withdrawAmt} SOL 🚀`);
-  setWithdrawOpen(false);
-  setWithdrawAddr("");
-  setWithdrawAmt("");
-
-  loadProfile(solAddr);
-  loadBalance(solAddr);
-}
-                    
-                    else {
+                      // Success (ya already-processed duplicate) — key clear karo
+                      withdrawKeyRef.current = null;
+                      setToast(json.idempotent ? "Already processed" : `Sent ${withdrawAmt} SOL`);
+                      setWithdrawOpen(false);
+                      setWithdrawAddr("");
+                      setWithdrawAmt("");
+                      loadProfile(solAddr);
+                      loadBalance(solAddr);
+                    } else {
+                      // Fail — key rakho taake retry same key se ho
                       setToast(json?.error || "Withdraw failed");
                     }
                   } catch (e) {
+                    // Network error — key rakho taake retry kaam kare
                     setToast(e.message || "Withdraw failed");
                   }
                 }}
