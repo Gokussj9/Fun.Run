@@ -711,6 +711,7 @@ function ensureProfileShape(row = {}, wallet = "") {
     referrer: String(row.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(row.referral_rewards, 0)),
     run_balance: Math.max(0, safeNum(row.run_balance, 0)),
+    run_tokens:  Math.max(0, safeNum(row.run_tokens, 0)),
     sol_balance: Math.max(0, safeNum(row.sol_balance, 0)),
     creator_rewards: Math.max(0, safeNum(row.creator_rewards, 0)),
     owner_rewards: Math.max(0, safeNum(row.owner_rewards, 0)),
@@ -940,6 +941,7 @@ encrypted_mnemonic text
   await sql`create unique index if not exists withdrawals_idempotency_key_unique on withdrawals (idempotency_key) where idempotency_key is not null`;
 
   await sql`alter table profiles add column if not exists run_tokens numeric not null default 0`;
+  await sql`alter table profiles alter column run_balance set default 0`;
 }
 
 // -------------------- AUDIT LOG --------------------
@@ -969,6 +971,7 @@ function profileToDbRow(profile = {}) {
     referrer: String(profile.referrer || "").trim(),
     referral_rewards: Math.max(0, safeNum(profile.referral_rewards, 0)),
     run_balance: Math.max(0, safeNum(profile.run_balance, 0)),
+    run_tokens:  Math.max(0, safeNum(profile.run_tokens, 0)),
     sol_balance: Math.max(0, safeNum(profile.sol_balance, 0)),
     creator_rewards: Math.max(0, safeNum(profile.creator_rewards, 0)),
     owner_rewards: Math.max(0, safeNum(profile.owner_rewards, 0)),
@@ -1027,7 +1030,7 @@ async function getProfile(wallet, createIfMissing = true) {
     console.log("Custodial wallet creation failed during new profile:", err?.message || err);
   }
 
-  const AIRDROP_RUN = 700000; // Har naye user ko airdrop
+  const SIGNUP_AIRDROP_RUN = 300000;
 
   const payload = profileToDbRow(
     ensureProfileShape(
@@ -1035,15 +1038,16 @@ async function getProfile(wallet, createIfMissing = true) {
         wallet: w,
         wallet_address: walletData.address,
         encrypted_mnemonic: walletData.encryptedMnemonic,
-        run_balance: AIRDROP_RUN, // naye user ko 700000 RUN airdrop
+        run_balance: 0,
+        run_tokens: SIGNUP_AIRDROP_RUN,
       },
       w
     )
   );
 
- const inserted = await sql`
+  const inserted = await sql`
     insert into profiles (
-      wallet, referrer, referral_rewards, run_balance, sol_balance, creator_rewards, owner_rewards,
+      wallet, referrer, referral_rewards, run_balance, run_tokens, sol_balance, creator_rewards, owner_rewards,
       referral_code, referral_count, wallet_address, encrypted_mnemonic,
       created_at, updated_at
     )
@@ -1052,6 +1056,7 @@ async function getProfile(wallet, createIfMissing = true) {
       ${payload.referrer},
       ${payload.referral_rewards},
       ${payload.run_balance},
+      ${payload.run_tokens},
       ${payload.sol_balance},
       ${payload.creator_rewards},
       ${payload.owner_rewards},
