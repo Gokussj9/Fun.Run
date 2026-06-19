@@ -938,6 +938,8 @@ encrypted_mnemonic text
   // Withdraw idempotency key (nullable — purane records NULL rahenge, naye unique honge)
   await sql`alter table withdrawals add column if not exists idempotency_key text`;
   await sql`create unique index if not exists withdrawals_idempotency_key_unique on withdrawals (idempotency_key) where idempotency_key is not null`;
+
+  await sql`alter table profiles add column if not exists run_tokens numeric not null default 0`;
 }
 
 // -------------------- AUDIT LOG --------------------
