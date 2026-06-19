@@ -1913,27 +1913,14 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid destination address" });
     }
 
-    // Custodial wallet info fetch (sol_balance nahi — run_balance authoritative hai)
-    const profileRow = await sql`
-      select wallet_address, encrypted_mnemonic
-      from profiles where wallet = ${wallet} limit 1
-    `;
-    const custodialAddress = String(profileRow?.[0]?.wallet_address || "").trim();
-    const encryptedMnemonic = String(profileRow?.[0]?.encrypted_mnemonic || "").trim();
-
-    if (!custodialAddress || !encryptedMnemonic) {
-      return res.status(400).json({ ok: false, error: "custodial wallet not found" });
-    }
-
-    // On-chain custodial balance check (network fee buffer included)
+    // Treasury balance check — all platform SOL (fees, sweeps) lives in treasury
     const FEE_BUFFER = 0.001;
-    const custodialPub = new PublicKey(custodialAddress);
-    const custodialLamports = await connection.getBalance(custodialPub);
-    const custodialSol = custodialLamports / 1_000_000_000;
-    if (custodialSol < amount + FEE_BUFFER) {
+    const treasuryLamports = await connection.getBalance(treasury.publicKey);
+    const treasurySol = treasuryLamports / 1_000_000_000;
+    if (treasurySol < amount + FEE_BUFFER) {
       return res.status(400).json({
         ok: false,
-        error: `Insufficient on-chain balance. Available: ${custodialSol.toFixed(4)} SOL`,
+        error: `Insufficient treasury balance. Available: ${treasurySol.toFixed(4)} SOL`,
       });
     }
 
@@ -1971,18 +1958,17 @@ app.post("/withdraw", withdrawLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: balErr.message || "Insufficient balance" });
     }
 
-    // STEP 2 — Solana on-chain transfer
+    // STEP 2 — Solana on-chain transfer from treasury
     let signature;
     try {
-      const custodialKeypair = await getCustodialKeypairFromMnemonic(encryptedMnemonic);
       const solanaTx = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: custodialKeypair.publicKey,
+          fromPubkey: treasury.publicKey,
           toPubkey: destPub,
           lamports: Math.floor(amount * 1_000_000_000),
         })
       );
-      signature = await sendAndConfirmTransaction(connection, solanaTx, [custodialKeypair]);
+      signature = await sendAndConfirmTransaction(connection, solanaTx, [treasury]);
     } catch (sendErr) {
       // TX fail: record 'failed' mark karo, phir balance restore karo.
       // Agar restore bhi fail ho, 'failed' status reconciliation signal hai.
