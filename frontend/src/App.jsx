@@ -4984,19 +4984,11 @@ gap: 12,
       </div>
 
       <div style={{ fontSize: 34, fontWeight: 1000, marginTop: 6 }}>
-        {fmtUsd(
-  (
-    700000 +
-    ((profile?.referralCount ?? 0) * 300000)
-  ) * 0.000002
-)}
+        {fmtUsd((profile?.runTokens ?? 0) * 0.000002)}
       </div>
 
       <div style={{ marginTop: 6, color: "#63F5C8", fontWeight: 900 }}>
-        {(
-  700000 +
-  ((profile?.referralCount ?? 0) * 300000)
-).toLocaleString()} RUN
+        {(profile?.runTokens ?? 0).toLocaleString()} RUN
       </div>
 
       
@@ -5010,7 +5002,7 @@ gap: 12,
           fontSize: 12, fontWeight: 800,
         }}>
           <span style={{ color: "rgba(255,255,255,.7)" }}>Airdrop</span>
-          <span style={{ color: "#63F5C8" }}>700,000 RUN</span>
+          <span style={{ color: "#63F5C8" }}>{(profile?.runTokens ?? 0).toLocaleString()} RUN</span>
         </div>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -5018,12 +5010,8 @@ gap: 12,
           background: "rgba(124,203,255,.06)", border: "1px solid rgba(124,203,255,.12)",
           fontSize: 12, fontWeight: 800,
         }}>
-          <span style={{ color: "rgba(255,255,255,.7)" }}>
-            Referral Bonus ({profile?.referralCount ?? 0} × 300k)
-          </span>
-          <span style={{ color: "#7CCBFF" }}>
-            {((profile?.referralCount ?? 0) * 300000).toLocaleString()} RUN
-          </span>
+          <span style={{ color: "rgba(255,255,255,.7)" }}>Referral Bonus</span>
+          <span style={{ color: "#7CCBFF", opacity: 0.6 }}>Coming in Phase 2</span>
         </div>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

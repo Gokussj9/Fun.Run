@@ -990,7 +990,7 @@ async function getProfile(wallet, createIfMissing = true) {
 
   await requireDb();
 
-  const rows = await sql`select wallet, wallet_address, encrypted_mnemonic, referrer, referral_rewards, run_balance, sol_balance, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at from profiles where wallet = ${w} limit 1`;
+  const rows = await sql`select wallet, wallet_address, encrypted_mnemonic, referrer, referral_rewards, run_balance, run_tokens, sol_balance, creator_rewards, owner_rewards, referral_code, referral_count, created_at, updated_at from profiles where wallet = ${w} limit 1`;
 
   if (rows[0]) {
     const profile = rows[0];
@@ -2952,6 +2952,7 @@ depositAddress: custodialWallet,
         primaryWallet: wallet,
         connectedWallet: wallet,
         runBalance: Math.max(0, safeNum(p?.run_balance, 0)),
+        runTokens:  Math.max(0, safeNum(p?.run_tokens, 0)),
         solBalance: Math.max(0, safeNum(p?.sol_balance, 0)),
         referrer: p?.referrer || "",
         referralCode: p?.referral_code || wallet.slice(0, 6),
