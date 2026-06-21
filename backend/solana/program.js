@@ -1,4 +1,5 @@
-import { Program, AnchorProvider, BN, Wallet } from "@coral-xyz/anchor";
+import pkg from "@coral-xyz/anchor";
+const { Program, AnchorProvider, BN, Wallet } = pkg;
 import { Connection, PublicKey } from "@solana/web3.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
