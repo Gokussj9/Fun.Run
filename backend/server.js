@@ -2514,6 +2514,15 @@ app.post("/coin/create", createLimiter, async (req, res) => {
       const { create_coin, Wallet } = await import("./solana/program.js");
       if (profile?.encrypted_mnemonic) {
         const keypair = await getCustodialKeypairFromMnemonic(profile.encrypted_mnemonic);
+        // Devnet airdrop — mainnet pe nahi chalega
+        try {
+          const { Connection: DevConnection, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+          const devConn = new DevConnection("https://api.devnet.solana.com", "confirmed");
+          const airdropSig = await devConn.requestAirdrop(keypair.publicKey, LAMPORTS_PER_SOL);
+          await devConn.confirmTransaction(airdropSig);
+        } catch (e) {
+          console.log("Airdrop failed (rate limit):", e.message);
+        }
         const { mintAddress: onchainMint } = await createSPLToken(keypair);
         mintAddress = onchainMint;
         mintSignature = await create_coin(new Wallet(keypair), coin.symbol);
