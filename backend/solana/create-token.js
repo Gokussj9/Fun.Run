@@ -1,17 +1,16 @@
-import {
-  createMint
-} from "@solana/spl-token";
+import { createMint } from "@solana/spl-token";
+import { Connection } from "@solana/web3.js";
 
-import connection from "./connection.js";
-import treasury from "./treasury.js";
+const DEVNET_RPC = "https://api.devnet.solana.com";
 
-const mint = await createMint(
-  connection,
-  treasury,
-  treasury.publicKey,
-  treasury.publicKey,
-  9
-);
-
-console.log("TOKEN CREATED:");
-console.log(mint.toBase58());
+export async function createSPLToken(payerKeypair) {
+  const connection = new Connection(DEVNET_RPC, "confirmed");
+  const mint = await createMint(
+    connection,
+    payerKeypair,
+    payerKeypair.publicKey,
+    payerKeypair.publicKey,
+    9
+  );
+  return { mintAddress: mint.toBase58() };
+}

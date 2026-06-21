@@ -2508,6 +2508,23 @@ app.post("/coin/create", createLimiter, async (req, res) => {
     coin = recalcCoin(coin, { appendChart: false });
     coin = await saveCoin(coin);
 
+    // On-chain: SPL token mint + Anchor create_coin (devnet)
+    try {
+      const { createSPLToken } = await import("./solana/create-token.js");
+      const { create_coin, Wallet } = await import("./solana/program.js");
+      if (profile?.encrypted_mnemonic) {
+        const keypair = await getCustodialKeypairFromMnemonic(profile.encrypted_mnemonic);
+        const { mintAddress: onchainMint } = await createSPLToken(keypair);
+        mintAddress = onchainMint;
+        mintSignature = await create_coin(new Wallet(keypair), coin.symbol);
+        coin.mintAddress = mintAddress;
+        coin.mintSignature = mintSignature;
+        coin = await saveCoin(coin);
+      }
+    } catch (onchainErr) {
+      console.error("On-chain coin creation failed:", onchainErr?.message || onchainErr);
+    }
+
     if (initialSol > 0) {
       const result = await runCoinLocked(coin.id, async () => {
         const latestRow = await getCoinRowById(coin.id);
