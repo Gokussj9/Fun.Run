@@ -18,6 +18,7 @@ import {
   Keypair,
 } from "@solana/web3.js";
 import walletRoutes from "./routes/wallet.js";
+import onchainRoutes from "./routes/onchain.js";
 import treasury from "./solana/treasury.js";
 import { createMint } from "@solana/spl-token";
 import morgan from "morgan";
@@ -157,6 +158,7 @@ if (process.env.NODE_ENV !== "production") {
 
 // IMPORTANT: walletRoutes sirf /wallet pe mount karo
 app.use("/wallet", walletRoutes);
+app.use("/api/onchain", onchainRoutes);
 
 // -------------------- CLIENTS --------------------
 const sql = DATABASE_URL

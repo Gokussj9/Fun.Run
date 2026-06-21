@@ -1,0 +1,108 @@
+{
+  "address": "gUQYa6GwJeZhSHiBuW66VtNhR7mBs73qmH8nJxgaVWD",
+  "metadata": {
+    "name": "funrun_program",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "buy",
+      "discriminator": [102, 6, 61, 18, 1, 218, 235, 234],
+      "accounts": [
+        { "name": "buyer", "writable": true, "signer": true },
+        {
+          "name": "coin_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [99, 111, 105, 110] },
+              { "kind": "arg", "path": "coin_id" }
+            ]
+          }
+        },
+        { "name": "platform_wallet", "writable": true },
+        { "name": "creator_wallet", "writable": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "_coin_id", "type": "string" },
+        { "name": "sol_amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "create_coin",
+      "discriminator": [208, 85, 34, 37, 235, 182, 111, 78],
+      "accounts": [
+        { "name": "creator", "writable": true, "signer": true },
+        {
+          "name": "coin_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [99, 111, 105, 110] },
+              { "kind": "arg", "path": "coin_id" }
+            ]
+          }
+        },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "coin_id", "type": "string" }
+      ]
+    },
+    {
+      "name": "sell",
+      "discriminator": [51, 230, 133, 164, 1, 127, 131, 173],
+      "accounts": [
+        { "name": "seller", "writable": true, "signer": true },
+        {
+          "name": "coin_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [99, 111, 105, 110] },
+              { "kind": "arg", "path": "coin_id" }
+            ]
+          }
+        },
+        { "name": "platform_wallet", "writable": true },
+        { "name": "system_program", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "coin_id", "type": "string" },
+        { "name": "token_amount", "type": "u64" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CoinState",
+      "discriminator": [189, 144, 92, 87, 39, 80, 60, 64]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "InsufficientSol",    "msg": "Insufficient SOL" },
+    { "code": 6001, "name": "InsufficientTokens", "msg": "Insufficient tokens" },
+    { "code": 6002, "name": "AlreadyGraduated",   "msg": "Already graduated" },
+    { "code": 6003, "name": "AmountTooSmall",      "msg": "Amount too small" },
+    { "code": 6004, "name": "MathOverflow",        "msg": "Math overflow" }
+  ],
+  "types": [
+    {
+      "name": "CoinState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "creator",      "type": "pubkey" },
+          { "name": "sol_reserve",  "type": "u64" },
+          { "name": "token_supply", "type": "u64" },
+          { "name": "total_supply", "type": "u64" },
+          { "name": "is_graduated", "type": "bool" },
+          { "name": "bump",         "type": "u8" }
+        ]
+      }
+    }
+  ]
+}
