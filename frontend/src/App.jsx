@@ -2280,97 +2280,84 @@ function PriceChart({ coin, height = 280, chartRange, setChartRange, isMobile = 
         padding: 0,
       }}
     >
-      <div style={{ padding: "12px 14px 10px 14px", display: "flex", flexDirection: "column", gap: 0 }}>
-        {/* Row 1: Live Price label + % badge */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-          <div style={{ fontSize: 12, color: isLight ? "#334155" : themeCfg.subText, lineHeight: 1.2 }}>
+      <div style={{ padding: "10px 14px 8px 14px", display: "flex", flexDirection: "column", gap: 0 }}>
+        {/* Row 1: Live Price label (left) | toggle + timeframes + % (right, scrollable) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 12, color: isLight ? "#334155" : themeCfg.subText, lineHeight: 1.2, flexShrink: 0 }}>
             Live Price
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 1000,
-              color: up ? themeCfg.up : themeCfg.down,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: `1px solid ${isLight ? "rgba(15,23,42,.08)" : "rgba(255,255,255,.08)"}`,
-              background: up ? themeCfg.pctBg : "rgba(244,63,94,.08)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {up ? "+" : ""}{pct.toFixed(2)}%
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto", overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", flexShrink: 0 }}>
+            <button
+              onClick={() => setChartLook(chartLook === "dark" ? "light" : "dark")}
+              style={{
+                height: 26,
+                flex: "0 0 auto",
+                padding: "0 10px",
+                borderRadius: 9,
+                border: "none",
+                background: chartLook === "dark"
+                  ? "linear-gradient(180deg,rgba(36,224,255,.95),rgba(32,210,250,.88))"
+                  : "linear-gradient(180deg,rgba(255,214,0,.95),rgba(245,195,0,.88))",
+                color: "#03131A",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {chartLook === "dark" ? "☀ Light" : "● Dark"}
+            </button>
+            {["5M", "15M", "1H", "4H", "1D", "1W"].map((value) => {
+              const active = chartRange === value;
+              const labels = { "5M": "5m", "15M": "15m", "1H": "1h", "4H": "4h", "1D": "1D", "1W": "Week" };
+              return (
+                <button
+                  key={value}
+                  onClick={() => setChartRange(value)}
+                  style={{
+                    height: 26,
+                    flex: "0 0 auto",
+                    padding: "0 10px",
+                    borderRadius: 9,
+                    border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
+                    background: active ? themeCfg.activeBg : themeCfg.btnBg,
+                    color: active ? themeCfg.activeText : themeCfg.btnText,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {labels[value]}
+                </button>
+              );
+            })}
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 1000,
+                flex: "0 0 auto",
+                color: up ? themeCfg.up : themeCfg.down,
+                padding: "4px 9px",
+                borderRadius: 999,
+                border: `1px solid ${isLight ? "rgba(15,23,42,.08)" : "rgba(255,255,255,.08)"}`,
+                background: up ? themeCfg.pctBg : "rgba(244,63,94,.08)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {up ? "+" : ""}{pct.toFixed(2)}%
+            </div>
           </div>
         </div>
 
         {/* Row 2: Price */}
-        <div style={{ fontSize: 22, fontWeight: 1000, color: isLight ? "#020617" : themeCfg.topText, lineHeight: 1.15, marginBottom: 4 }}>
+        <div style={{ fontSize: 22, fontWeight: 1000, color: isLight ? "#020617" : themeCfg.topText, lineHeight: 1.15, marginBottom: 3 }}>
           {fmtUsd(livePrice)}
         </div>
 
         {/* Row 3: Created ago */}
-        <div style={{ fontSize: 11, color: isLight ? "#475569" : themeCfg.subText, lineHeight: 1.2, marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: isLight ? "#475569" : themeCfg.subText, lineHeight: 1.2 }}>
           Created {createdAgo}
-        </div>
-
-        {/* Row 4: Chart toggle + timeframe buttons */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            overflowX: "auto",
-            overflowY: "hidden",
-            WebkitOverflowScrolling: "touch",
-            paddingBottom: 2,
-          }}
-        >
-          <button
-            onClick={() => setChartLook(chartLook === "dark" ? "light" : "dark")}
-            style={{
-              height: 28,
-              flex: "0 0 auto",
-              padding: "0 11px",
-              borderRadius: 10,
-              border: "none",
-              background: chartLook === "dark"
-                ? "linear-gradient(180deg,rgba(36,224,255,.95),rgba(32,210,250,.88))"
-                : "linear-gradient(180deg,rgba(255,214,0,.95),rgba(245,195,0,.88))",
-              color: "#03131A",
-              fontSize: 11,
-              fontWeight: 800,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              letterSpacing: "0.01em",
-            }}
-          >
-            {chartLook === "dark" ? "☀ Light" : "● Dark"}
-          </button>
-
-          {["5M", "15M", "1H", "4H", "1D", "1W"].map((value) => {
-            const active = chartRange === value;
-            const labels = { "5M": "5m", "15M": "15m", "1H": "1h", "4H": "4h", "1D": "1D", "1W": "Week" };
-            return (
-              <button
-                key={value}
-                onClick={() => setChartRange(value)}
-                style={{
-                  height: 28,
-                  flex: "0 0 auto",
-                  padding: "0 11px",
-                  borderRadius: 10,
-                  border: active ? `1px solid ${themeCfg.activeBorder}` : `1px solid ${themeCfg.btnBorder}`,
-                  background: active ? themeCfg.activeBg : themeCfg.btnBg,
-                  color: active ? themeCfg.activeText : themeCfg.btnText,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {labels[value]}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -4342,7 +4329,7 @@ const walletHistory = [
                   <div className="bleed">
                     <PriceChart
                       coin={selectedCoin}
-                      height={isMobile ? 320 : 440}
+                      height={isMobile ? 360 : 500}
                       chartRange={chartRange}
                       setChartRange={setChartRange}
                       isMobile={isMobile}
