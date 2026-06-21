@@ -3130,7 +3130,6 @@ validateSecrets();
 try {
   await ensureSchema();
   console.log("Schema ready");
-  await reconcilePendingWithdrawals();
 } catch (e) {
   console.error("Startup failed:", e?.message || e);
   process.exit(1);
@@ -3144,35 +3143,34 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-// -------------------- DEPOSIT SCANNER --------------------
-// -------------------- DEPOSIT SCANNER --------------------
-setInterval(async () => {
-  try {
-    const rows = await sql`
-      select wallet_address from profiles
-where wallet_address is not null
-  and wallet_address != ''
-limit 100
-    `;
-
-    for (const row of rows || []) {
-      const wallet = String(row?.wallet_address || "").trim();
-      if (!wallet) continue;
-
-      try {
-        await scanWalletDeposits(wallet);
-      } catch (walletErr) {
-        console.log(`deposit scanner wallet error ${wallet}:`, walletErr?.message || walletErr);
-      }
-    }
-  } catch (e) {
-    console.log("deposit scanner error:", e?.message || e);
-  }
-}, 180000);
-
 // -------------------- HTTP + WEBSOCKET SERVER --------------------
 const server = app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
+  // Background mein chala do — startup block na kare
+  reconcilePendingWithdrawals().catch(err =>
+    console.error("Reconcile error:", err)
+  );
+  setInterval(async () => {
+    try {
+      const rows = await sql`
+        select wallet_address from profiles
+        where wallet_address is not null
+          and wallet_address != ''
+        limit 100
+      `;
+      for (const row of rows || []) {
+        const wallet = String(row?.wallet_address || "").trim();
+        if (!wallet) continue;
+        try {
+          await scanWalletDeposits(wallet);
+        } catch (walletErr) {
+          console.log(`deposit scanner wallet error ${wallet}:`, walletErr?.message || walletErr);
+        }
+      }
+    } catch (e) {
+      console.log("deposit scanner error:", e?.message || e);
+    }
+  }, 180000);
 });
 
 const wss = new WebSocketServer({ server });
