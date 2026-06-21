@@ -2946,19 +2946,19 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
 
     const light = (o) => ({
       mode: "light",
-      surface: "rgba(255,255,255,.94)",
-      surface2: "rgba(15,23,42,.045)",
-      border: "rgba(15,23,42,.10)",
-      borderSoft: "rgba(15,23,42,.07)",
+      surface: "rgba(255,255,255,.97)",
+      surface2: "rgba(15,23,42,.07)",
+      border: "rgba(15,23,42,.14)",
+      borderSoft: "rgba(15,23,42,.09)",
       text: "#0B1524",
-      muted: "rgba(20,30,48,.74)",
-      muted2: "rgba(30,41,59,.56)",
-      inputBg: "rgba(15,23,42,.04)",
-      inputBorder: "rgba(15,23,42,.12)",
-      navBg: "rgba(255,255,255,.92)",
-      topbarBg: "linear-gradient(180deg, rgba(255,255,255,.95), rgba(248,250,252,.88))",
-      modalBg: "linear-gradient(180deg, #FFFFFF, #F5F8FC)",
-      modalHeadBg: "rgba(255,255,255,.95)",
+      muted: "rgba(20,30,48,.72)",
+      muted2: "rgba(30,41,59,.54)",
+      inputBg: "rgba(15,23,42,.055)",
+      inputBorder: "rgba(15,23,42,.15)",
+      navBg: "rgba(255,255,255,.96)",
+      topbarBg: "linear-gradient(180deg, rgba(255,255,255,.98), rgba(245,248,252,.93))",
+      modalBg: "linear-gradient(180deg, #FFFFFF, #F2F6FB)",
+      modalHeadBg: "rgba(250,252,255,.98)",
       btnText: "#04130E",
       good: "#0E9F6E",
       warn: "#B45309",
@@ -2973,8 +2973,8 @@ const [connectingPhantom, setConnectingPhantom] = useState(false);
       neon:  dark({ bg: "#0B0A18", primary: "#C084FC", secondary: "#22D3EE", accent: "#F472B6", danger: "#FF4D6D", glow: "rgba(192,132,252,.26)" }),
       rose:  dark({ bg: "#160A12", primary: "#FF8FB1", secondary: "#FDB7EA", accent: "#F472B6", danger: "#FF6B8A", glow: "rgba(255,143,177,.22)" }),
       // ---------- LIGHT ----------
-     light: light({ bg: "#E8EDF2", primary: "#0EA5A3", secondary: "#2563EB", accent: "#7C3AED", danger: "#E11D48", glow: "rgba(14,165,163,.14)" }),
-paper: light({ bg: "#EDE8DC", primary: "#C2410C", secondary: "#0D9488", accent: "#7C3AED", danger: "#DC2626", glow: "rgba(194,65,12,.12)" }),
+      light: light({ bg: "#D8E2EC", primary: "#0EA5A3", secondary: "#2563EB", accent: "#7C3AED", danger: "#E11D48", glow: "rgba(14,165,163,.16)" }),
+      paper: light({ bg: "#E2DAC8", primary: "#C2410C", secondary: "#0D9488", accent: "#7C3AED", danger: "#DC2626", glow: "rgba(194,65,12,.14)" }),
     };
 
     const t = themes[theme] || themes.calm;
@@ -2987,6 +2987,17 @@ paper: light({ bg: "#EDE8DC", primary: "#C2410C", secondary: "#0D9488", accent: 
     set("--card", t.surface);
     set("--surface", t.surface);
     set("--surface2", t.surface2);
+    if (t.mode === "light") {
+      set("--card2", "rgba(15,23,42,.06)");
+      set("--card3", "rgba(15,23,42,.04)");
+      set("--bgSoft", "rgba(255,255,255,.82)");
+      set("--heroGlow", t.glow);
+    } else {
+      set("--card2", "rgba(18,29,45,.42)");
+      set("--card3", "rgba(255,255,255,.05)");
+      set("--bgSoft", "rgba(7,17,31,.66)");
+      set("--heroGlow", t.glow);
+    }
     set("--border", t.border);
     set("--borderSoft", t.borderSoft);
 
