@@ -5190,9 +5190,12 @@ gap: 12,
   style={{
     position: "relative",
     overflow: "hidden",
-    background:
-      "linear-gradient(135deg, rgba(99,245,200,.08), rgba(124,203,255,.06), rgba(167,139,250,.08))",
-    border: "1px solid rgba(255,255,255,.12)",
+    background: (theme === "light" || theme === "paper")
+      ? "linear-gradient(135deg, rgba(14,165,163,.10), rgba(37,99,235,.07), rgba(124,58,237,.09))"
+      : "linear-gradient(135deg, rgba(99,245,200,.08), rgba(124,203,255,.06), rgba(167,139,250,.08))",
+    border: (theme === "light" || theme === "paper")
+      ? "1px solid rgba(15,23,42,.14)"
+      : "1px solid rgba(255,255,255,.12)",
     backdropFilter: "blur(18px)",
   }}
 >
@@ -5243,9 +5246,9 @@ gap: 12,
       style={{
         fontSize: 18,
         fontWeight: 1000,
-        color: "#63F5C8",
+        color: (theme === "light" || theme === "paper") ? "#065F46" : "#63F5C8",
         letterSpacing: ".5px",
-        textShadow: "0 0 20px rgba(99,245,200,.25)",
+        textShadow: (theme === "light" || theme === "paper") ? "none" : "0 0 20px rgba(99,245,200,.25)",
       }}
     >
       Multi-Chain Expansion
@@ -5258,83 +5261,30 @@ gap: 12,
         gap: 10,
       }}
     >
-      <div
-        style={{
-          padding: "12px 14px",
-          borderRadius: 14,
-          background:
-            "linear-gradient(135deg, rgba(243,186,47,.12), rgba(243,186,47,.05))",
-          border: "1px solid rgba(243,186,47,.20)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span style={{ fontWeight: 900, color: "#FFD86B" }}>
-          ⚡ BNB Chain
-        </span>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            color: "#FFD86B",
-          }}
-        >
-          COMING SOON
-        </span>
-      </div>
-
-      <div
-        style={{
-          padding: "12px 14px",
-          borderRadius: 14,
-          background:
-            "linear-gradient(135deg, rgba(167,139,250,.12), rgba(167,139,250,.05))",
-          border: "1px solid rgba(167,139,250,.20)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span style={{ fontWeight: 900, color: "#A78BFA" }}>
-          🔷 Polygon
-        </span>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            color: "#A78BFA",
-          }}
-        >
-          COMING SOON
-        </span>
-      </div>
-
-      <div
-        style={{
-          padding: "12px 14px",
-          borderRadius: 14,
-          background:
-            "linear-gradient(135deg, rgba(99,245,200,.12), rgba(99,245,200,.05))",
-          border: "1px solid rgba(99,245,200,.20)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span style={{ fontWeight: 900, color: "#63F5C8" }}>
-          🚀 Fun.Run Exchange
-        </span>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            color: "#63F5C8",
-          }}
-        >
-          IN DEVELOPMENT
-        </span>
-      </div>
+      {[
+        { icon: "⚡", label: "BNB Chain",       badge: "COMING SOON",   dk: "#FFD86B", lk: "#92400E", bgDk: "rgba(243,186,47,.12)", bgLk: "rgba(180,130,0,.13)",    bdDk: "rgba(243,186,47,.22)", bdLk: "rgba(180,130,0,.28)" },
+        { icon: "🔷", label: "Polygon",          badge: "COMING SOON",   dk: "#A78BFA", lk: "#4C1D95", bgDk: "rgba(167,139,250,.12)", bgLk: "rgba(109,40,217,.10)", bdDk: "rgba(167,139,250,.22)", bdLk: "rgba(109,40,217,.25)" },
+        { icon: "🚀", label: "Fun.Run Exchange", badge: "IN DEVELOPMENT", dk: "#63F5C8", lk: "#065F46", bgDk: "rgba(99,245,200,.12)",  bgLk: "rgba(6,95,70,.10)",    bdDk: "rgba(99,245,200,.22)",  bdLk: "rgba(6,95,70,.25)" },
+      ].map(({ icon, label, badge, dk, lk, bgDk, bgLk, bdDk, bdLk }) => {
+        const isLM = theme === "light" || theme === "paper";
+        return (
+          <div
+            key={label}
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${isLM ? bgLk : bgDk}, transparent)`,
+              border: `1px solid ${isLM ? bdLk : bdDk}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontWeight: 900, color: isLM ? lk : dk }}>{icon} {label}</span>
+            <span style={{ fontSize: 11, fontWeight: 900, color: isLM ? lk : dk }}>{badge}</span>
+          </div>
+        );
+      })}
     </div>
 
     <div
@@ -5345,12 +5295,12 @@ gap: 12,
         gap: 6,
         padding: "8px 16px",
         borderRadius: 999,
-        background: "rgba(99,245,200,.12)",
-        border: "1px solid rgba(99,245,200,.25)",
-        color: "#63F5C8",
+        background: (theme === "light" || theme === "paper") ? "rgba(6,95,70,.10)" : "rgba(99,245,200,.12)",
+        border: (theme === "light" || theme === "paper") ? "1px solid rgba(6,95,70,.28)" : "1px solid rgba(99,245,200,.25)",
+        color: (theme === "light" || theme === "paper") ? "#065F46" : "#63F5C8",
         fontSize: 12,
         fontWeight: 900,
-        boxShadow: "0 0 20px rgba(99,245,200,.15)",
+        boxShadow: (theme === "light" || theme === "paper") ? "none" : "0 0 20px rgba(99,245,200,.15)",
       }}
     >
       ✦ EXPANDING ECOSYSTEM
