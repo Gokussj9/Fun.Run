@@ -3127,13 +3127,6 @@ async function reconcilePendingWithdrawals() {
 
 // -------------------- START --------------------
 validateSecrets();
-try {
-  await ensureSchema();
-  console.log("Schema ready");
-} catch (e) {
-  console.error("Startup failed:", e?.message || e);
-  process.exit(1);
-}
 
 process.on("SIGINT", async () => {
   process.exit(0);
@@ -3146,7 +3139,9 @@ process.on("SIGTERM", async () => {
 // -------------------- HTTP + WEBSOCKET SERVER --------------------
 const server = app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
-  // Background mein chala do — startup block na kare
+  ensureSchema()
+    .then(() => console.log("Schema ready"))
+    .catch(err => console.error("Schema error:", err));
   reconcilePendingWithdrawals().catch(err =>
     console.error("Reconcile error:", err)
   );
