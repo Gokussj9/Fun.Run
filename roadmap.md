@@ -102,7 +102,7 @@ Do raaste hain — apni capacity ke hisaab se chuno:
 | **0.4** Launch hold | ✅ Done | SIGNUP_AIRDROP_RUN=300k, run_balance default=0, run_tokens in INSERT |
 | **1.1** Per-coin real reserve | ⏳ Pending | |
 | **1.2** Real buy (SOL transfer) | ⏳ Pending | |
-| **1.3** Real sell (SOL transfer) | ⏳ Pending | |
+| **1.3** Real sell (SOL transfer) | ✅ Done (devnet) | |
 | **1.4** Real fees | ⏳ Pending | |
 | **1.5** Create coin (real fee) | ⏳ Pending | |
 | **1.6** Withdraw from own wallet | ⏳ Pending | |
