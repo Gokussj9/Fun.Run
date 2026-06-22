@@ -10,7 +10,7 @@ export async function createSPLToken(payerKeypair) {
     payerKeypair,
     payerKeypair.publicKey,
     payerKeypair.publicKey,
-    9
+    6
   );
   return { mintAddress: mint.toBase58() };
 }
